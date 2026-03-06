@@ -5,6 +5,8 @@ using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 
+using ModelContextProtocol.Client;
+
 namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewaySearchTests
@@ -110,6 +112,23 @@ public sealed class McpGatewaySearchTests
         await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
         await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "lexical_fallback")).IsTrue();
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:weather_search_forecast");
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_UsesSchemaTermsForLexicalFallback()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool("local", CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
+            options.AddTool("local", CreateFunction(FilterAdvisories, "advisory_lookup", "Lookup advisory records."));
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        await gateway.BuildIndexAsync();
+        var searchResult = await gateway.SearchAsync("severity filter", maxResults: 1);
+
+        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:advisory_lookup");
     }
 
     [TUnit.Core.Test]
@@ -249,6 +268,40 @@ public sealed class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
+    public async Task BuildIndexAsync_RetriesFailedMcpClientFactoryOnNextBuild()
+    {
+        await using var serverHost = await TestMcpServerHost.StartAsync();
+
+        var attempts = 0;
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddMcpClientFactory(
+                "test-mcp",
+                async _ =>
+                {
+                    attempts++;
+                    if (attempts == 1)
+                    {
+                        throw new InvalidOperationException("temporary startup failure");
+                    }
+
+                    return serverHost.Client;
+                },
+                disposeClient: false);
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var firstBuild = await gateway.BuildIndexAsync();
+        var secondBuild = await gateway.BuildIndexAsync();
+
+        await Assert.That(attempts).IsEqualTo(2);
+        await Assert.That(firstBuild.ToolCount).IsEqualTo(0);
+        await Assert.That(firstBuild.Diagnostics.Any(static diagnostic => diagnostic.Code == "source_load_failed")).IsTrue();
+        await Assert.That(secondBuild.ToolCount).IsEqualTo(3);
+        await Assert.That(secondBuild.Diagnostics.Any(static diagnostic => diagnostic.Code == "source_load_failed")).IsFalse();
+    }
+
+    [TUnit.Core.Test]
     public async Task ListToolsAsync_BuildsIndexOnDemand()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureSearchTools);
@@ -281,4 +334,7 @@ public sealed class McpGatewaySearchTests
     private static string SearchGitHubAgain([Description("Search query text.")] string query) => $"github-duplicate:{query}";
 
     private static string SearchWeather([Description("City or weather request text.")] string query) => $"weather:{query}";
+
+    private static string FilterAdvisories([Description("Severity filter to apply to advisory lookups.")] string severity)
+        => $"advisory:{severity}";
 }

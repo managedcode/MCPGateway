@@ -33,6 +33,28 @@ public sealed class McpGatewayInvocationTests
     }
 
     [TUnit.Core.Test]
+    public async Task InvokeAsync_MapsQueryArgumentWhenSchemaMarksItOptional()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool(
+                "local",
+                CreateFunction(OptionalQueryEcho, "optional_query_echo", "Echo optional query text in uppercase."));
+        });
+
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        await gateway.BuildIndexAsync();
+
+        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
+            ToolId: "local:optional_query_echo",
+            Query: "hello gateway"));
+
+        await Assert.That(invokeResult.IsSuccess).IsTrue();
+        await Assert.That(invokeResult.Output).IsTypeOf<string>();
+        await Assert.That((string)invokeResult.Output!).IsEqualTo("HELLO GATEWAY");
+    }
+
+    [TUnit.Core.Test]
     public async Task InvokeAsync_MapsContextSummaryToRequiredLocalArguments()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
@@ -316,6 +338,9 @@ public sealed class McpGatewayInvocationTests
             });
 
     private static string TextUppercase([Description("Text to uppercase.")] string query) => query.ToUpperInvariant();
+
+    private static string OptionalQueryEcho([Description("Text to uppercase.")] string? query = null)
+        => (query ?? "missing").ToUpperInvariant();
 
     private static string EchoContextSummary(
         [Description("Main query text.")] string query,

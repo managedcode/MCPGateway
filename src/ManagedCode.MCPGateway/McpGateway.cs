@@ -422,13 +422,13 @@ public sealed class McpGateway(
 
         if (!string.IsNullOrWhiteSpace(request.Query) &&
             !arguments.ContainsKey(QueryArgumentName) &&
-            entry.Descriptor.RequiredArguments.Contains(QueryArgumentName, StringComparer.OrdinalIgnoreCase))
+            SupportsArgument(entry.Descriptor, QueryArgumentName))
         {
             arguments[QueryArgumentName] = request.Query;
         }
 
-        MapRequestArgument(arguments, entry.Descriptor.RequiredArguments, ContextArgumentName, request.Context);
-        MapRequestArgument(arguments, entry.Descriptor.RequiredArguments, ContextSummaryArgumentName, request.ContextSummary);
+        MapRequestArgument(arguments, entry.Descriptor, ContextArgumentName, request.Context);
+        MapRequestArgument(arguments, entry.Descriptor, ContextSummaryArgumentName, request.ContextSummary);
 
         try
         {
@@ -948,13 +948,13 @@ public sealed class McpGateway(
 
     private static void MapRequestArgument(
         IDictionary<string, object?> arguments,
-        IReadOnlyList<string> requiredArguments,
+        McpGatewayToolDescriptor descriptor,
         string argumentName,
         object? value)
     {
         if (value is null ||
             arguments.ContainsKey(argumentName) ||
-            !requiredArguments.Contains(argumentName, StringComparer.OrdinalIgnoreCase))
+            !SupportsArgument(descriptor, argumentName))
         {
             return;
         }
@@ -965,6 +965,39 @@ public sealed class McpGateway(
         }
 
         arguments[argumentName] = value;
+    }
+
+    private static bool SupportsArgument(
+        McpGatewayToolDescriptor descriptor,
+        string argumentName)
+    {
+        if (descriptor.RequiredArguments.Contains(argumentName, StringComparer.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(descriptor.InputSchemaJson))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var schemaDocument = JsonDocument.Parse(descriptor.InputSchemaJson);
+            if (!schemaDocument.RootElement.TryGetProperty("properties", out var properties) ||
+                properties.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            return properties
+                .EnumerateObject()
+                .Any(property => string.Equals(property.Name, argumentName, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static McpClientTool AttachInvocationMeta(McpClientTool tool, McpGatewayInvokeRequest request)
@@ -1039,12 +1072,7 @@ public sealed class McpGateway(
             return 0d;
         }
 
-        var corpus = BuildSearchTerms(string.Join(
-            " ",
-            entry.Descriptor.ToolName,
-            entry.Descriptor.DisplayName,
-            entry.Descriptor.Description,
-            entry.Descriptor.SourceId));
+        var corpus = BuildSearchTerms(entry.Document);
 
         var score = 0d;
         foreach (var term in searchTerms)

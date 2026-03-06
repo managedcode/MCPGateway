@@ -323,8 +323,7 @@ internal abstract class McpGatewayClientToolSourceRegistration(
 
         if (_clientTask is not null)
         {
-            _client = await _clientTask.WaitAsync(cancellationToken);
-            return _client;
+            return await AwaitClientTaskAsync(_clientTask, cancellationToken);
         }
 
         await _sync.WaitAsync(cancellationToken);
@@ -342,8 +341,35 @@ internal abstract class McpGatewayClientToolSourceRegistration(
             _sync.Release();
         }
 
-        _client = await _clientTask.WaitAsync(cancellationToken);
-        return _client;
+        return await AwaitClientTaskAsync(_clientTask, cancellationToken);
+    }
+
+    private async Task<McpClient> AwaitClientTaskAsync(
+        Task<McpClient> clientTask,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            _client = await clientTask.WaitAsync(cancellationToken);
+            return _client;
+        }
+        catch when (clientTask.IsFaulted || clientTask.IsCanceled)
+        {
+            await _sync.WaitAsync(CancellationToken.None);
+            try
+            {
+                if (ReferenceEquals(_clientTask, clientTask))
+                {
+                    _clientTask = null;
+                }
+            }
+            finally
+            {
+                _sync.Release();
+            }
+
+            throw;
+        }
     }
 }
 
