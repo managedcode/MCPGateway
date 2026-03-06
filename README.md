@@ -137,25 +137,6 @@ If an embedding generator is registered, the gateway vectorizes those descriptor
 - existing `McpClient` instances
 - deferred `McpClient` factories
 
-## MCAF Skills
-
-The repository ships Codex-compatible MCAF skills under `.codex/skills/`:
-
-- `mcaf-architecture-overview`
-- `mcaf-feature-spec`
-- `mcaf-adr-writing`
-- `mcaf-testing`
-- `mcaf-formatting`
-- `mcaf-skill-curation`
-
-These skills are adapted to this repository. They reference `ManagedCode.MCPGateway`, the root `AGENTS.md`, and TUnit-based verification.
-
-Validate skills and regenerate metadata from the repository root:
-
-```bash
-python3 .codex/skills/mcaf-skill-curation/scripts/validate_skills.py .codex/skills
-python3 .codex/skills/mcaf-skill-curation/scripts/generate_available_skills.py .codex/skills --absolute
-```
 
 ## Local Development
 
@@ -163,13 +144,4 @@ python3 .codex/skills/mcaf-skill-curation/scripts/generate_available_skills.py .
 dotnet restore ManagedCode.MCPGateway.slnx
 dotnet build ManagedCode.MCPGateway.slnx -c Release
 dotnet test --solution ManagedCode.MCPGateway.slnx -c Release
-dotnet pack src/ManagedCode.MCPGateway/ManagedCode.MCPGateway.csproj -c Release
 ```
-
-## CI/CD
-
-The repository includes:
-
-- `.github/workflows/ci.yml` for restore, build, and test
-- `.github/workflows/release.yml` for pack, NuGet publish, and GitHub release creation
-- `.github/workflows/codeql.yml` for CodeQL analysis
