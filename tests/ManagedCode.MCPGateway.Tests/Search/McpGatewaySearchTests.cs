@@ -4,6 +4,7 @@ using ManagedCode.MCPGateway.Abstractions;
 
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 using ModelContextProtocol.Client;
 
@@ -91,6 +92,61 @@ public sealed class McpGatewaySearchTests
         await Assert.That(searchResult.RankingMode).IsEqualTo("vector");
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:weather_search_forecast");
         await Assert.That(embeddingGenerator.Calls[1].Single()).IsEqualTo("context summary: weather forecast");
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_PrefersKeyedEmbeddingGeneratorOverUnkeyedRegistration()
+    {
+        var keyedEmbeddingGenerator = new TestEmbeddingGenerator();
+        var fallbackEmbeddingGenerator = new TestEmbeddingGenerator(new TestEmbeddingGeneratorOptions
+        {
+            ThrowOnInput = static _ => true
+        });
+
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(fallbackEmbeddingGenerator);
+        services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+            McpGatewayServiceKeys.EmbeddingGenerator,
+            keyedEmbeddingGenerator);
+        services.AddManagedCodeMcpGateway(ConfigureSearchTools);
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var buildResult = await gateway.BuildIndexAsync();
+        var searchResult = await gateway.SearchAsync("github pull requests", maxResults: 2);
+
+        await Assert.That(buildResult.IsVectorSearchEnabled).IsTrue();
+        await Assert.That(searchResult.RankingMode).IsEqualTo("vector");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
+        await Assert.That(keyedEmbeddingGenerator.Calls.Count).IsEqualTo(2);
+        await Assert.That(fallbackEmbeddingGenerator.Calls.Count).IsEqualTo(0);
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_ResolvesScopedEmbeddingGeneratorPerOperation()
+    {
+        var tracker = new ScopedEmbeddingGeneratorTracker();
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddScoped<IEmbeddingGenerator<string, Embedding<float>>>(_ => new ScopedTestEmbeddingGenerator(tracker));
+        services.AddManagedCodeMcpGateway(ConfigureSearchTools);
+
+        await using var serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateScopes = true
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var buildResult = await gateway.BuildIndexAsync();
+        var searchResult = await gateway.SearchAsync("github pull requests", maxResults: 2);
+
+        await Assert.That(buildResult.IsVectorSearchEnabled).IsTrue();
+        await Assert.That(searchResult.RankingMode).IsEqualTo("vector");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
+        await Assert.That(tracker.InstanceIds.Distinct().Count()).IsEqualTo(2);
+        await Assert.That(tracker.Calls.Count).IsEqualTo(2);
     }
 
     [TUnit.Core.Test]
@@ -337,4 +393,41 @@ public sealed class McpGatewaySearchTests
 
     private static string FilterAdvisories([Description("Severity filter to apply to advisory lookups.")] string severity)
         => $"advisory:{severity}";
+}
+
+internal sealed class ScopedEmbeddingGeneratorTracker
+{
+    public List<Guid> InstanceIds { get; } = [];
+
+    public List<IReadOnlyList<string>> Calls { get; } = [];
+}
+
+internal sealed class ScopedTestEmbeddingGenerator(ScopedEmbeddingGeneratorTracker tracker)
+    : IEmbeddingGenerator<string, Embedding<float>>
+{
+    private readonly Guid _instanceId = Guid.NewGuid();
+    private readonly TestEmbeddingGenerator _inner = new();
+
+    public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
+        IEnumerable<string> values,
+        EmbeddingGenerationOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        tracker.InstanceIds.Add(_instanceId);
+        return GenerateAndCaptureAsync(values, options, cancellationToken);
+    }
+
+    public object? GetService(Type serviceType, object? serviceKey = null) => _inner.GetService(serviceType, serviceKey);
+
+    public void Dispose() => _inner.Dispose();
+
+    private async Task<GeneratedEmbeddings<Embedding<float>>> GenerateAndCaptureAsync(
+        IEnumerable<string> values,
+        EmbeddingGenerationOptions? options,
+        CancellationToken cancellationToken)
+    {
+        var result = await _inner.GenerateAsync(values, options, cancellationToken);
+        tracker.Calls.Add(_inner.Calls[^1]);
+        return result;
+    }
 }

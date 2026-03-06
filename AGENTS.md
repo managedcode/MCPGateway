@@ -68,7 +68,6 @@ If no new rule is detected -> do not update the file.
 - build: `dotnet build ManagedCode.MCPGateway.slnx -c Release --no-restore`
 - analyze: `dotnet build ManagedCode.MCPGateway.slnx -c Release --no-restore -p:RunAnalyzers=true`
 - test: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build`
-- pack: `dotnet pack src/ManagedCode.MCPGateway/ManagedCode.MCPGateway.csproj -c Release --no-build -o ./artifacts`
 - format: `dotnet format ManagedCode.MCPGateway.slnx`
 - skills-validate: `python3 .codex/skills/mcaf-skill-curation/scripts/validate_skills.py .codex/skills`
 - skills-metadata: `python3 .codex/skills/mcaf-skill-curation/scripts/generate_available_skills.py .codex/skills --absolute`
@@ -118,6 +117,9 @@ If no new rule is detected -> do not update the file.
 
 - Update `README.md` whenever public API shape, setup, or usage changes.
 - Keep the README focused on package usage and onboarding, not internal implementation notes.
+- Document optional DI dependencies explicitly in README examples so consumers know which services they must register themselves, such as embedding generators.
+- Keep README code examples as real example code blocks, not commented-out pseudo-code; if behavior is optional, show it in a separate example instead of commenting lines inside another snippet.
+- Never leave empty placeholder setup blocks in README examples such as `// gateway configuration`; show a concrete minimal configuration that actually demonstrates the API.
 - Keep repo docs and skills in English to stay aligned with MCAF conventions.
 - Keep root packaging metadata centralized in `Directory.Build.props`.
 - Keep package versions centralized in `Directory.Packages.props`.
@@ -141,7 +143,6 @@ If no new rule is detected -> do not update the file.
   - restore
   - build
   - test
-  - pack when package output is affected
 
 ### Code Style
 
@@ -151,6 +152,7 @@ If no new rule is detected -> do not update the file.
 - Keep public API names aligned with package identity `ManagedCode.MCPGateway`.
 - Do not duplicate package metadata or version blocks inside project files unless a project-specific override is required.
 - Use constants for stable tool names and protocol-facing identifiers.
+- Never leave stable string literals inline in runtime code; extract named constants for diagnostic codes, messages, modes, keys, and other durable identifiers so changes stay centralized.
 - Keep transport-specific logic inside the gateway and source registration abstractions, not scattered across the codebase.
 - Keep the package dependency surface small and justified.
 

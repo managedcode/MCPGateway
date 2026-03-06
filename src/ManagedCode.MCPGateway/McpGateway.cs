@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Globalization;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol;
@@ -19,10 +20,59 @@ public sealed class McpGateway(
     ILoggerFactory loggerFactory)
     : IMcpGateway, IMcpGatewayRegistry
 {
+    private const string DefaultSourceId = "local";
     private const string QueryArgumentName = "query";
     private const string ContextArgumentName = "context";
     private const string ContextSummaryArgumentName = "contextSummary";
     private const string GatewayInvocationMetaKey = "managedCodeMcpGateway";
+    private const string SearchModeEmpty = "empty";
+    private const string SearchModeBrowse = "browse";
+    private const string SearchModeLexical = "lexical";
+    private const string SearchModeVector = "vector";
+    private const string SourceLoadFailedDiagnosticCode = "source_load_failed";
+    private const string DuplicateToolIdDiagnosticCode = "duplicate_tool_id";
+    private const string EmbeddingCountMismatchDiagnosticCode = "embedding_count_mismatch";
+    private const string EmbeddingGeneratorMissingDiagnosticCode = "embedding_generator_missing";
+    private const string EmbeddingFailedDiagnosticCode = "embedding_failed";
+    private const string QueryVectorEmptyDiagnosticCode = "query_vector_empty";
+    private const string LexicalFallbackDiagnosticCode = "lexical_fallback";
+    private const string VectorSearchFailedDiagnosticCode = "vector_search_failed";
+    private const string CommandRequiredMessage = "A command is required.";
+    private const string SourceLoadFailedMessageTemplate = "Failed to load tools from source '{0}': {1}";
+    private const string DuplicateToolIdMessageTemplate = "Skipped duplicate tool id '{0}'.";
+    private const string EmbeddingCountMismatchMessageTemplate = "Embedding generation returned {0} vectors for {1} tools.";
+    private const string EmbeddingGeneratorMissingMessage = "No keyed or unkeyed IEmbeddingGenerator<string, Embedding<float>> is registered. Lexical fallback only.";
+    private const string EmbeddingFailedMessageTemplate = "Embedding generation failed: {0}";
+    private const string QueryVectorEmptyMessage = "Embedding generator returned an empty query vector.";
+    private const string LexicalFallbackMessage = "Vector search is unavailable. Lexical ranking was used.";
+    private const string VectorSearchFailedMessageTemplate = "Vector ranking failed and lexical fallback was used: {0}";
+    private const string ToolNotInvokableMessageTemplate = "Tool '{0}' is not invokable.";
+    private const string ToolIdOrToolNameRequiredMessage = "Either ToolId or ToolName is required.";
+    private const string ToolIdNotFoundMessageTemplate = "Tool '{0}' was not found.";
+    private const string ToolNameAmbiguousMessageTemplate = "Tool '{0}' is ambiguous. Use ToolId or specify SourceId explicitly.";
+    private const string FailedToLoadGatewaySourceLogMessage = "Failed to load gateway source {SourceId}.";
+    private const string EmbeddingGenerationFailedLogMessage = "Gateway embedding generation failed. Falling back to lexical search.";
+    private const string GatewayIndexRebuiltLogMessage = "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount}.";
+    private const string GatewayVectorSearchFailedLogMessage = "Gateway vector search failed. Falling back to lexical ranking.";
+    private const string GatewayInvocationFailedLogMessage = "Gateway invocation failed for {ToolId}.";
+    private const string InputSchemaPropertiesPropertyName = "properties";
+    private const string InputSchemaRequiredPropertyName = "required";
+    private const string InputSchemaDescriptionPropertyName = "description";
+    private const string InputSchemaTypePropertyName = "type";
+    private const string InputSchemaEnumPropertyName = "enum";
+    private const string DisplayNamePropertyName = "DisplayName";
+    private const string ToolNameLabel = "Tool name: ";
+    private const string DisplayNameLabel = "Display name: ";
+    private const string DescriptionLabel = "Description: ";
+    private const string RequiredArgumentsLabel = "Required arguments: ";
+    private const string ParameterLabel = "Parameter ";
+    private const string TypeLabel = "Type ";
+    private const string TypicalValuesLabel = "Typical values: ";
+    private const string InputSchemaLabel = "Input schema: ";
+    private const string ContextSummaryPrefix = "context summary: ";
+    private const string ContextPrefix = "context: ";
+    private const string PluralSuffixIes = "ies";
+    private const string PluralSuffixEs = "es";
 
     private static readonly char[] TokenSeparators =
     [
@@ -49,6 +99,14 @@ public sealed class McpGateway(
         '?',
         '!'
     ];
+    private static readonly CompositeFormat SourceLoadFailedMessageFormat = CompositeFormat.Parse(SourceLoadFailedMessageTemplate);
+    private static readonly CompositeFormat DuplicateToolIdMessageFormat = CompositeFormat.Parse(DuplicateToolIdMessageTemplate);
+    private static readonly CompositeFormat EmbeddingCountMismatchMessageFormat = CompositeFormat.Parse(EmbeddingCountMismatchMessageTemplate);
+    private static readonly CompositeFormat EmbeddingFailedMessageFormat = CompositeFormat.Parse(EmbeddingFailedMessageTemplate);
+    private static readonly CompositeFormat VectorSearchFailedMessageFormat = CompositeFormat.Parse(VectorSearchFailedMessageTemplate);
+    private static readonly CompositeFormat ToolNotInvokableMessageFormat = CompositeFormat.Parse(ToolNotInvokableMessageTemplate);
+    private static readonly CompositeFormat ToolIdNotFoundMessageFormat = CompositeFormat.Parse(ToolIdNotFoundMessageTemplate);
+    private static readonly CompositeFormat ToolNameAmbiguousMessageFormat = CompositeFormat.Parse(ToolNameAmbiguousMessageTemplate);
 
     private readonly object _gate = new();
     private readonly SemaphoreSlim _rebuildLock = new(1, 1);
@@ -65,7 +123,7 @@ public sealed class McpGateway(
     public void AddTool(string sourceId, AITool tool, string? displayName = null)
         => AddTool(tool, sourceId, displayName);
 
-    public void AddTool(AITool tool, string sourceId = "local", string? displayName = null)
+    public void AddTool(AITool tool, string sourceId = DefaultSourceId, string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(tool);
 
@@ -90,7 +148,7 @@ public sealed class McpGateway(
     public void AddTools(string sourceId, IEnumerable<AITool> tools, string? displayName = null)
         => AddTools(tools, sourceId, displayName);
 
-    public void AddTools(IEnumerable<AITool> tools, string sourceId = "local", string? displayName = null)
+    public void AddTools(IEnumerable<AITool> tools, string sourceId = DefaultSourceId, string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(tools);
 
@@ -120,7 +178,7 @@ public sealed class McpGateway(
     {
         if (string.IsNullOrWhiteSpace(command))
         {
-            throw new ArgumentException("A command is required.", nameof(command));
+            throw new ArgumentException(CommandRequiredMessage, nameof(command));
         }
 
         AddRegistration(new McpGatewayStdioToolSourceRegistration(
@@ -184,9 +242,13 @@ public sealed class McpGateway(
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     diagnostics.Add(new McpGatewayDiagnostic(
-                        "source_load_failed",
-                        $"Failed to load tools from source '{registration.SourceId}': {ex.GetBaseException().Message}"));
-                    _logger.LogWarning(ex, "Failed to load gateway source {SourceId}.", registration.SourceId);
+                        SourceLoadFailedDiagnosticCode,
+                        string.Format(
+                            CultureInfo.InvariantCulture,
+                            SourceLoadFailedMessageFormat,
+                            registration.SourceId,
+                            ex.GetBaseException().Message)));
+                    _logger.LogWarning(ex, FailedToLoadGatewaySourceLogMessage, registration.SourceId);
                     continue;
                 }
 
@@ -201,8 +263,8 @@ public sealed class McpGateway(
                     if (!seenToolIds.Add(descriptor.ToolId))
                     {
                         diagnostics.Add(new McpGatewayDiagnostic(
-                            "duplicate_tool_id",
-                            $"Skipped duplicate tool id '{descriptor.ToolId}'."));
+                            DuplicateToolIdDiagnosticCode,
+                            string.Format(CultureInfo.InvariantCulture, DuplicateToolIdMessageFormat, descriptor.ToolId)));
                         continue;
                     }
 
@@ -213,59 +275,65 @@ public sealed class McpGateway(
                 }
             }
 
-            var embeddingGenerator = _serviceProvider.GetService(typeof(IEmbeddingGenerator<string, Embedding<float>>))
-                as IEmbeddingGenerator<string, Embedding<float>>;
             var vectorizedToolCount = 0;
-            if (entries.Count > 0 && embeddingGenerator is not null)
+            if (entries.Count > 0)
             {
                 try
                 {
-                    var embeddings = (await embeddingGenerator.GenerateAsync(
-                            entries.Select(static item => item.Document),
-                            cancellationToken: cancellationToken))
-                        .ToList();
-                    if (embeddings.Count == entries.Count)
+                    await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
+                    if (embeddingGeneratorLease.Generator is IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
                     {
-                        for (var index = 0; index < entries.Count; index++)
+                        var embeddings = (await embeddingGenerator.GenerateAsync(
+                                entries.Select(static item => item.Document),
+                                cancellationToken: cancellationToken))
+                            .ToList();
+                        if (embeddings.Count == entries.Count)
                         {
-                            var vector = embeddings[index].Vector.ToArray();
-                            if (vector.Length == 0)
+                            for (var index = 0; index < entries.Count; index++)
                             {
-                                continue;
-                            }
+                                var vector = embeddings[index].Vector.ToArray();
+                                if (vector.Length == 0)
+                                {
+                                    continue;
+                                }
 
-                            entries[index] = entries[index] with
-                            {
-                                Vector = vector,
-                                Magnitude = CalculateMagnitude(vector)
-                            };
+                                entries[index] = entries[index] with
+                                {
+                                    Vector = vector,
+                                    Magnitude = CalculateMagnitude(vector)
+                                };
 
-                            if (entries[index].Magnitude > double.Epsilon)
-                            {
-                                vectorizedToolCount++;
+                                if (entries[index].Magnitude > double.Epsilon)
+                                {
+                                    vectorizedToolCount++;
+                                }
                             }
+                        }
+                        else
+                        {
+                            diagnostics.Add(new McpGatewayDiagnostic(
+                                EmbeddingCountMismatchDiagnosticCode,
+                                string.Format(
+                                    CultureInfo.InvariantCulture,
+                                    EmbeddingCountMismatchMessageFormat,
+                                    embeddings.Count,
+                                    entries.Count)));
                         }
                     }
                     else
                     {
                         diagnostics.Add(new McpGatewayDiagnostic(
-                            "embedding_count_mismatch",
-                            $"Embedding generation returned {embeddings.Count} vectors for {entries.Count} tools."));
+                            EmbeddingGeneratorMissingDiagnosticCode,
+                            EmbeddingGeneratorMissingMessage));
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     diagnostics.Add(new McpGatewayDiagnostic(
-                        "embedding_failed",
-                        $"Embedding generation failed: {ex.GetBaseException().Message}"));
-                    _logger.LogWarning(ex, "Gateway embedding generation failed. Falling back to lexical search.");
+                        EmbeddingFailedDiagnosticCode,
+                        string.Format(CultureInfo.InvariantCulture, EmbeddingFailedMessageFormat, ex.GetBaseException().Message)));
+                    _logger.LogWarning(ex, EmbeddingGenerationFailedLogMessage);
                 }
-            }
-            else if (entries.Count > 0)
-            {
-                diagnostics.Add(new McpGatewayDiagnostic(
-                    "embedding_generator_missing",
-                    "No IEmbeddingGenerator<string, Embedding<float>> is registered. Lexical fallback only."));
             }
 
             var snapshot = new ToolCatalogSnapshot(
@@ -281,7 +349,7 @@ public sealed class McpGateway(
             }
 
             _logger.LogInformation(
-                "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount}.",
+                GatewayIndexRebuiltLogMessage,
                 snapshot.Entries.Count,
                 vectorizedToolCount);
 
@@ -327,7 +395,7 @@ public sealed class McpGateway(
 
         if (snapshot.Entries.Count == 0)
         {
-            return new McpGatewaySearchResult([], diagnostics, "empty");
+            return new McpGatewaySearchResult([], diagnostics, SearchModeEmpty);
         }
 
         var rawQuery = request.Query?.Trim();
@@ -338,54 +406,64 @@ public sealed class McpGateway(
                 .Take(limit)
                 .Select(static entry => ToSearchMatch(entry, 0d))
                 .ToList();
-            return new McpGatewaySearchResult(browse, diagnostics, "browse");
+            return new McpGatewaySearchResult(browse, diagnostics, SearchModeBrowse);
         }
 
         IReadOnlyList<ScoredToolEntry> ranked;
-        var rankingMode = "lexical";
-        if (snapshot.HasVectors &&
-            _serviceProvider.GetService(typeof(IEmbeddingGenerator<string, Embedding<float>>)) is IEmbeddingGenerator<string, Embedding<float>> generator)
+        var rankingMode = SearchModeLexical;
+        if (snapshot.HasVectors)
         {
             try
             {
-                var embedding = await generator.GenerateAsync(effectiveQuery, cancellationToken: cancellationToken);
-                var queryVector = embedding.Vector.ToArray();
-                var queryMagnitude = CalculateMagnitude(queryVector);
-                if (queryMagnitude > double.Epsilon)
+                await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
+                if (embeddingGeneratorLease.Generator is IEmbeddingGenerator<string, Embedding<float>> generator)
                 {
-                    ranked = snapshot.Entries
-                        .Select(entry => new ScoredToolEntry(
-                            entry,
-                            ApplySearchBoosts(
+                    var embedding = await generator.GenerateAsync(effectiveQuery, cancellationToken: cancellationToken);
+                    var queryVector = embedding.Vector.ToArray();
+                    var queryMagnitude = CalculateMagnitude(queryVector);
+                    if (queryMagnitude > double.Epsilon)
+                    {
+                        ranked = snapshot.Entries
+                            .Select(entry => new ScoredToolEntry(
                                 entry,
-                                rawQuery ?? effectiveQuery,
-                                CalculateCosine(entry, queryVector, queryMagnitude))))
-                        .OrderByDescending(static item => item.Score)
-                        .ThenBy(static item => item.Entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
-                        .ToList();
-                    rankingMode = "vector";
+                                ApplySearchBoosts(
+                                    entry,
+                                    rawQuery ?? effectiveQuery,
+                                    CalculateCosine(entry, queryVector, queryMagnitude))))
+                            .OrderByDescending(static item => item.Score)
+                            .ThenBy(static item => item.Entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                        rankingMode = SearchModeVector;
+                    }
+                    else
+                    {
+                        ranked = RankLexically(snapshot.Entries, effectiveQuery);
+                        diagnostics.Add(new McpGatewayDiagnostic(QueryVectorEmptyDiagnosticCode, QueryVectorEmptyMessage));
+                    }
                 }
                 else
                 {
                     ranked = RankLexically(snapshot.Entries, effectiveQuery);
-                    diagnostics.Add(new McpGatewayDiagnostic("query_vector_empty", "Embedding generator returned an empty query vector."));
+                    diagnostics.Add(new McpGatewayDiagnostic(
+                        LexicalFallbackDiagnosticCode,
+                        LexicalFallbackMessage));
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 ranked = RankLexically(snapshot.Entries, effectiveQuery);
                 diagnostics.Add(new McpGatewayDiagnostic(
-                    "vector_search_failed",
-                    $"Vector ranking failed and lexical fallback was used: {ex.GetBaseException().Message}"));
-                _logger.LogWarning(ex, "Gateway vector search failed. Falling back to lexical ranking.");
+                    VectorSearchFailedDiagnosticCode,
+                    string.Format(CultureInfo.InvariantCulture, VectorSearchFailedMessageFormat, ex.GetBaseException().Message)));
+                _logger.LogWarning(ex, GatewayVectorSearchFailedLogMessage);
             }
         }
         else
         {
             ranked = RankLexically(snapshot.Entries, effectiveQuery);
             diagnostics.Add(new McpGatewayDiagnostic(
-                "lexical_fallback",
-                "Vector search is unavailable. Lexical ranking was used."));
+                LexicalFallbackDiagnosticCode,
+                LexicalFallbackMessage));
         }
 
         var matches = ranked
@@ -395,6 +473,22 @@ public sealed class McpGateway(
 
         return new McpGatewaySearchResult(matches, diagnostics, rankingMode);
     }
+
+    private EmbeddingGeneratorLease ResolveEmbeddingGenerator()
+    {
+        if (_serviceProvider.GetService(typeof(IServiceScopeFactory)) is not IServiceScopeFactory scopeFactory)
+        {
+            return new EmbeddingGeneratorLease(ResolveEmbeddingGenerator(_serviceProvider));
+        }
+
+        var scope = scopeFactory.CreateAsyncScope();
+        var generator = ResolveEmbeddingGenerator(scope.ServiceProvider);
+        return new EmbeddingGeneratorLease(generator, scope);
+    }
+
+    private static IEmbeddingGenerator<string, Embedding<float>>? ResolveEmbeddingGenerator(IServiceProvider serviceProvider)
+        => serviceProvider.GetKeyedService<IEmbeddingGenerator<string, Embedding<float>>>(McpGatewayServiceKeys.EmbeddingGenerator)
+            ?? serviceProvider.GetService<IEmbeddingGenerator<string, Embedding<float>>>();
 
     public async Task<McpGatewayInvokeResult> InvokeAsync(
         McpGatewayInvokeRequest request,
@@ -458,7 +552,7 @@ public sealed class McpGateway(
                     entry.Descriptor.SourceId,
                     entry.Descriptor.ToolName,
                     Output: null,
-                    Error: $"Tool '{entry.Descriptor.ToolName}' is not invokable.");
+                    Error: string.Format(CultureInfo.InvariantCulture, ToolNotInvokableMessageFormat, entry.Descriptor.ToolName));
             }
 
             var resultValue = await function.InvokeAsync(
@@ -473,7 +567,7 @@ public sealed class McpGateway(
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            _logger.LogError(ex, "Gateway invocation failed for {ToolId}.", entry.Descriptor.ToolId);
+            _logger.LogError(ex, GatewayInvocationFailedLogMessage, entry.Descriptor.ToolId);
             return new McpGatewayInvokeResult(
                 false,
                 entry.Descriptor.ToolId,
@@ -588,24 +682,24 @@ public sealed class McpGateway(
     private string BuildDescriptorDocument(McpGatewayToolDescriptor descriptor, AITool tool)
     {
         var builder = new StringBuilder();
-        builder.Append("Tool name: ");
+        builder.Append(ToolNameLabel);
         builder.AppendLine(descriptor.ToolName);
 
         if (!string.IsNullOrWhiteSpace(descriptor.DisplayName))
         {
-            builder.Append("Display name: ");
+            builder.Append(DisplayNameLabel);
             builder.AppendLine(descriptor.DisplayName);
         }
 
         if (!string.IsNullOrWhiteSpace(descriptor.Description))
         {
-            builder.Append("Description: ");
+            builder.Append(DescriptionLabel);
             builder.AppendLine(descriptor.Description);
         }
 
         if (descriptor.RequiredArguments.Count > 0)
         {
-            builder.Append("Required arguments: ");
+            builder.Append(RequiredArgumentsLabel);
             builder.AppendLine(string.Join(", ", descriptor.RequiredArguments));
         }
 
@@ -626,7 +720,7 @@ public sealed class McpGateway(
         try
         {
             using var schemaDocument = JsonDocument.Parse(inputSchemaJson);
-            if (!schemaDocument.RootElement.TryGetProperty("properties", out var properties) ||
+            if (!schemaDocument.RootElement.TryGetProperty(InputSchemaPropertiesPropertyName, out var properties) ||
                 properties.ValueKind != JsonValueKind.Object)
             {
                 return;
@@ -634,26 +728,26 @@ public sealed class McpGateway(
 
             foreach (var property in properties.EnumerateObject())
             {
-                builder.Append("Parameter ");
+                builder.Append(ParameterLabel);
                 builder.Append(property.Name);
                 builder.Append(": ");
 
-                if (property.Value.TryGetProperty("description", out var description) &&
+                if (property.Value.TryGetProperty(InputSchemaDescriptionPropertyName, out var description) &&
                     description.ValueKind == JsonValueKind.String)
                 {
                     builder.Append(description.GetString());
                     builder.Append(". ");
                 }
 
-                if (property.Value.TryGetProperty("type", out var type) &&
+                if (property.Value.TryGetProperty(InputSchemaTypePropertyName, out var type) &&
                     type.ValueKind == JsonValueKind.String)
                 {
-                    builder.Append("Type ");
+                    builder.Append(TypeLabel);
                     builder.Append(type.GetString());
                     builder.Append(". ");
                 }
 
-                if (property.Value.TryGetProperty("enum", out var enumValues) &&
+                if (property.Value.TryGetProperty(InputSchemaEnumPropertyName, out var enumValues) &&
                     enumValues.ValueKind == JsonValueKind.Array)
                 {
                     var values = enumValues
@@ -665,7 +759,7 @@ public sealed class McpGateway(
                         .ToList();
                     if (values.Count > 0)
                     {
-                        builder.Append("Typical values: ");
+                        builder.Append(TypicalValuesLabel);
                         builder.Append(string.Join(", ", values));
                         builder.Append(". ");
                     }
@@ -676,7 +770,7 @@ public sealed class McpGateway(
         }
         catch (JsonException)
         {
-            builder.Append("Input schema: ");
+            builder.Append(InputSchemaLabel);
             builder.AppendLine(inputSchemaJson);
         }
     }
@@ -690,7 +784,7 @@ public sealed class McpGateway(
 
         var function = tool as AIFunction ?? tool.GetService<AIFunction>();
         if (function?.AdditionalProperties is { Count: > 0 } &&
-            function.AdditionalProperties.TryGetValue("DisplayName", out var displayName) &&
+            function.AdditionalProperties.TryGetValue(DisplayNamePropertyName, out var displayName) &&
             displayName is string value &&
             !string.IsNullOrWhiteSpace(value))
         {
@@ -740,7 +834,7 @@ public sealed class McpGateway(
         try
         {
             using var schemaDocument = JsonDocument.Parse(inputSchemaJson);
-            if (!schemaDocument.RootElement.TryGetProperty("required", out var required) ||
+            if (!schemaDocument.RootElement.TryGetProperty(InputSchemaRequiredPropertyName, out var required) ||
                 required.ValueKind != JsonValueKind.Array)
             {
                 return [];
@@ -810,13 +904,13 @@ public sealed class McpGateway(
 
         if (!string.IsNullOrWhiteSpace(request.ContextSummary))
         {
-            parts.Add(FormattableString.Invariant($"context summary: {request.ContextSummary.Trim()}"));
+            parts.Add(string.Concat(ContextSummaryPrefix, request.ContextSummary.Trim()));
         }
 
         var flattenedContext = FlattenContext(request.Context);
         if (!string.IsNullOrWhiteSpace(flattenedContext))
         {
-            parts.Add(FormattableString.Invariant($"context: {flattenedContext}"));
+            parts.Add(string.Concat(ContextPrefix, flattenedContext));
         }
 
         return string.Join(" | ", parts);
@@ -984,7 +1078,7 @@ public sealed class McpGateway(
         try
         {
             using var schemaDocument = JsonDocument.Parse(descriptor.InputSchemaJson);
-            if (!schemaDocument.RootElement.TryGetProperty("properties", out var properties) ||
+            if (!schemaDocument.RootElement.TryGetProperty(InputSchemaPropertiesPropertyName, out var properties) ||
                 properties.ValueKind != JsonValueKind.Object)
             {
                 return false;
@@ -1117,13 +1211,13 @@ public sealed class McpGateway(
             var normalized = token.ToLowerInvariant();
             terms.Add(normalized);
 
-            if (normalized.Length > 3 && normalized.EndsWith("ies", StringComparison.Ordinal))
+            if (normalized.Length > 3 && normalized.EndsWith(PluralSuffixIes, StringComparison.Ordinal))
             {
                 terms.Add($"{normalized[..^3]}y");
                 continue;
             }
 
-            if (normalized.Length > 3 && normalized.EndsWith("es", StringComparison.Ordinal))
+            if (normalized.Length > 3 && normalized.EndsWith(PluralSuffixEs, StringComparison.Ordinal))
             {
                 terms.Add(normalized[..^2]);
             }
@@ -1157,13 +1251,13 @@ public sealed class McpGateway(
             var byToolId = snapshot.Entries.FirstOrDefault(item =>
                 string.Equals(item.Descriptor.ToolId, request.ToolId, StringComparison.OrdinalIgnoreCase));
             return byToolId is null
-                ? InvocationResolution.Fail($"Tool '{request.ToolId}' was not found.")
+                ? InvocationResolution.Fail(string.Format(CultureInfo.InvariantCulture, ToolIdNotFoundMessageFormat, request.ToolId))
                 : InvocationResolution.Success(byToolId);
         }
 
         if (string.IsNullOrWhiteSpace(request.ToolName))
         {
-            return InvocationResolution.Fail("Either ToolId or ToolName is required.");
+            return InvocationResolution.Fail(ToolIdOrToolNameRequiredMessage);
         }
 
         var candidates = snapshot.Entries
@@ -1174,10 +1268,10 @@ public sealed class McpGateway(
 
         return candidates.Count switch
         {
-            0 => InvocationResolution.Fail($"Tool '{request.ToolName}' was not found."),
+            0 => InvocationResolution.Fail(string.Format(CultureInfo.InvariantCulture, ToolIdNotFoundMessageFormat, request.ToolName)),
             1 => InvocationResolution.Success(candidates[0]),
             _ => InvocationResolution.Fail(
-                $"Tool '{request.ToolName}' is ambiguous. Use ToolId or specify SourceId explicitly.")
+                string.Format(CultureInfo.InvariantCulture, ToolNameAmbiguousMessageFormat, request.ToolName))
         };
     }
 
@@ -1256,5 +1350,15 @@ public sealed class McpGateway(
     private sealed record ToolCatalogSnapshot(IReadOnlyList<ToolCatalogEntry> Entries, bool HasVectors)
     {
         public static ToolCatalogSnapshot Empty { get; } = new([], false);
+    }
+
+    private sealed class EmbeddingGeneratorLease(
+        IEmbeddingGenerator<string, Embedding<float>>? generator,
+        AsyncServiceScope? scope = null)
+        : IAsyncDisposable
+    {
+        public IEmbeddingGenerator<string, Embedding<float>>? Generator { get; } = generator;
+
+        public ValueTask DisposeAsync() => scope?.DisposeAsync() ?? ValueTask.CompletedTask;
     }
 }

@@ -70,6 +70,8 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
             Query: "managedcode"));
 ```
 
+`AddManagedCodeMcpGateway(...)` does not create or configure an embedding generator for you. Vector ranking is enabled only when the same DI container also has an `IEmbeddingGenerator<string, Embedding<float>>`. The gateway first tries the keyed registration `McpGatewayServiceKeys.EmbeddingGenerator` and falls back to any regular registration. Otherwise it stays fully functional and uses lexical ranking.
+
 ## Context-Aware Search And Invoke
 
 When the current turn has extra UI, workflow, or chat context, pass it through the request models:
@@ -127,7 +129,58 @@ These tools are useful when another model should first search the gateway catalo
 - required arguments
 - input schema summaries
 
-If an embedding generator is registered, the gateway vectorizes those descriptor documents and uses cosine similarity plus a small lexical boost. If no embedding generator is present, it falls back to lexical ranking without disabling execution.
+If an embedding generator is registered, the gateway vectorizes those descriptor documents and uses cosine similarity plus a small lexical boost. It first tries the keyed registration `McpGatewayServiceKeys.EmbeddingGenerator` and then falls back to any regular `IEmbeddingGenerator<string, Embedding<float>>`. If no embedding generator is present, it falls back to lexical ranking without disabling execution.
+
+The embedding generator is resolved per gateway operation, so singleton, scoped, and transient DI registrations all work with index builds and search.
+
+## Optional Embeddings
+
+Register any provider-specific implementation of `IEmbeddingGenerator<string, Embedding<float>>` in the same DI container before building the service provider.
+
+Preferred registration for the gateway:
+
+```csharp
+var services = new ServiceCollection();
+
+services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>, MyEmbeddingGenerator>(
+    McpGatewayServiceKeys.EmbeddingGenerator);
+
+services.AddManagedCodeMcpGateway(options =>
+{
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
+```
+
+Fallback when your app already exposes a regular embedding generator:
+
+```csharp
+var services = new ServiceCollection();
+
+services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>, MyEmbeddingGenerator>();
+
+services.AddManagedCodeMcpGateway(options =>
+{
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
+```
+
+The keyed registration is the preferred one, so you can dedicate a specific embedder to the gateway without affecting other app services.
 
 ## Supported Sources
 
