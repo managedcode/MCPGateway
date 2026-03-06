@@ -1,0 +1,196 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, Test, and Pack
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Extract version from Directory.Build.props
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -oPm1 "(?<=<Version>)[^<]+" Directory.Build.props)
+          if [ -z "$VERSION" ]; then
+            echo "Failed to resolve package version from Directory.Build.props"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Version from Directory.Build.props: $VERSION"
+
+      - name: Validate semantic version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Version '$VERSION' is not a valid semantic version."
+            exit 1
+          fi
+
+      - name: Restore
+        run: dotnet restore ManagedCode.MCPGateway.slnx
+
+      - name: Build
+        run: dotnet build ManagedCode.MCPGateway.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test --solution ManagedCode.MCPGateway.slnx --configuration Release --no-build --verbosity normal
+
+      - name: Pack NuGet package
+        run: dotnet pack src/ManagedCode.MCPGateway/ManagedCode.MCPGateway.csproj --configuration Release --no-build -p:IncludeSymbols=false -p:SymbolPackageFormat=snupkg --output ./artifacts
+
+      - name: Validate packaged version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.version.outputs.version }}"
+
+          mapfile -t packages < <(find ./artifacts -maxdepth 1 -type f -name '*.nupkg' | sort)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "No NuGet packages were created."
+            exit 1
+          fi
+
+          for package in "${packages[@]}"; do
+            file_name=$(basename "$package")
+            echo "Validating $file_name"
+            if [[ "$file_name" != *".${VERSION}.nupkg" ]]; then
+              echo "Package version mismatch: expected filename to end with .${VERSION}.nupkg"
+              exit 1
+            fi
+          done
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/*.nupkg
+          retention-days: 5
+
+  publish-nuget:
+    name: Publish to NuGet
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
+      version: ${{ needs.build.outputs.version }}
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: nuget-packages
+          path: ./artifacts
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish to NuGet
+        id: publish
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PUBLISHED=false
+          for package in ./artifacts/*.nupkg; do
+            EXIT_CODE=0
+            echo "Publishing $package..."
+            RESULT=$(dotnet nuget push "$package" \
+              --api-key "${{ secrets.NUGET_API_KEY }}" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate 2>&1) || EXIT_CODE=$?
+
+            echo "$RESULT"
+
+            if [ "$EXIT_CODE" -eq 0 ]; then
+              PUBLISHED=true
+              continue
+            fi
+
+            if echo "$RESULT" | grep -qi "already exists"; then
+              echo "Package already exists, skipping."
+              EXIT_CODE=0
+              continue
+            fi
+
+            exit "$EXIT_CODE"
+          done
+
+          echo "published=$PUBLISHED" >> "$GITHUB_OUTPUT"
+
+  create-release:
+    name: Create GitHub Release
+    needs: publish-nuget
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && needs.publish-nuget.result == 'success'
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          name: nuget-packages
+          path: ./artifacts
+
+      - name: Create release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.publish-nuget.outputs.version }}"
+          cat > release_notes.md <<EOF
+          ## NuGet Package
+
+          - [ManagedCode.MCPGateway v$VERSION](https://www.nuget.org/packages/ManagedCode.MCPGateway/$VERSION)
+
+          ## Repository
+
+          - [managedcode/MCPGateway](https://github.com/managedcode/MCPGateway)
+          EOF
+
+      - name: Create or update GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.publish-nuget.outputs.version }}"
+          TAG="v$VERSION"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" ./artifacts/*.nupkg --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$TAG" --title "$TAG" --notes-file release_notes.md --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" ./artifacts/*.nupkg --title "$TAG" --notes-file release_notes.md --repo "$GITHUB_REPOSITORY"
+          fi

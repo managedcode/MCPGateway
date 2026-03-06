@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ManagedCode.MCPGateway/ManagedCode.MCPGateway.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ManagedCode.MCPGateway.Tests/ManagedCode.MCPGateway.Tests.csproj" />
+  </Folder>
+</Solution>
