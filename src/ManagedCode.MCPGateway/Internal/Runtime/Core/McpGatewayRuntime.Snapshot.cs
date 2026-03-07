@@ -6,13 +6,12 @@ internal sealed partial class McpGatewayRuntime
     {
         while (true)
         {
+            ThrowIfDisposed();
             var registrySnapshot = _catalogSource.CreateSnapshot();
-            lock (_stateGate)
+            var state = Volatile.Read(ref _state);
+            if (state.SnapshotVersion == registrySnapshot.Version)
             {
-                if (_snapshotVersion == registrySnapshot.Version)
-                {
-                    return _snapshot;
-                }
+                return state.Snapshot;
             }
 
             await BuildIndexAsync(cancellationToken);

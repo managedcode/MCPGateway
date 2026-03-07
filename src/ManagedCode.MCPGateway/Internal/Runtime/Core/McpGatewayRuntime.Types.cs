@@ -39,6 +39,16 @@ internal sealed partial class McpGatewayRuntime
         public static ToolCatalogSnapshot Empty { get; } = new([], false, EmptyTokenWeights);
     }
 
+    private sealed record RuntimeState(
+        ToolCatalogSnapshot Snapshot,
+        int SnapshotVersion,
+        bool IsDisposed)
+    {
+        public static RuntimeState Empty { get; } = new(ToolCatalogSnapshot.Empty, -1, false);
+
+        public static RuntimeState Disposed { get; } = new(ToolCatalogSnapshot.Empty, -1, true);
+    }
+
     private sealed record WeightedTextSegment(string Text, double Weight);
 
     private sealed record TokenSearchProfile(

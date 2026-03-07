@@ -152,8 +152,6 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private static readonly IReadOnlyDictionary<string, double> EmptyTokenWeights =
         new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
-    private readonly object _stateGate = new();
-    private readonly SemaphoreSlim _rebuildLock = new(1, 1);
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<McpGateway> _logger;
     private readonly ILoggerFactory _loggerFactory;
@@ -164,9 +162,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
-    private ToolCatalogSnapshot _snapshot = ToolCatalogSnapshot.Empty;
-    private int _snapshotVersion = -1;
-    private bool _disposed;
+    private RuntimeState _state = RuntimeState.Empty;
+    private Task<McpGatewayIndexBuildResult>? _buildTask;
 
     internal McpGatewayRuntime(
         IServiceProvider serviceProvider,
@@ -209,30 +206,20 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
 
     public async ValueTask DisposeAsync()
     {
-        var ownedCatalogSource = default(IAsyncDisposable);
-        lock (_stateGate)
+        var previousState = Interlocked.Exchange(ref _state, RuntimeState.Disposed);
+        if (previousState.IsDisposed)
         {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            _snapshot = ToolCatalogSnapshot.Empty;
-            _snapshotVersion = -1;
-            ownedCatalogSource = _ownedCatalogSource;
+            return;
         }
 
-        if (ownedCatalogSource is not null)
+        if (_ownedCatalogSource is not null)
         {
-            await ownedCatalogSource.DisposeAsync();
+            await _ownedCatalogSource.DisposeAsync();
         }
-
-        _rebuildLock.Dispose();
     }
 
     private void ThrowIfDisposed()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _state).IsDisposed, this);
     }
 }

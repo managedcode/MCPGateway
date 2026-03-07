@@ -1,5 +1,6 @@
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
 
 namespace ManagedCode.MCPGateway.Tests;
 
@@ -97,6 +98,26 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
+    public async Task Registry_ConcurrentToolRegistrationRetainsAllTools()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        var registry = serviceProvider.GetRequiredService<IMcpGatewayRegistry>();
+
+        await Task.WhenAll(Enumerable.Range(0, 40).Select(index => Task.Run(() =>
+            registry.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchWeather,
+                    $"weather_search_forecast_{index}",
+                    $"Search weather forecast and temperature information for city {index}.")))));
+
+        var buildResult = await gateway.BuildIndexAsync();
+
+        await Assert.That(buildResult.ToolCount).IsEqualTo(40);
+    }
+
+    [TUnit.Core.Test]
     public async Task AddManagedCodeMcpGateway_ResolvesRegistryAsSeparateService()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
@@ -160,6 +181,41 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(firstBuild.Diagnostics.Any(static diagnostic => diagnostic.Code == "source_load_failed")).IsTrue();
         await Assert.That(secondBuild.ToolCount).IsEqualTo(3);
         await Assert.That(secondBuild.Diagnostics.Any(static diagnostic => diagnostic.Code == "source_load_failed")).IsFalse();
+    }
+
+    [TUnit.Core.Test]
+    public async Task BuildIndexAsync_ConcurrentCallsShareSingleBuild()
+    {
+        await using var serverHost = await TestMcpServerHost.StartAsync();
+
+        var attempts = 0;
+        var factoryStarted = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFactory = new TaskCompletionSource<McpClient>(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddMcpClientFactory(
+                "test-mcp",
+                async _ =>
+                {
+                    Interlocked.Increment(ref attempts);
+                    factoryStarted.TrySetResult(null);
+                    return await releaseFactory.Task;
+                },
+                disposeClient: false);
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var firstBuildTask = gateway.BuildIndexAsync();
+        var secondBuildTask = gateway.BuildIndexAsync();
+
+        await factoryStarted.Task;
+        releaseFactory.TrySetResult(serverHost.Client);
+
+        var results = await Task.WhenAll(firstBuildTask, secondBuildTask);
+
+        await Assert.That(attempts).IsEqualTo(1);
+        await Assert.That(results[0].ToolCount).IsEqualTo(3);
+        await Assert.That(results[1].ToolCount).IsEqualTo(3);
     }
 
     [TUnit.Core.Test]

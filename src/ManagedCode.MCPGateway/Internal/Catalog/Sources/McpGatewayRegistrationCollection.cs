@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 
@@ -8,7 +9,9 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
     private const string CommandRequiredMessage = "A command is required.";
     private const string SourceIdRequiredMessage = "A source id is required.";
 
-    private readonly List<McpGatewayToolSourceRegistration> _registrations = registrations?.ToList() ?? [];
+    private ConcurrentQueue<McpGatewayToolSourceRegistration> _registrations = new(registrations ?? []);
+    private ConcurrentDictionary<string, McpGatewayLocalToolSourceRegistration> _localRegistrations =
+        CreateLocalRegistrations(registrations);
 
     public void AddTool(string sourceId, AITool tool, string? displayName = null)
         => AddTool(tool, sourceId, displayName);
@@ -41,7 +44,7 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
         string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(endpoint);
-        _registrations.Add(new McpGatewayHttpToolSourceRegistration(ValidateSourceId(sourceId), endpoint, headers, displayName));
+        _registrations.Enqueue(new McpGatewayHttpToolSourceRegistration(ValidateSourceId(sourceId), endpoint, headers, displayName));
     }
 
     public void AddStdioServer(
@@ -57,7 +60,7 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
             throw new ArgumentException(CommandRequiredMessage, nameof(command));
         }
 
-        _registrations.Add(new McpGatewayStdioToolSourceRegistration(
+        _registrations.Enqueue(new McpGatewayStdioToolSourceRegistration(
             ValidateSourceId(sourceId),
             command.Trim(),
             arguments,
@@ -73,7 +76,7 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
         string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(client);
-        _registrations.Add(new McpGatewayProvidedClientToolSourceRegistration(
+        _registrations.Enqueue(new McpGatewayProvidedClientToolSourceRegistration(
             ValidateSourceId(sourceId),
             _ => ValueTask.FromResult(client),
             disposeClient,
@@ -87,7 +90,7 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
         string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(clientFactory);
-        _registrations.Add(new McpGatewayProvidedClientToolSourceRegistration(
+        _registrations.Enqueue(new McpGatewayProvidedClientToolSourceRegistration(
             ValidateSourceId(sourceId),
             clientFactory,
             disposeClient,
@@ -95,30 +98,37 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
     }
 
     public IReadOnlyList<McpGatewayToolSourceRegistration> Snapshot()
-        => _registrations.ToList();
+        => _registrations.ToArray();
 
     public IReadOnlyList<McpGatewayToolSourceRegistration> Drain()
     {
-        var registrations = _registrations.ToList();
-        _registrations.Clear();
-        return registrations;
+        Interlocked.Exchange(
+            ref _localRegistrations,
+            new ConcurrentDictionary<string, McpGatewayLocalToolSourceRegistration>(StringComparer.OrdinalIgnoreCase));
+
+        return Interlocked.Exchange(ref _registrations, new ConcurrentQueue<McpGatewayToolSourceRegistration>())
+            .ToArray();
     }
 
     private McpGatewayLocalToolSourceRegistration GetOrAddLocalRegistration(string sourceId, string? displayName)
     {
         sourceId = ValidateSourceId(sourceId);
 
-        var existing = _registrations
-            .OfType<McpGatewayLocalToolSourceRegistration>()
-            .FirstOrDefault(item => string.Equals(item.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
-        if (existing is not null)
+        while (true)
         {
-            return existing;
-        }
+            var localRegistrations = Volatile.Read(ref _localRegistrations);
+            if (localRegistrations.TryGetValue(sourceId, out var existing))
+            {
+                return existing;
+            }
 
-        var created = new McpGatewayLocalToolSourceRegistration(sourceId, displayName);
-        _registrations.Add(created);
-        return created;
+            var created = new McpGatewayLocalToolSourceRegistration(sourceId, displayName);
+            if (localRegistrations.TryAdd(sourceId, created))
+            {
+                Volatile.Read(ref _registrations).Enqueue(created);
+                return created;
+            }
+        }
     }
 
     private static string ValidateSourceId(string sourceId)
@@ -129,5 +139,22 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
         }
 
         return sourceId.Trim();
+    }
+
+    private static ConcurrentDictionary<string, McpGatewayLocalToolSourceRegistration> CreateLocalRegistrations(
+        IEnumerable<McpGatewayToolSourceRegistration>? registrations)
+    {
+        var result = new ConcurrentDictionary<string, McpGatewayLocalToolSourceRegistration>(StringComparer.OrdinalIgnoreCase);
+        if (registrations is null)
+        {
+            return result;
+        }
+
+        foreach (var registration in registrations.OfType<McpGatewayLocalToolSourceRegistration>())
+        {
+            result.TryAdd(registration.SourceId, registration);
+        }
+
+        return result;
     }
 }

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
@@ -32,16 +33,16 @@ internal abstract class McpGatewayToolSourceRegistration(string sourceId, string
 internal sealed class McpGatewayLocalToolSourceRegistration(string sourceId, string? displayName)
     : McpGatewayToolSourceRegistration(sourceId, displayName)
 {
-    private readonly List<AITool> _tools = [];
+    private readonly ConcurrentQueue<AITool> _tools = new();
 
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Local;
 
-    public void AddTool(AITool tool) => _tools.Add(tool);
+    public void AddTool(AITool tool) => _tools.Enqueue(tool);
 
     public override ValueTask<IReadOnlyList<AITool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
-        => ValueTask.FromResult<IReadOnlyList<AITool>>(_tools.ToList());
+        => ValueTask.FromResult<IReadOnlyList<AITool>>(_tools.ToArray());
 }
 
 internal sealed class McpGatewayHttpToolSourceRegistration(
@@ -143,10 +144,10 @@ internal abstract class McpGatewayClientToolSourceRegistration(
     bool disposeClient)
     : McpGatewayToolSourceRegistration(sourceId, displayName)
 {
-    private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly bool _disposeClient = disposeClient;
     private McpClient? _client;
     private Task<McpClient>? _clientTask;
+    private int _disposed;
 
     public override async ValueTask<IReadOnlyList<AITool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
@@ -163,12 +164,16 @@ internal abstract class McpGatewayClientToolSourceRegistration(
 
     public override async ValueTask DisposeAsync()
     {
-        if (_disposeClient && _client is not null)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
-            await _client.DisposeAsync();
+            return;
         }
 
-        _sync.Dispose();
+        if (_disposeClient && Volatile.Read(ref _client) is { } client)
+        {
+            await client.DisposeAsync();
+        }
+
         await base.DisposeAsync();
     }
 
@@ -176,32 +181,27 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
-        if (_client is not null)
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        if (Volatile.Read(ref _client) is { } client)
         {
-            return _client;
+            return client;
         }
 
-        if (_clientTask is not null)
+        while (true)
         {
-            return await AwaitClientTaskAsync(_clientTask, cancellationToken);
-        }
-
-        await _sync.WaitAsync(cancellationToken);
-        try
-        {
-            if (_client is not null)
+            var existingTask = Volatile.Read(ref _clientTask);
+            if (existingTask is not null)
             {
-                return _client;
+                return await AwaitClientTaskAsync(existingTask, cancellationToken);
             }
 
-            _clientTask ??= CreateClientAsync(loggerFactory, CancellationToken.None).AsTask();
+            var createdTask = CreateClientAsync(loggerFactory, CancellationToken.None).AsTask();
+            if (Interlocked.CompareExchange(ref _clientTask, createdTask, null) is null)
+            {
+                return await AwaitClientTaskAsync(createdTask, cancellationToken);
+            }
         }
-        finally
-        {
-            _sync.Release();
-        }
-
-        return await AwaitClientTaskAsync(_clientTask, cancellationToken);
     }
 
     private async Task<McpClient> AwaitClientTaskAsync(
@@ -210,24 +210,23 @@ internal abstract class McpGatewayClientToolSourceRegistration(
     {
         try
         {
-            _client = await clientTask.WaitAsync(cancellationToken);
-            return _client;
+            var client = await clientTask.WaitAsync(cancellationToken);
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                if (_disposeClient)
+                {
+                    await client.DisposeAsync();
+                }
+
+                throw new ObjectDisposedException(GetType().Name);
+            }
+
+            var cachedClient = Volatile.Read(ref _client);
+            return cachedClient ?? Interlocked.CompareExchange(ref _client, client, null) ?? client;
         }
         catch when (clientTask.IsFaulted || clientTask.IsCanceled)
         {
-            await _sync.WaitAsync(CancellationToken.None);
-            try
-            {
-                if (ReferenceEquals(_clientTask, clientTask))
-                {
-                    _clientTask = null;
-                }
-            }
-            finally
-            {
-                _sync.Release();
-            }
-
+            _ = Interlocked.CompareExchange(ref _clientTask, null, clientTask);
             throw;
         }
     }

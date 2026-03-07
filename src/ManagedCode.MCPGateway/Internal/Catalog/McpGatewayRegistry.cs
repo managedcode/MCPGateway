@@ -7,10 +7,11 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options) : IMcpGatewayRegistry, IMcpGatewayCatalogSource, IAsyncDisposable
 {
-    private readonly object _gate = new();
     private readonly McpGatewayRegistrationCollection _registrations = new(options.Value.SourceRegistrations);
-    private bool _disposed;
     private int _version;
+    private int _disposed;
+    private int _activeOperations;
+    private TaskCompletionSource<object?>? _drainSignal;
 
     public void AddTool(string sourceId, AITool tool, string? displayName = null)
         => Mutate(registrations => registrations.AddTool(sourceId, tool, displayName));
@@ -56,27 +57,35 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options) : 
 
     public McpGatewayCatalogSourceSnapshot CreateSnapshot()
     {
-        lock (_gate)
+        EnterOperation();
+        try
         {
             ThrowIfDisposed();
-            return new McpGatewayCatalogSourceSnapshot(_version, _registrations.Snapshot());
+            return new McpGatewayCatalogSourceSnapshot(
+                Volatile.Read(ref _version),
+                _registrations.Snapshot());
+        }
+        finally
+        {
+            ExitOperation();
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        IReadOnlyList<McpGatewayToolSourceRegistration> registrations;
-        lock (_gate)
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-            _version++;
-            registrations = _registrations.Drain();
+            return;
         }
+
+        Interlocked.Increment(ref _version);
+        var drainSignal = EnsureDrainSignal();
+        if (Volatile.Read(ref _activeOperations) > 0)
+        {
+            await drainSignal.Task;
+        }
+
+        var registrations = _registrations.Drain();
 
         foreach (var registration in registrations)
         {
@@ -86,16 +95,72 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options) : 
 
     private void ThrowIfDisposed()
     {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
     }
 
     private void Mutate(Action<McpGatewayRegistrationCollection> mutation)
     {
-        lock (_gate)
+        EnterOperation();
+        try
         {
             ThrowIfDisposed();
             mutation(_registrations);
-            _version++;
+            Interlocked.Increment(ref _version);
+        }
+        finally
+        {
+            ExitOperation();
+        }
+    }
+
+    private void EnterOperation()
+    {
+        while (true)
+        {
+            ThrowIfDisposed();
+            Interlocked.Increment(ref _activeOperations);
+            if (Volatile.Read(ref _disposed) == 0)
+            {
+                return;
+            }
+
+            ExitOperation();
+        }
+    }
+
+    private void ExitOperation()
+    {
+        if (Interlocked.Decrement(ref _activeOperations) == 0)
+        {
+            Volatile.Read(ref _drainSignal)?.TrySetResult(null);
+        }
+    }
+
+    private TaskCompletionSource<object?> EnsureDrainSignal()
+    {
+        while (true)
+        {
+            var existing = Volatile.Read(ref _drainSignal);
+            if (existing is not null)
+            {
+                if (Volatile.Read(ref _activeOperations) == 0)
+                {
+                    existing.TrySetResult(null);
+                }
+
+                return existing;
+            }
+
+            var created = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (Interlocked.CompareExchange(ref _drainSignal, created, null) is null)
+            {
+                if (Volatile.Read(ref _activeOperations) == 0)
+                {
+                    created.TrySetResult(null);
+                }
+
+                return created;
+            }
         }
     }
 }
