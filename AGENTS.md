@@ -101,13 +101,17 @@ If no new rule is detected -> do not update the file.
 
 - `src/ManagedCode.MCPGateway/` contains the package source.
 - `tests/ManagedCode.MCPGateway.Tests/` contains integration-style package tests.
-- `src/ManagedCode.MCPGateway/Abstractions/` contains public interfaces.
-- `src/ManagedCode.MCPGateway/Models/` contains public contracts and internal source registrations.
+- `src/ManagedCode.MCPGateway/Abstractions/` contains public interfaces, grouped by concern when needed.
+- `src/ManagedCode.MCPGateway/Configuration/` contains public configuration types and service keys.
+- `src/ManagedCode.MCPGateway/Models/` contains public contracts grouped by behavior such as search, invocation, catalog, and embeddings.
+- `src/ManagedCode.MCPGateway/Embeddings/` contains public embedding-store implementations.
+- `src/ManagedCode.MCPGateway/Internal/` contains internal catalog, runtime, and helper implementation details.
 - `src/ManagedCode.MCPGateway/Registration/` contains DI registration extensions.
 - `src/ManagedCode.MCPGateway/McpGateway.cs` is the public gateway facade.
-- `src/ManagedCode.MCPGateway/McpGatewayRuntime*.cs` contains the internal runtime orchestration implementation.
+- `src/ManagedCode.MCPGateway/Internal/Runtime/` contains the internal runtime orchestration implementation, grouped by core, catalog, search, invocation, and embeddings responsibilities.
 - `src/ManagedCode.MCPGateway/McpGatewayToolSet.cs` exposes the gateway as reusable `AITool` meta-tools.
 - `.codex/skills/` contains repo-local MCAF skills for Codex.
+- Keep the source tree explicitly modular: separate public API folders from `Internal/` implementation folders, and group runtime classes by responsibility in dedicated folders instead of dumping search, indexing, invocation, registry, and infrastructure files into the package root, because flat structure hides boundaries and invites god-object design.
 
 ### Skills (ALL TASKS)
 
