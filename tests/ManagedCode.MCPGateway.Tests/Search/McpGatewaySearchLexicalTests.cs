@@ -1,3 +1,6 @@
+using System.Collections;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -109,6 +112,42 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "query_normalization_failed")).IsTrue();
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_pull_request_search");
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_UsesNestedJsonAndEnumerableContextWhenQueryIsMissing()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureSearchTools);
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        await gateway.BuildIndexAsync();
+        var searchResult = await gateway.SearchAsync(new McpGatewaySearchRequest(
+            Query: null,
+            MaxResults: 1,
+            ContextSummary: "user is browsing operational dashboards",
+            Context: new Dictionary<string, object?>
+            {
+                ["page"] = JsonSerializer.SerializeToElement(new
+                {
+                    section = "forecast",
+                    filters = new List<string> { "temperature", "weekend" }
+                }),
+                ["intent"] = new JsonObject
+                {
+                    ["category"] = "weather",
+                    ["mode"] = "lookup"
+                },
+                ["legacy"] = new Hashtable
+                {
+                    ["location"] = "Paris",
+                    ["active"] = true
+                },
+                ["signals"] = new object?[] { "forecast", 5 }
+            }));
+
+        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "lexical_fallback")).IsTrue();
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:weather_search_forecast");
     }
 
     [TUnit.Core.Test]

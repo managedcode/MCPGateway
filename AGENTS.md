@@ -141,6 +141,7 @@ If no new rule is detected -> do not update the file.
 - This repository uses `TUnit` on `Microsoft.Testing.Platform`; never use VSTest-only flags such as `--filter` or `--logger`, because they are not supported here.
 - For TUnit solution runs, always invoke `dotnet test --solution ...`; do not pass the solution path positionally.
 - Every behavior change must include or update tests in `tests/ManagedCode.MCPGateway.Tests/`.
+- Add tests only when they close a meaningful behavior or regression gap; avoid low-signal tests that only increase count without improving confidence.
 - Keep tests focused on real gateway behavior:
   - local tool indexing and invocation
   - MCP tool indexing and invocation

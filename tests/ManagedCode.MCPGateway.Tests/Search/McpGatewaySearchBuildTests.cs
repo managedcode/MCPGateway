@@ -1,5 +1,7 @@
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using System.Reflection;
 
@@ -155,6 +157,32 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
+    public async Task McpGateway_ThrowsClearErrorWhenRegistryServiceIsMissing()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddOptions<McpGatewayOptions>();
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var options = serviceProvider.GetRequiredService<IOptions<McpGatewayOptions>>();
+        var logger = serviceProvider.GetRequiredService<ILogger<McpGateway>>();
+        var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
+
+        InvalidOperationException? exception = null;
+        try
+        {
+            _ = new McpGateway(serviceProvider, options, logger, loggerFactory);
+        }
+        catch (InvalidOperationException ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsNotNull();
+        await Assert.That(exception!.Message).Contains("AddManagedCodeMcpGateway");
+    }
+
+    [TUnit.Core.Test]
     public async Task McpGateway_DoesNotExposeRegistryMutations()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
@@ -170,6 +198,29 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(typeof(IMcpGatewayRegistry).IsAssignableFrom(gateway.GetType())).IsFalse();
         await Assert.That(tools.Count).IsEqualTo(1);
         await Assert.That(tools.Single().ToolId).IsEqualTo("local:weather_search_forecast");
+    }
+
+    [TUnit.Core.Test]
+    public async Task Registry_RejectsMutationsAfterServiceProviderIsDisposed()
+    {
+        var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
+        var registry = serviceProvider.GetRequiredService<IMcpGatewayRegistry>();
+
+        await serviceProvider.DisposeAsync();
+
+        ObjectDisposedException? exception = null;
+        try
+        {
+            registry.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(SearchWeather, "weather_search_forecast", "Search weather forecast and temperature information by city name."));
+        }
+        catch (ObjectDisposedException ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsNotNull();
     }
 
     [TUnit.Core.Test]
