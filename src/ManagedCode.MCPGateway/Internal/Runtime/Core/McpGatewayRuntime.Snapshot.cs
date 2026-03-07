@@ -4,7 +4,9 @@ internal sealed partial class McpGatewayRuntime
 {
     private async Task<ToolCatalogSnapshot> GetSnapshotAsync(CancellationToken cancellationToken)
     {
-        while (true)
+        cancellationToken.ThrowIfCancellationRequested();
+
+        while (!cancellationToken.IsCancellationRequested)
         {
             ThrowIfDisposed();
             var registrySnapshot = _catalogSource.CreateSnapshot();
@@ -16,5 +18,8 @@ internal sealed partial class McpGatewayRuntime
 
             await BuildIndexAsync(cancellationToken);
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return Volatile.Read(ref _state).Snapshot;
     }
 }

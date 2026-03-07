@@ -32,12 +32,11 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
-    public async Task McpGatewayOptions_DefaultSearchConfigurationUsesAutoWithChatGptTokenizerAndTopFiveLimit()
+    public async Task McpGatewayOptions_DefaultSearchConfigurationUsesAutoAndTopFiveLimit()
     {
         var options = new McpGatewayOptions();
 
         await Assert.That(options.SearchStrategy).IsEqualTo(McpGatewaySearchStrategy.Auto);
-        await Assert.That(options.TokenSearchTokenizer).IsEqualTo(McpGatewayTokenSearchTokenizer.ChatGptO200kBase);
         await Assert.That(options.SearchQueryNormalization).IsEqualTo(McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable);
         await Assert.That(options.DefaultSearchLimit).IsEqualTo(5);
     }

@@ -171,7 +171,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
 
     private readonly IServiceProvider _serviceProvider;
-    private readonly ILogger<McpGateway> _logger;
+    private readonly ILogger<McpGatewayRuntime> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IMcpGatewayCatalogSource _catalogSource;
     private readonly McpGatewaySearchStrategy _searchStrategy;
@@ -186,7 +186,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     internal McpGatewayRuntime(
         IServiceProvider serviceProvider,
         IOptions<McpGatewayOptions> options,
-        ILogger<McpGateway> logger,
+        ILogger<McpGatewayRuntime> logger,
         ILoggerFactory loggerFactory)
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
@@ -202,7 +202,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         _catalogSource = ResolveCatalogSource(serviceProvider);
         _searchStrategy = resolvedOptions.SearchStrategy;
         _searchQueryNormalization = resolvedOptions.SearchQueryNormalization;
-        _searchTokenizer = McpGatewayTokenSearchTokenizerFactory.GetTokenizer(resolvedOptions.TokenSearchTokenizer);
+        _searchTokenizer = McpGatewaySearchTokenizerFactory.GetTokenizer();
         _defaultSearchLimit = Math.Max(1, resolvedOptions.DefaultSearchLimit);
         _maxSearchResults = Math.Max(1, resolvedOptions.MaxSearchResults);
         _maxDescriptorLength = Math.Max(256, resolvedOptions.MaxDescriptorLength);

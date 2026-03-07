@@ -86,39 +86,73 @@ internal sealed partial class McpGatewayRuntime
         string? ContextSummary,
         string? FlattenedContext)
     {
+        private const string SearchInputSegmentSeparator = " | ";
+
         public string EffectiveQuery
-        {
-            get
-            {
-                List<string> parts = [];
-
-                if (!string.IsNullOrWhiteSpace(NormalizedQuery))
-                {
-                    parts.Add(NormalizedQuery.Trim());
-                }
-                else if (!string.IsNullOrWhiteSpace(OriginalQuery))
-                {
-                    parts.Add(OriginalQuery.Trim());
-                }
-
-                if (!string.IsNullOrWhiteSpace(ContextSummary))
-                {
-                    parts.Add(string.Concat(ContextSummaryPrefix, ContextSummary.Trim()));
-                }
-
-                if (!string.IsNullOrWhiteSpace(FlattenedContext))
-                {
-                    parts.Add(string.Concat(ContextPrefix, FlattenedContext));
-                }
-
-                return string.Join(" | ", parts);
-            }
-        }
+            => BuildEffectiveQuery(
+                NormalizedQuery ?? OriginalQuery,
+                ContextSummary,
+                FlattenedContext);
 
         public string BoostQuery
-            => !string.IsNullOrWhiteSpace(NormalizedQuery)
-                ? NormalizedQuery.Trim()
-                : OriginalQuery?.Trim() ?? EffectiveQuery;
+            => NormalizedQuery ?? OriginalQuery ?? EffectiveQuery;
+
+        private static string BuildEffectiveQuery(
+            string? query,
+            string? contextSummary,
+            string? flattenedContext)
+        {
+            if (query is null)
+            {
+                if (contextSummary is null)
+                {
+                    return flattenedContext is null
+                        ? string.Empty
+                        : string.Concat(ContextPrefix, flattenedContext);
+                }
+
+                if (flattenedContext is null)
+                {
+                    return string.Concat(ContextSummaryPrefix, contextSummary);
+                }
+
+                return string.Concat(
+                    ContextSummaryPrefix,
+                    contextSummary,
+                    SearchInputSegmentSeparator,
+                    ContextPrefix,
+                    flattenedContext);
+            }
+
+            if (contextSummary is null)
+            {
+                return flattenedContext is null
+                    ? query
+                    : string.Concat(
+                        query,
+                        SearchInputSegmentSeparator,
+                        ContextPrefix,
+                        flattenedContext);
+            }
+
+            if (flattenedContext is null)
+            {
+                return string.Concat(
+                    query,
+                    SearchInputSegmentSeparator,
+                    ContextSummaryPrefix,
+                    contextSummary);
+            }
+
+            return string.Concat(
+                query,
+                SearchInputSegmentSeparator,
+                ContextSummaryPrefix,
+                contextSummary,
+                SearchInputSegmentSeparator,
+                ContextPrefix,
+                flattenedContext);
+        }
     }
 
     private sealed class EmbeddingGeneratorLease(

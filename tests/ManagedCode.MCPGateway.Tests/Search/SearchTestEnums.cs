@@ -2,11 +2,8 @@ namespace ManagedCode.MCPGateway.Tests;
 
 internal static class TokenizerSearchTestSupport
 {
-    public static void UseTokenizerSearch(McpGatewayOptions options, McpGatewayTokenSearchTokenizer tokenizer)
-    {
-        options.SearchStrategy = McpGatewaySearchStrategy.Tokenizer;
-        options.TokenSearchTokenizer = tokenizer;
-    }
+    public static void UseTokenizerSearch(McpGatewayOptions options)
+        => options.SearchStrategy = McpGatewaySearchStrategy.Tokenizer;
 }
 
 internal enum WorkItemState

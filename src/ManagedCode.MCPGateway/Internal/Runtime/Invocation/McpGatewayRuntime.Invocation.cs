@@ -173,7 +173,7 @@ internal sealed partial class McpGatewayRuntime
 
         if (request.Context is { Count: > 0 })
         {
-            var contextNode = JsonSerializer.SerializeToNode(request.Context);
+            var contextNode = McpGatewayJsonSerializer.TrySerializeToNode(request.Context);
             if (contextNode is not null)
             {
                 payload[ContextArgumentName] = contextNode;

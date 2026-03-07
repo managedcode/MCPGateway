@@ -114,14 +114,10 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
     {
         sourceId = ValidateSourceId(sourceId);
 
-        while (true)
+        McpGatewayLocalToolSourceRegistration? existing;
+        while (!Volatile.Read(ref _localRegistrations).TryGetValue(sourceId, out existing))
         {
             var localRegistrations = Volatile.Read(ref _localRegistrations);
-            if (localRegistrations.TryGetValue(sourceId, out var existing))
-            {
-                return existing;
-            }
-
             var created = new McpGatewayLocalToolSourceRegistration(sourceId, displayName);
             if (localRegistrations.TryAdd(sourceId, created))
             {
@@ -129,6 +125,8 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
                 return created;
             }
         }
+
+        return existing;
     }
 
     private static string ValidateSourceId(string sourceId)

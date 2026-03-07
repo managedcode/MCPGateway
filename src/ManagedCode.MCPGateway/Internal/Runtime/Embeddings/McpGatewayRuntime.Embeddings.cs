@@ -109,13 +109,27 @@ internal sealed partial class McpGatewayRuntime
     private static bool MatchesStoredEmbedding(
         McpGatewayToolEmbeddingLookup lookup,
         McpGatewayToolEmbedding embedding)
-        => string.Equals(embedding.ToolId, lookup.ToolId, StringComparison.OrdinalIgnoreCase)
-            && string.Equals(embedding.DocumentHash, lookup.DocumentHash, StringComparison.Ordinal)
-            && (lookup.EmbeddingGeneratorFingerprint is null
-                || string.Equals(
-                    embedding.EmbeddingGeneratorFingerprint,
-                    lookup.EmbeddingGeneratorFingerprint,
-                    StringComparison.Ordinal));
+    {
+        if (!string.Equals(embedding.ToolId, lookup.ToolId, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.Equals(embedding.DocumentHash, lookup.DocumentHash, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (lookup.EmbeddingGeneratorFingerprint is null)
+        {
+            return true;
+        }
+
+        return string.Equals(
+            embedding.EmbeddingGeneratorFingerprint,
+            lookup.EmbeddingGeneratorFingerprint,
+            StringComparison.Ordinal);
+    }
 
     private static string? ResolveEmbeddingGeneratorFingerprint(
         IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator)

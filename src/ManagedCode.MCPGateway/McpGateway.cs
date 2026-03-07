@@ -5,24 +5,13 @@ using Microsoft.Extensions.Options;
 
 namespace ManagedCode.MCPGateway;
 
-public sealed class McpGateway : IMcpGateway
+public sealed class McpGateway(
+    IServiceProvider serviceProvider,
+    IOptions<McpGatewayOptions> options,
+    ILogger<McpGateway> logger,
+    ILoggerFactory loggerFactory) : IMcpGateway
 {
-    private readonly McpGatewayRuntime _runtime;
-
-    public McpGateway(
-        IServiceProvider serviceProvider,
-        IOptions<McpGatewayOptions> options,
-        ILogger<McpGateway> logger,
-        ILoggerFactory loggerFactory)
-        : this(new McpGatewayRuntime(serviceProvider, options, logger, loggerFactory))
-    {
-    }
-
-    internal McpGateway(McpGatewayRuntime runtime)
-    {
-        ArgumentNullException.ThrowIfNull(runtime);
-        _runtime = runtime;
-    }
+    private readonly McpGatewayRuntime _runtime = CreateRuntime(serviceProvider, options, logger, loggerFactory);
 
     public Task<McpGatewayIndexBuildResult> BuildIndexAsync(CancellationToken cancellationToken = default)
         => _runtime.BuildIndexAsync(cancellationToken);
@@ -52,4 +41,22 @@ public sealed class McpGateway : IMcpGateway
         => _runtime.CreateMetaTools(searchToolName, invokeToolName);
 
     public ValueTask DisposeAsync() => _runtime.DisposeAsync();
+
+    private static McpGatewayRuntime CreateRuntime(
+        IServiceProvider serviceProvider,
+        IOptions<McpGatewayOptions> options,
+        ILogger<McpGateway> logger,
+        ILoggerFactory loggerFactory)
+    {
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(loggerFactory);
+
+        return new McpGatewayRuntime(
+            serviceProvider,
+            options,
+            loggerFactory.CreateLogger<McpGatewayRuntime>(),
+            loggerFactory);
+    }
 }

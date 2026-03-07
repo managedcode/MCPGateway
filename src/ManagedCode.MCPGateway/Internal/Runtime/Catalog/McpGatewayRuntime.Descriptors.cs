@@ -109,13 +109,21 @@ internal sealed partial class McpGatewayRuntime
                 if (property.Value.TryGetProperty(InputSchemaEnumPropertyName, out var enumValues) &&
                     enumValues.ValueKind == JsonValueKind.Array)
                 {
-                    var values = enumValues
-                        .EnumerateArray()
-                        .Where(static item => item.ValueKind == JsonValueKind.String)
-                        .Select(static item => item.GetString())
-                        .Where(static value => !string.IsNullOrWhiteSpace(value))
-                        .Select(static value => value!)
-                        .ToList();
+                    var values = new List<string>();
+                    foreach (var enumValue in enumValues.EnumerateArray())
+                    {
+                        if (enumValue.ValueKind != JsonValueKind.String)
+                        {
+                            continue;
+                        }
+
+                        var value = enumValue.GetString();
+                        if (!string.IsNullOrWhiteSpace(value))
+                        {
+                            values.Add(value);
+                        }
+                    }
+
                     if (values.Count > 0)
                     {
                         builder.Append(TypicalValuesLabel);
@@ -173,26 +181,14 @@ internal sealed partial class McpGatewayRuntime
 
     private static SerializedSchema SerializeSchema(object? schema)
     {
-        if (schema is null)
+        if (McpGatewayJsonSerializer.TrySerializeToElement(schema) is not JsonElement serializedSchema)
         {
             return SerializedSchema.Empty;
         }
 
-        JsonElement serializedSchema;
-        try
-        {
-            serializedSchema = JsonSerializer.SerializeToElement(schema);
-        }
-        catch (InvalidOperationException) when (schema is JsonElement element && element.ValueKind == JsonValueKind.Undefined)
-        {
-            return SerializedSchema.Empty;
-        }
-
-        return serializedSchema.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
-            ? SerializedSchema.Empty
-            : new SerializedSchema(
-                serializedSchema.GetRawText(),
-                ExtractRequiredArguments(serializedSchema));
+        return new SerializedSchema(
+            serializedSchema.GetRawText(),
+            ExtractRequiredArguments(serializedSchema));
     }
 
     private static IReadOnlyList<string> ExtractRequiredArguments(JsonElement schemaElement)
@@ -203,14 +199,25 @@ internal sealed partial class McpGatewayRuntime
             return [];
         }
 
-        return required
-            .EnumerateArray()
-            .Where(static item => item.ValueKind == JsonValueKind.String)
-            .Select(static item => item.GetString())
-            .Where(static value => !string.IsNullOrWhiteSpace(value))
-            .Select(static value => value!)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var requiredArguments = new List<string>();
+        var seenArguments = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in required.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = item.GetString();
+            if (string.IsNullOrWhiteSpace(value) || !seenArguments.Add(value))
+            {
+                continue;
+            }
+
+            requiredArguments.Add(value);
+        }
+
+        return requiredArguments;
     }
 
     private sealed record SerializedSchema(string? Json, IReadOnlyList<string> RequiredArguments)

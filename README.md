@@ -24,9 +24,10 @@ dotnet add package ManagedCode.MCPGateway
 
 - one registry for local tools, stdio MCP servers, HTTP MCP servers, or prebuilt `McpClient` instances
 - descriptor indexing that enriches search with tool name, description, required arguments, and input schema
+- lazy index build on the first catalog/search/invoke operation, plus optional eager warmup hooks for startup scenarios
 - configurable search strategy with embeddings or tokenizer-backed heuristic ranking
 - `SearchStrategy.Auto` by default: use embeddings when available, otherwise fall back to tokenizer-backed ranking automatically
-- `McpGatewayTokenSearchTokenizer.ChatGptO200kBase` by default for tokenizer search and tokenizer fallback
+- built-in `ChatGptO200kBase` tokenizer path for tokenizer search and tokenizer fallback
 - optional English query normalization before ranking when a keyed search rewrite `IChatClient` is registered
 - top 5 matches by default when `maxResults` is not specified
 - vector search when an `IEmbeddingGenerator<string, Embedding<float>>` is registered
@@ -66,8 +67,6 @@ services.AddManagedCodeMcpGateway(options =>
 await using var serviceProvider = services.BuildServiceProvider();
 var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
-await gateway.BuildIndexAsync();
-
 var search = await gateway.SearchAsync("find github repositories");
 var selectedTool = search.Matches[0];
 
@@ -77,6 +76,8 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
 ```
 
 `AddManagedCodeMcpGateway(...)` does not create or configure an embedding generator for you. Vector ranking is enabled only when the same DI container also has an `IEmbeddingGenerator<string, Embedding<float>>`. The gateway first tries the keyed registration `McpGatewayServiceKeys.EmbeddingGenerator` and falls back to any regular registration. Otherwise it stays fully functional and uses lexical ranking.
+
+The gateway builds its catalog lazily on the first `ListToolsAsync(...)`, `SearchAsync(...)`, or `InvokeAsync(...)` call. If you add more tools later through the registry, the next catalog/search/invoke operation rebuilds the index automatically. You only need an explicit warmup call when you want eager startup validation or a pre-warmed cache.
 
 `McpGateway` is the runtime search/invoke facade. If you need to add tools or MCP sources after the container is built, resolve `IMcpGatewayRegistry` separately:
 
@@ -93,8 +94,41 @@ registry.AddTool(
             Description = "Search weather forecast and temperature information by city name."
         }));
 
-await gateway.BuildIndexAsync();
+var tools = await gateway.ListToolsAsync();
 ```
+
+## Optional Eager Warmup
+
+If you want to warm the catalog immediately after building the container, use the service-provider extension:
+
+```csharp
+await using var serviceProvider = services.BuildServiceProvider();
+
+await serviceProvider.InitializeManagedCodeMcpGatewayAsync();
+```
+
+For hosted applications, register background warmup once and let the host trigger it on startup:
+
+```csharp
+var services = new ServiceCollection();
+
+services.AddManagedCodeMcpGateway(options =>
+{
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
+
+services.AddManagedCodeMcpGatewayIndexWarmup();
+```
+
+Use eager warmup when you want fail-fast startup behavior, a warmed cache before the first request, or deterministic startup benchmarking. Otherwise the lazy default is enough.
 
 ## Context-Aware Search And Invoke
 
@@ -156,10 +190,9 @@ These tools are useful when another model should first search the gateway catalo
 Default search profile:
 
 - `SearchStrategy = McpGatewaySearchStrategy.Auto`
-- `TokenSearchTokenizer = McpGatewayTokenSearchTokenizer.ChatGptO200kBase`
 - `SearchQueryNormalization = McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable`
 - `DefaultSearchLimit = 5`
-- `MaxSearchResults = 20`
+- `MaxSearchResults = 15`
 
 `McpGatewaySearchStrategy.Auto` means:
 
@@ -172,10 +205,7 @@ The tokenizer-backed mode builds field-aware search documents from tool names, d
 - stage 1 retrieval with BM25-style field scoring, tokenizer-term cosine similarity, and character 3-gram similarity
 - stage 2 reranking over the candidate pool with calibrated coverage, lexical similarity, approximate typo matching, and tool-name evidence
 
-This keeps the search mathematical and tokenizer-driven instead of relying on hand-written query phrase exceptions. Available tokenizer profiles are:
-
-- `McpGatewayTokenSearchTokenizer.ChatGptO200kBase` for the GPT-4o / ChatGPT tokenizer family
-- `McpGatewayTokenSearchTokenizer.Gpt2Bpe` for a GPT-2-compatible BPE encoding (`r50k_base`)
+This keeps the search mathematical and tokenizer-driven instead of relying on hand-written query phrase exceptions. The tokenizer-backed path uses the built-in `ChatGptO200kBase` profile for the GPT-4o / ChatGPT tokenizer family.
 
 If an embedding generator is registered and vector search is active, the gateway vectorizes descriptor documents and uses cosine similarity plus lexical boosts. It first tries the keyed registration `McpGatewayServiceKeys.EmbeddingGenerator` and then falls back to any regular `IEmbeddingGenerator<string, Embedding<float>>`.
 
@@ -283,7 +313,7 @@ services.AddManagedCodeMcpGateway(options =>
 });
 ```
 
-Force tokenizer-backed ranking and choose the tokenizer profile:
+Force tokenizer-backed ranking:
 
 ```csharp
 var services = new ServiceCollection();
@@ -291,7 +321,6 @@ var services = new ServiceCollection();
 services.AddManagedCodeMcpGateway(options =>
 {
     options.SearchStrategy = McpGatewaySearchStrategy.Tokenizer;
-    options.TokenSearchTokenizer = McpGatewayTokenSearchTokenizer.ChatGptO200kBase;
 
     options.AddTool(
         "local",
@@ -313,9 +342,8 @@ var services = new ServiceCollection();
 services.AddManagedCodeMcpGateway(options =>
 {
     options.SearchStrategy = McpGatewaySearchStrategy.Auto;
-    options.TokenSearchTokenizer = McpGatewayTokenSearchTokenizer.ChatGptO200kBase;
     options.DefaultSearchLimit = 5;
-    options.MaxSearchResults = 20;
+    options.MaxSearchResults = 15;
 
     options.AddTool(
         "local",
@@ -467,7 +495,7 @@ services.AddManagedCodeMcpGateway(options =>
 });
 ```
 
-During `BuildIndexAsync()` the gateway:
+When an index build runs, whether explicitly or through lazy/background warmup, the gateway:
 
 - computes a descriptor-document hash per tool
 - asks `IMcpGatewayToolEmbeddingStore` for matching stored vectors
@@ -499,8 +527,7 @@ The noisy-query buckets intentionally include spelling mistakes and weakly speci
 
 Current reference numbers from the repository test corpus:
 
-- `ChatGptO200kBase`: high relevance `top1=91.30%`, `top3=100%`, `top5=100%`, `MRR=0.96`; typo `top3=100%`; weak intent `top3=100%`; irrelevant `low-confidence=100%`
-- `Gpt2Bpe`: high relevance `top1=95.65%`, `top3=100%`, `top5=100%`, `MRR=0.97`; typo `top3=100%`; weak intent `top3=100%`; irrelevant `low-confidence=100%`
+- `ChatGptO200kBase`: high relevance `top1=95.65%`, `top3=100%`, `top5=100%`, `MRR=0.98`; typo `top1=100%`; weak intent `top1=100%`; irrelevant `low-confidence=100%`
 
 ## Supported Sources
 

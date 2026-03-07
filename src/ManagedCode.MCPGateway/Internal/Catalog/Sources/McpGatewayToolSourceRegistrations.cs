@@ -188,20 +188,25 @@ internal abstract class McpGatewayClientToolSourceRegistration(
             return client;
         }
 
-        while (true)
+        var clientTask = Volatile.Read(ref _clientTask);
+        while (clientTask is null && !cancellationToken.IsCancellationRequested)
         {
-            var existingTask = Volatile.Read(ref _clientTask);
-            if (existingTask is not null)
-            {
-                return await AwaitClientTaskAsync(existingTask, cancellationToken);
-            }
-
             var createdTask = CreateClientAsync(loggerFactory, CancellationToken.None).AsTask();
             if (Interlocked.CompareExchange(ref _clientTask, createdTask, null) is null)
             {
-                return await AwaitClientTaskAsync(createdTask, cancellationToken);
+                clientTask = createdTask;
+                break;
             }
+
+            clientTask = Volatile.Read(ref _clientTask);
         }
+
+        if (clientTask is null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        return await AwaitClientTaskAsync(clientTask!, cancellationToken);
     }
 
     private async Task<McpClient> AwaitClientTaskAsync(

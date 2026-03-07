@@ -1,6 +1,5 @@
-using System.Globalization;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 
 namespace ManagedCode.MCPGateway;
 
@@ -10,10 +9,15 @@ internal sealed partial class McpGatewayRuntime
         McpGatewaySearchRequest request,
         string? normalizedQuery)
         => new(
-            request.Query?.Trim(),
-            string.IsNullOrWhiteSpace(normalizedQuery) ? null : normalizedQuery.Trim(),
-            request.ContextSummary?.Trim(),
-            FlattenContext(request.Context));
+            NormalizeSearchComponent(request.Query),
+            NormalizeSearchComponent(normalizedQuery),
+            NormalizeSearchComponent(request.ContextSummary),
+            NormalizeSearchComponent(FlattenContext(request.Context)));
+
+    private static string? NormalizeSearchComponent(string? value)
+        => string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
 
     private static string? FlattenContext(IReadOnlyDictionary<string, object?>? context)
     {
@@ -22,120 +26,71 @@ internal sealed partial class McpGatewayRuntime
             return null;
         }
 
-        var terms = new List<string>();
-        foreach (var (key, value) in context)
+        if (McpGatewayJsonSerializer.TrySerializeToElement(context) is not JsonElement contextElement ||
+            contextElement.ValueKind != JsonValueKind.Object)
         {
-            AppendContextTerms(terms, key, value);
+            return null;
         }
 
-        return terms.Count == 0
+        var builder = new StringBuilder();
+        foreach (var property in contextElement.EnumerateObject())
+        {
+            AppendJsonElementTerms(builder, property.Name, property.Value);
+        }
+
+        return builder.Length == 0
             ? null
-            : string.Join("; ", terms);
+            : builder.ToString();
     }
 
-    private static void AppendContextTerms(List<string> terms, string key, object? value)
-    {
-        if (value is null)
-        {
-            return;
-        }
-
-        switch (value)
-        {
-            case string text when !string.IsNullOrWhiteSpace(text):
-                terms.Add(FormattableString.Invariant($"{key} {text.Trim()}"));
-                return;
-
-            case JsonElement element:
-                AppendJsonElementTerms(terms, key, element);
-                return;
-
-            case JsonNode node:
-                if (node is not null)
-                {
-                    AppendJsonElementTerms(terms, key, JsonSerializer.SerializeToElement(node));
-                }
-                return;
-
-            case IReadOnlyDictionary<string, object?> dictionary:
-                foreach (var (childKey, childValue) in dictionary)
-                {
-                    AppendContextTerms(terms, $"{key} {childKey}", childValue);
-                }
-                return;
-
-            case IEnumerable<KeyValuePair<string, object?>> dictionaryEntries:
-                foreach (var (childKey, childValue) in dictionaryEntries)
-                {
-                    AppendContextTerms(terms, $"{key} {childKey}", childValue);
-                }
-                return;
-
-            case System.Collections.IDictionary legacyDictionary:
-                foreach (System.Collections.DictionaryEntry entry in legacyDictionary)
-                {
-                    var childKey = Convert.ToString(entry.Key, CultureInfo.InvariantCulture);
-                    if (!string.IsNullOrWhiteSpace(childKey))
-                    {
-                        AppendContextTerms(terms, $"{key} {childKey}", entry.Value);
-                    }
-                }
-                return;
-
-            case System.Collections.IEnumerable enumerable when value is not string:
-                foreach (var item in enumerable)
-                {
-                    AppendContextTerms(terms, key, item);
-                }
-                return;
-
-            default:
-                var scalar = Convert.ToString(value, CultureInfo.InvariantCulture);
-                if (!string.IsNullOrWhiteSpace(scalar))
-                {
-                    terms.Add(FormattableString.Invariant($"{key} {scalar}"));
-                }
-                return;
-        }
-    }
-
-    private static void AppendJsonElementTerms(List<string> terms, string key, JsonElement element)
+    private static void AppendJsonElementTerms(StringBuilder builder, string key, JsonElement element)
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
                 foreach (var property in element.EnumerateObject())
                 {
-                    AppendJsonElementTerms(terms, $"{key} {property.Name}", property.Value);
+                    AppendJsonElementTerms(builder, string.Concat(key, " ", property.Name), property.Value);
                 }
                 return;
 
             case JsonValueKind.Array:
                 foreach (var item in element.EnumerateArray())
                 {
-                    AppendJsonElementTerms(terms, key, item);
+                    AppendJsonElementTerms(builder, key, item);
                 }
                 return;
 
             case JsonValueKind.String:
-                var text = element.GetString();
-                if (!string.IsNullOrWhiteSpace(text))
+                if (NormalizeSearchComponent(element.GetString()) is string text)
                 {
-                    terms.Add(FormattableString.Invariant($"{key} {text.Trim()}"));
+                    AppendContextTerm(builder, key, text);
                 }
                 return;
 
             case JsonValueKind.True:
             case JsonValueKind.False:
-                terms.Add(FormattableString.Invariant($"{key} {element.GetBoolean()}"));
+                AppendContextTerm(builder, key, element.GetBoolean() ? bool.TrueString : bool.FalseString);
                 return;
 
             case JsonValueKind.Number:
-                terms.Add(FormattableString.Invariant($"{key} {element}"));
+                AppendContextTerm(builder, key, element.ToString());
                 return;
 
             default:
                 return;
         }
+    }
+
+    private static void AppendContextTerm(StringBuilder builder, string key, string value)
+    {
+        if (builder.Length > 0)
+        {
+            builder.Append("; ");
+        }
+
+        builder.Append(key);
+        builder.Append(' ');
+        builder.Append(value);
     }
 }

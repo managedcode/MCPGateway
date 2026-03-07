@@ -10,23 +10,28 @@ internal sealed partial class McpGatewayRuntime
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        while (true)
+        var existingBuild = Volatile.Read(ref _buildTask);
+        while (existingBuild is null && !cancellationToken.IsCancellationRequested)
         {
             ThrowIfDisposed();
-
-            var existingBuild = Volatile.Read(ref _buildTask);
-            if (existingBuild is not null)
-            {
-                return await existingBuild.WaitAsync(cancellationToken);
-            }
 
             var buildSource = new TaskCompletionSource<McpGatewayIndexBuildResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             if (Interlocked.CompareExchange(ref _buildTask, buildSource.Task, null) is null)
             {
                 _ = RunBuildIndexAsync(buildSource);
-                return await buildSource.Task.WaitAsync(cancellationToken);
+                existingBuild = buildSource.Task;
+                break;
             }
+
+            existingBuild = Volatile.Read(ref _buildTask);
         }
+
+        if (existingBuild is null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        return await existingBuild!.WaitAsync(cancellationToken);
     }
 
     private async Task RunBuildIndexAsync(TaskCompletionSource<McpGatewayIndexBuildResult> buildSource)
@@ -281,14 +286,9 @@ internal sealed partial class McpGatewayRuntime
 
     private void TryUpdateState(ToolCatalogSnapshot snapshot, int snapshotVersion)
     {
-        while (true)
+        var state = Volatile.Read(ref _state);
+        while (!state.IsDisposed)
         {
-            var state = Volatile.Read(ref _state);
-            if (state.IsDisposed)
-            {
-                return;
-            }
-
             var updatedState = state with
             {
                 Snapshot = snapshot,
@@ -298,6 +298,8 @@ internal sealed partial class McpGatewayRuntime
             {
                 return;
             }
+
+            state = Volatile.Read(ref _state);
         }
     }
 

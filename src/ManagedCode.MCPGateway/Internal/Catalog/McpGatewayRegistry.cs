@@ -5,19 +5,11 @@ using ModelContextProtocol.Client;
 
 namespace ManagedCode.MCPGateway;
 
-internal sealed class McpGatewayRegistry : IMcpGatewayRegistry, IMcpGatewayCatalogSource, IAsyncDisposable
+internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options) : IMcpGatewayRegistry, IMcpGatewayCatalogSource, IAsyncDisposable
 {
-    private readonly McpGatewayRegistrationCollection _registrations;
+    private readonly McpGatewayRegistrationCollection _registrations = CreateRegistrations(options);
+    private readonly McpGatewayOperationGate _operationGate = new();
     private int _version;
-    private int _disposed;
-    private int _activeOperations;
-    private TaskCompletionSource<object?>? _drainSignal;
-
-    public McpGatewayRegistry(IOptions<McpGatewayOptions> options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        _registrations = new McpGatewayRegistrationCollection(options.Value.SourceRegistrations);
-    }
 
     public void AddTool(string sourceId, AITool tool, string? displayName = null)
         => Mutate(registrations => registrations.AddTool(sourceId, tool, displayName));
@@ -63,33 +55,29 @@ internal sealed class McpGatewayRegistry : IMcpGatewayRegistry, IMcpGatewayCatal
 
     public McpGatewayCatalogSourceSnapshot CreateSnapshot()
     {
-        EnterOperation();
+        _operationGate.Enter(this);
         try
         {
-            ThrowIfDisposed();
+            _operationGate.ThrowIfDisposed(this);
             return new McpGatewayCatalogSourceSnapshot(
                 Volatile.Read(ref _version),
                 _registrations.Snapshot());
         }
         finally
         {
-            ExitOperation();
+            _operationGate.Exit();
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        if (!_operationGate.TryStartDispose(out var waitForDrain))
         {
             return;
         }
 
         Interlocked.Increment(ref _version);
-        var drainSignal = EnsureDrainSignal();
-        if (Volatile.Read(ref _activeOperations) > 0)
-        {
-            await drainSignal.Task;
-        }
+        await waitForDrain;
 
         var registrations = _registrations.Drain();
         foreach (var registration in registrations)
@@ -100,72 +88,22 @@ internal sealed class McpGatewayRegistry : IMcpGatewayRegistry, IMcpGatewayCatal
 
     private void Mutate(Action<McpGatewayRegistrationCollection> mutation)
     {
-        EnterOperation();
+        _operationGate.Enter(this);
         try
         {
-            ThrowIfDisposed();
+            _operationGate.ThrowIfDisposed(this);
             mutation(_registrations);
             Interlocked.Increment(ref _version);
         }
         finally
         {
-            ExitOperation();
+            _operationGate.Exit();
         }
     }
 
-    private void ThrowIfDisposed()
+    private static McpGatewayRegistrationCollection CreateRegistrations(IOptions<McpGatewayOptions> options)
     {
-        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
-    }
-
-    private void EnterOperation()
-    {
-        while (true)
-        {
-            ThrowIfDisposed();
-            Interlocked.Increment(ref _activeOperations);
-            if (Volatile.Read(ref _disposed) == 0)
-            {
-                return;
-            }
-
-            ExitOperation();
-        }
-    }
-
-    private void ExitOperation()
-    {
-        if (Interlocked.Decrement(ref _activeOperations) == 0)
-        {
-            Volatile.Read(ref _drainSignal)?.TrySetResult(null);
-        }
-    }
-
-    private TaskCompletionSource<object?> EnsureDrainSignal()
-    {
-        while (true)
-        {
-            var existing = Volatile.Read(ref _drainSignal);
-            if (existing is not null)
-            {
-                if (Volatile.Read(ref _activeOperations) == 0)
-                {
-                    existing.TrySetResult(null);
-                }
-
-                return existing;
-            }
-
-            var created = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (Interlocked.CompareExchange(ref _drainSignal, created, null) is null)
-            {
-                if (Volatile.Read(ref _activeOperations) == 0)
-                {
-                    created.TrySetResult(null);
-                }
-
-                return created;
-            }
-        }
+        ArgumentNullException.ThrowIfNull(options);
+        return new McpGatewayRegistrationCollection(options.Value.SourceRegistrations);
     }
 }

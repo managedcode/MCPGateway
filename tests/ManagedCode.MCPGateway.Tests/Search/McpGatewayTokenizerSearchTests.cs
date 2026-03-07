@@ -29,36 +29,33 @@ public sealed class McpGatewayTokenizerSearchTests
     }
 
     [TUnit.Core.Test]
-    public async Task SearchAsync_SupportsChatGptAndGpt2BpeTokenizerProfiles()
+    public async Task SearchAsync_UsesTheBuiltInChatGptTokenizerProfile()
     {
-        foreach (var tokenizer in Enum.GetValues<McpGatewayTokenSearchTokenizer>())
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
-            {
-                TokenizerSearchTestSupport.UseTokenizerSearch(options, tokenizer);
-                options.AddTool(
-                    "local",
-                    TestFunctionFactory.CreateFunction(
-                        SearchGitHubPullRequests,
-                        "github_pull_request_search",
-                        "Search GitHub pull requests by repository, reviewer, branch, or merge status."));
-                options.AddTool(
-                    "local",
-                    TestFunctionFactory.CreateFunction(
-                        FilterAdvisories,
-                        "advisory_lookup",
-                        "Lookup advisory records by severity, ecosystem, package, or CVE reference."));
-            });
-            var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+            TokenizerSearchTestSupport.UseTokenizerSearch(options);
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHubPullRequests,
+                    "github_pull_request_search",
+                    "Search GitHub pull requests by repository, reviewer, branch, or merge status."));
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    FilterAdvisories,
+                    "advisory_lookup",
+                    "Lookup advisory records by severity, ecosystem, package, or CVE reference."));
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
-            await gateway.BuildIndexAsync();
-            var advisorySearch = await gateway.SearchAsync("critical severity advisory", maxResults: 1);
-            var pullRequestSearch = await gateway.SearchAsync("review queue for pull requests", maxResults: 1);
+        await gateway.BuildIndexAsync();
+        var advisorySearch = await gateway.SearchAsync("critical severity advisory", maxResults: 1);
+        var pullRequestSearch = await gateway.SearchAsync("review queue for pull requests", maxResults: 1);
 
-            await Assert.That(advisorySearch.RankingMode).IsEqualTo("lexical");
-            await Assert.That(advisorySearch.Matches[0].ToolId).IsEqualTo("local:advisory_lookup");
-            await Assert.That(pullRequestSearch.Matches[0].ToolId).IsEqualTo("local:github_pull_request_search");
-        }
+        await Assert.That(advisorySearch.RankingMode).IsEqualTo("lexical");
+        await Assert.That(advisorySearch.Matches[0].ToolId).IsEqualTo("local:advisory_lookup");
+        await Assert.That(pullRequestSearch.Matches[0].ToolId).IsEqualTo("local:github_pull_request_search");
     }
 
     [TUnit.Core.Test]
@@ -66,7 +63,7 @@ public sealed class McpGatewayTokenizerSearchTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            TokenizerSearchTestSupport.UseTokenizerSearch(options, McpGatewayTokenSearchTokenizer.ChatGptO200kBase);
+            TokenizerSearchTestSupport.UseTokenizerSearch(options);
             options.AddTool(
                 "local",
                 TestFunctionFactory.CreateFunction(
@@ -93,7 +90,7 @@ public sealed class McpGatewayTokenizerSearchTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            TokenizerSearchTestSupport.UseTokenizerSearch(options, McpGatewayTokenSearchTokenizer.ChatGptO200kBase);
+            TokenizerSearchTestSupport.UseTokenizerSearch(options);
             options.AddTool(
                 "local",
                 TestFunctionFactory.CreateFunction(
@@ -117,7 +114,7 @@ public sealed class McpGatewayTokenizerSearchTests
 
     private static void ConfigureTokenizerSearchTools(McpGatewayOptions options)
     {
-        TokenizerSearchTestSupport.UseTokenizerSearch(options, McpGatewayTokenSearchTokenizer.ChatGptO200kBase);
+        TokenizerSearchTestSupport.UseTokenizerSearch(options);
         options.AddTool(
             "local",
             TestFunctionFactory.CreateFunction(

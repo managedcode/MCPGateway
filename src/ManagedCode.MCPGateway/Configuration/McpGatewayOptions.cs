@@ -9,15 +9,12 @@ public sealed class McpGatewayOptions
 
     public McpGatewaySearchStrategy SearchStrategy { get; set; } = McpGatewaySearchStrategy.Auto;
 
-    public McpGatewayTokenSearchTokenizer TokenSearchTokenizer { get; set; } =
-        McpGatewayTokenSearchTokenizer.ChatGptO200kBase;
-
     public McpGatewaySearchQueryNormalization SearchQueryNormalization { get; set; } =
         McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable;
 
     public int DefaultSearchLimit { get; set; } = 5;
 
-    public int MaxSearchResults { get; set; } = 20;
+    public int MaxSearchResults { get; set; } = 15;
 
     public int MaxDescriptorLength { get; set; } = 4096;
 

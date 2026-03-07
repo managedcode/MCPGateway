@@ -7,6 +7,8 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
 {
     public const string DefaultSearchToolName = "gateway_tools_search";
     public const string DefaultInvokeToolName = "gateway_tool_invoke";
+    public const string SearchToolDescription = "Search the gateway catalog and return the best matching tools for a user task.";
+    public const string InvokeToolDescription = "Invoke a gateway tool by tool id. Search first when the correct tool is unknown.";
 
     public IReadOnlyList<AITool> CreateTools(
         string searchToolName = DefaultSearchToolName,
@@ -17,7 +19,7 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
             new AIFunctionFactoryOptions
             {
                 Name = searchToolName,
-                Description = "Search the gateway catalog and return the best matching tools for a user task."
+                Description = SearchToolDescription
             });
 
         var invokeTool = AIFunctionFactory.Create(
@@ -25,7 +27,7 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
             new AIFunctionFactoryOptions
             {
                 Name = invokeToolName,
-                Description = "Invoke a gateway tool by tool id. Search first when the correct tool is unknown."
+                Description = InvokeToolDescription
             });
 
         return [searchTool, invokeTool];

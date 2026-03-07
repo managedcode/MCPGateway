@@ -126,6 +126,8 @@ If no new rule is detected -> do not update the file.
 ### Documentation (ALL TASKS)
 
 - Update `README.md` whenever public API shape, setup, or usage changes.
+- When the package requires an initialization step such as index building, provide an ergonomic optional integration path (for example DI extension or hosted background warmup) instead of forcing every consumer to call it manually, and document when manual initialization is still appropriate.
+- Keep documented configuration defaults synchronized with the actual `McpGatewayOptions` defaults; for example, `MaxSearchResults` default is `15`, not stale sample values.
 - Keep the README focused on package usage and onboarding, not internal implementation notes.
 - Document optional DI dependencies explicitly in README examples so consumers know which services they must register themselves, such as embedding generators.
 - Keep README code examples as real example code blocks, not commented-out pseudo-code; if behavior is optional, show it in a separate example instead of commenting lines inside another snippet.
@@ -162,14 +164,24 @@ If no new rule is detected -> do not update the file.
 - Follow `.editorconfig` and repository analyzers.
 - Keep warnings clean; repository builds treat warnings as errors.
 - Prefer simple, readable C# over clever abstractions.
+- Prefer modern C# 14 syntax when it improves clarity and keep replacing stale legacy syntax with current idiomatic language constructs instead of preserving older forms by inertia.
+- Prefer straightforward DI-native constructors in public types; avoid redundant constructor chaining that only wraps `new SomeRuntime(...)` behind a second constructor, because in modern C# this adds ceremony without improving clarity.
+- In hot runtime paths, prefer single-pass loops over allocation-heavy LINQ chains when the logic is simple, because duplicate enumeration and transient allocations have already been called out as unacceptable in this repository.
+- Avoid open-ended `while (true)` loops in runtime code when a real termination condition exists; use an explicit condition such as cancellation or lifecycle state so concurrency code stays auditable.
+- Avoid transient collection + `string.Join` assembly in hot runtime string paths; build the final string directly when only a few optional segments exist, because these extra allocations have already been called out as wasteful in this repository.
+- Prefer readable imperative conditionals over long multi-line boolean expression bodies; if a predicate stops being obvious at a glance, split it into guard clauses or named locals instead of compressing it into one chained return expression.
 - Prefer non-blocking coordination over coarse locking when practical; use concurrent collections, atomic state, and single-flight patterns instead of `lock`-heavy designs, because blocking synchronization has already proven to obscure concurrency behavior in this package.
+- Keep concurrency coordination intention-revealing: avoid opaque fields such as generic drain/task signals inside runtime services when a named helper or clearer lifecycle abstraction can express the behavior, because hidden synchronization state quickly turns registry/runtime code into unreadable infrastructure.
 - Prefer serializer-first JSON/schema handling; avoid ad-hoc manual special cases for `JsonElement`/`JsonNode`/schema objects when normal `System.Text.Json` serialization can represent them correctly.
+- For JSON and schema payloads, always route serialization through the repository's canonical JSON converter/options path; do not hand-roll ad-hoc `JsonSerializer.Serialize*` handling inside feature code when the package already defines how JSON should be materialized.
+- For context/object flattening, do not maintain parallel per-type serialization trees by hand; normalize once through the canonical JSON path and traverse the normalized representation, because duplicated type-switch logic drifts and keeps reintroducing ad-hoc serialization.
 - Prefer explicit SOLID object decomposition over large `partial` types; when responsibilities like registry, indexing, invocation, or schema handling can live in dedicated classes, extract real collaborators instead of only splitting files.
 - Keep `McpGateway` focused on search/invoke orchestration only; do not embed registry or mutation responsibilities into the gateway type itself, because that mixes lifecycle/catalog mutation with runtime execution concerns.
 - Keep public API names aligned with package identity `ManagedCode.MCPGateway`.
 - Do not duplicate package metadata or version blocks inside project files unless a project-specific override is required.
 - Use constants for stable tool names and protocol-facing identifiers.
-- Never leave stable string literals inline in runtime code; extract named constants for diagnostic codes, messages, modes, keys, and other durable identifiers so changes stay centralized.
+- Never leave stable string literals inline in runtime code; extract named constants for diagnostic codes, messages, modes, keys, tool descriptions, and other durable identifiers so changes stay centralized.
+- Use the correct contextual logger type for each service; internal collaborators must log with their own type category instead of reusing a parent facade logger, because wrong logger categories make diagnostics misleading.
 - Keep transport-specific logic inside the gateway and source registration abstractions, not scattered across the codebase.
 - Keep the package dependency surface small and justified.
 - Prefer direct generic DI registrations such as `services.TryAddSingleton<IService, Implementation>()` over lambda alias registrations when wiring package services, because the lambda style has already been called out as unreadable and error-prone in this repository.
