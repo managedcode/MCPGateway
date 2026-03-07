@@ -35,7 +35,8 @@ Out of scope:
 5. If normalization fails, the gateway must continue with the original query and expose a diagnostic rather than throwing.
 6. Tokenizer-backed ranking must prefer mathematical retrieval improvements over text-level hardcoded exceptions.
 7. Tokenizer-backed ranking must improve recall for typos and multilingual cognates while also reducing domain-local ties such as `invoice` versus `payment reconciliation`.
-8. Default search result limits and existing public search/invoke entry points must remain intact.
+8. The package must keep one built-in tokenizer-backed search path and must not expose stale tokenizer-selection options.
+9. Default search result limits and existing public search/invoke entry points must remain intact.
 
 ## Main Flow
 
@@ -110,7 +111,8 @@ Test mapping:
 ## Related Docs
 
 - [`README.md`](../../README.md)
-- [`docs/ADR/ADR-0001-gateway-runtime-and-search-fallback.md`](../ADR/ADR-0001-gateway-runtime-and-search-fallback.md)
+- [`docs/ADR/ADR-0002-search-ranking-and-query-normalization.md`](../ADR/ADR-0002-search-ranking-and-query-normalization.md)
+- [`docs/ADR/ADR-0001-runtime-boundaries-and-index-lifecycle.md`](../ADR/ADR-0001-runtime-boundaries-and-index-lifecycle.md)
 - [`docs/Architecture/Overview.md`](../Architecture/Overview.md)
 
 ## Implementation Plan (step-by-step)

@@ -12,7 +12,7 @@ The package is built on:
 
 - `Microsoft.Extensions.AI`
 - the official `ModelContextProtocol` .NET SDK
-- in-memory descriptor indexing with configurable embedding or tokenizer-backed ranking
+- in-memory descriptor indexing with vector ranking and built-in tokenizer-backed fallback
 
 ## Install
 
@@ -29,7 +29,7 @@ dotnet add package ManagedCode.MCPGateway
 
 ## What You Get
 
-- one registry for local tools, stdio MCP servers, HTTP MCP servers, or prebuilt `McpClient` instances
+- one registry for local tools, stdio MCP servers, HTTP MCP servers, existing `McpClient` instances, or deferred `McpClient` factories
 - a DI-native split between `IMcpGateway` for runtime search/invoke and `IMcpGatewayRegistry` for catalog mutation
 - descriptor indexing that enriches search with tool name, description, required arguments, and input schema
 - lazy index build on the first catalog/search/invoke operation, plus optional eager warmup hooks for startup scenarios
@@ -106,6 +106,60 @@ var tools = await gateway.ListToolsAsync();
 ```
 
 `AddManagedCodeMcpGateway(...)` registers `IMcpGateway`, `IMcpGatewayRegistry`, and `McpGatewayToolSet`. Add `AddManagedCodeMcpGatewayIndexWarmup()` only when you want hosted eager initialization.
+
+## Public Surfaces
+
+Resolve these services depending on what the host needs:
+
+- `IMcpGateway`: build, list, search, invoke, and create meta-tools
+- `IMcpGatewayRegistry`: add local tools or MCP sources after the container is built
+- `McpGatewayToolSet`: expose the gateway itself as reusable `AITool` instances
+
+Those three services deliberately separate runtime execution, catalog mutation, and meta-tool creation instead of collapsing everything into one mutable gateway type.
+
+## Register Existing Or Deferred MCP Clients
+
+`IMcpGatewayRegistry` supports both immediate `McpClient` instances and deferred client factories:
+
+```csharp
+var registry = serviceProvider.GetRequiredService<IMcpGatewayRegistry>();
+
+registry.AddMcpClient(
+    sourceId: "issues",
+    client: existingClient,
+    disposeClient: false);
+
+registry.AddMcpClientFactory(
+    sourceId: "work-items",
+    clientFactory: static async cancellationToken =>
+    {
+        return await CreateWorkItemClientAsync(cancellationToken);
+    });
+```
+
+Use `AddMcpClient(...)` when another part of the host already owns the client lifetime. Use `AddMcpClientFactory(...)` when the gateway should lazily create and cache the client through its normal source-loading path.
+
+## Invoke By Tool Id Or Stable Identity
+
+The common flow is search first, then invoke by `ToolId`:
+
+```csharp
+var search = await gateway.SearchAsync("find github repositories");
+var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
+    ToolId: search.Matches[0].ToolId,
+    Query: "managedcode"));
+```
+
+If the host already knows the stable tool name, invocation can target `ToolName` and optionally `SourceId` instead:
+
+```csharp
+var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
+    ToolName: "github_search_repositories",
+    SourceId: "local",
+    Query: "managedcode"));
+```
+
+Use `SourceId` when the same tool name may exist in more than one registered source.
 
 ## Optional Eager Warmup
 
