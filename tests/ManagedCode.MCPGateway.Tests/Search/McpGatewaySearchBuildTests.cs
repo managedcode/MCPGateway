@@ -1,6 +1,7 @@
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Client;
+using System.Reflection;
 
 namespace ManagedCode.MCPGateway.Tests;
 
@@ -36,6 +37,17 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(options.SearchStrategy).IsEqualTo(McpGatewaySearchStrategy.Auto);
         await Assert.That(options.TokenSearchTokenizer).IsEqualTo(McpGatewayTokenSearchTokenizer.ChatGptO200kBase);
         await Assert.That(options.DefaultSearchLimit).IsEqualTo(5);
+    }
+
+    [TUnit.Core.Test]
+    public async Task McpGatewayClientFactory_UsesAssemblyBuildVersionForClientInfo()
+    {
+        var clientOptions = McpGatewayClientFactory.CreateClientOptions();
+        var expectedVersion = typeof(McpGatewayClientFactory).Assembly
+                                  .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                              ?? typeof(McpGatewayClientFactory).Assembly.GetName().Version?.ToString();
+
+        await Assert.That(clientOptions.ClientInfo?.Version).IsEqualTo(expectedVersion);
     }
 
     [TUnit.Core.Test]
