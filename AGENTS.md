@@ -68,6 +68,10 @@ If no new rule is detected -> do not update the file.
 - build: `dotnet build ManagedCode.MCPGateway.slnx -c Release --no-restore`
 - analyze: `dotnet build ManagedCode.MCPGateway.slnx -c Release --no-restore -p:RunAnalyzers=true`
 - test: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build`
+- test-list: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build --list-tests`
+- test-detailed: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build --output Detailed --no-progress`
+- test-trx: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build --report-trx --results-directory ./artifacts/test-results`
+- test-runner-help: `tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests --help`
 - format: `dotnet format ManagedCode.MCPGateway.slnx`
 - skills-validate: `python3 .codex/skills/mcaf-skill-curation/scripts/validate_skills.py .codex/skills`
 - skills-metadata: `python3 .codex/skills/mcaf-skill-curation/scripts/generate_available_skills.py .codex/skills --absolute`
@@ -128,6 +132,7 @@ If no new rule is detected -> do not update the file.
 ### Testing (ALL TASKS)
 
 - Test framework in this repository is TUnit. Never add or keep xUnit here.
+- This repository uses `TUnit` on `Microsoft.Testing.Platform`; never use VSTest-only flags such as `--filter` or `--logger`, because they are not supported here.
 - For TUnit solution runs, always invoke `dotnet test --solution ...`; do not pass the solution path positionally.
 - Every behavior change must include or update tests in `tests/ManagedCode.MCPGateway.Tests/`.
 - Keep tests focused on real gateway behavior:
@@ -139,6 +144,7 @@ If no new rule is detected -> do not update the file.
 - Keep request context behavior covered when search or invocation consumes contextual inputs.
 - Do not remove tests to get green builds.
 - Keep `global.json` configured for `Microsoft.Testing.Platform` when TUnit is used.
+- At the end of implementation work, run code-size and quality verification with `cloc`, `roslynator`, and the repository's strict .NET build/test checks, then fix actionable findings so oversized files and quality drift do not accumulate.
 - Run verification in this order:
   - restore
   - build
@@ -149,6 +155,8 @@ If no new rule is detected -> do not update the file.
 - Follow `.editorconfig` and repository analyzers.
 - Keep warnings clean; repository builds treat warnings as errors.
 - Prefer simple, readable C# over clever abstractions.
+- Prefer serializer-first JSON/schema handling; avoid ad-hoc manual special cases for `JsonElement`/`JsonNode`/schema objects when normal `System.Text.Json` serialization can represent them correctly.
+- Prefer explicit SOLID object decomposition over large `partial` types; when responsibilities like registry, indexing, invocation, or schema handling can live in dedicated classes, extract real collaborators instead of only splitting files.
 - Keep public API names aligned with package identity `ManagedCode.MCPGateway`.
 - Do not duplicate package metadata or version blocks inside project files unless a project-specific override is required.
 - Use constants for stable tool names and protocol-facing identifiers.

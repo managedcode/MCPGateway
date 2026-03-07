@@ -16,8 +16,8 @@ public sealed class McpGatewayMetaToolTests
         var embeddingGenerator = new TestEmbeddingGenerator();
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
-            options.AddTool("local", CreateFunction(SearchWeather, "weather_search_forecast", "Search weather forecast and temperature information by city name."));
+            options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
+            options.AddTool("local", TestFunctionFactory.CreateFunction(SearchWeather, "weather_search_forecast", "Search weather forecast and temperature information by city name."));
         }, embeddingGenerator);
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
@@ -45,7 +45,7 @@ public sealed class McpGatewayMetaToolTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", CreateFunction(EchoContextSummary, "context_summary_echo", "Echo query and context summary."));
+            options.AddTool("local", TestFunctionFactory.CreateFunction(EchoContextSummary, "context_summary_echo", "Echo query and context summary."));
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
@@ -72,15 +72,6 @@ public sealed class McpGatewayMetaToolTests
     private static AIFunction GetFunction(IReadOnlyList<AITool> tools, string toolName)
         => (tools.Single(tool => tool.Name == toolName) as AIFunction)
            ?? throw new InvalidOperationException($"Tool '{toolName}' is not an AIFunction.");
-
-    private static AIFunction CreateFunction(Delegate callback, string name, string description)
-        => AIFunctionFactory.Create(
-            callback,
-            new AIFunctionFactoryOptions
-            {
-                Name = name,
-                Description = description
-            });
 
     private static string SearchGitHub([Description("Search query text.")] string query) => $"github:{query}";
 

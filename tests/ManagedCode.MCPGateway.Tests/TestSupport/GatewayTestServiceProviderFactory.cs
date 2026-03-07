@@ -1,7 +1,7 @@
+using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using ManagedCode.MCPGateway.Abstractions;
 
 namespace ManagedCode.MCPGateway.Tests;
 
