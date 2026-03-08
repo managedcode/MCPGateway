@@ -26,7 +26,7 @@ internal sealed partial class McpGatewayRuntime
         double Bm25Score,
         double TokenSimilarity,
         double CharacterNGramSimilarity,
-        double LegacyLexicalScore);
+        double HeuristicLexicalScore);
 
     private sealed record ToolCatalogEntry(
         McpGatewayToolDescriptor Descriptor,

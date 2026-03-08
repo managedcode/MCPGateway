@@ -14,7 +14,7 @@ internal sealed partial class McpGatewayRuntime
         var rawQueryProfile = BuildTokenSearchProfile(queryFields);
         if (rawQueryProfile.TermWeights.Count == 0)
         {
-            return RankLegacyLexically(snapshot.Entries, searchInput.BoostQuery);
+            return RankHeuristicLexically(snapshot.Entries, searchInput.BoostQuery);
         }
 
         var queryProfile = ApplyTokenInverseDocumentFrequencies(
@@ -65,17 +65,17 @@ internal sealed partial class McpGatewayRuntime
                     snapshot.AverageSearchFieldLength),
                 CalculateSparseCosine(entry.TokenProfile, queryProfile),
                 CalculateSparseCosine(entry.CharacterNGramProfile, characterNGramProfile),
-                CalculateLegacyLexicalScore(entry, rawQuery, rawLexicalSearchTerms)))
+                CalculateHeuristicLexicalScore(entry, rawQuery, rawLexicalSearchTerms)))
             .ToList();
 
         var bm25Ranks = BuildRankLookup(retrievalCandidates, static candidate => candidate.Bm25Score);
         var tokenRanks = BuildRankLookup(retrievalCandidates, static candidate => candidate.TokenSimilarity);
         var characterRanks = BuildRankLookup(retrievalCandidates, static candidate => candidate.CharacterNGramSimilarity);
-        var legacyRanks = BuildRankLookup(retrievalCandidates, static candidate => candidate.LegacyLexicalScore);
+        var heuristicRanks = BuildRankLookup(retrievalCandidates, static candidate => candidate.HeuristicLexicalScore);
 
         return retrievalCandidates
             .OrderByDescending(candidate =>
-                CalculateReciprocalRankFusionScore(candidate.Entry, bm25Ranks, tokenRanks, characterRanks, legacyRanks))
+                CalculateReciprocalRankFusionScore(candidate.Entry, bm25Ranks, tokenRanks, characterRanks, heuristicRanks))
             .ThenByDescending(static candidate => candidate.Bm25Score)
             .ThenBy(static candidate => candidate.Entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
             .Take(ResolveCandidatePoolSize(retrievalCandidates.Count))
@@ -101,11 +101,11 @@ internal sealed partial class McpGatewayRuntime
         IReadOnlyDictionary<string, int> bm25Ranks,
         IReadOnlyDictionary<string, int> tokenRanks,
         IReadOnlyDictionary<string, int> characterRanks,
-        IReadOnlyDictionary<string, int> legacyRanks)
+        IReadOnlyDictionary<string, int> heuristicRanks)
         => CalculateReciprocalRankComponent(entry, bm25Ranks)
             + CalculateReciprocalRankComponent(entry, tokenRanks)
             + CalculateReciprocalRankComponent(entry, characterRanks)
-            + CalculateReciprocalRankComponent(entry, legacyRanks);
+            + CalculateReciprocalRankComponent(entry, heuristicRanks);
 
     private static double CalculateReciprocalRankComponent(
         ToolCatalogEntry entry,
@@ -139,7 +139,7 @@ internal sealed partial class McpGatewayRuntime
             (tokenCoverage * TokenCoverageWeight) +
             (matchBreadth * DistinctCoverageWeight) +
             (lexicalSimilarity * LexicalSimilarityWeight) +
-            (candidate.LegacyLexicalScore * LegacyLexicalFeatureWeight) +
+            (candidate.HeuristicLexicalScore * HeuristicLexicalFeatureWeight) +
             (toolNameSignal * ToolNameSignalWeight);
 
         var evidenceCalibration = Math.Max(tokenCoverage, matchBreadth);
@@ -409,19 +409,19 @@ internal sealed partial class McpGatewayRuntime
             : Math.Clamp(matchedTerms / (double)Math.Max(1, toolNameTerms.Count), 0d, 1d);
     }
 
-    private static IReadOnlyList<ScoredToolEntry> RankLegacyLexically(
+    private static IReadOnlyList<ScoredToolEntry> RankHeuristicLexically(
         IReadOnlyList<ToolCatalogEntry> entries,
         string query)
     {
         var searchTerms = BuildSearchTerms(query);
         return entries
-            .Select(entry => new ScoredToolEntry(entry, CalculateLegacyLexicalScore(entry, query, searchTerms)))
+            .Select(entry => new ScoredToolEntry(entry, CalculateHeuristicLexicalScore(entry, query, searchTerms)))
             .OrderByDescending(static item => item.Score)
             .ThenBy(static item => item.Entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private static double CalculateLegacyLexicalScore(
+    private static double CalculateHeuristicLexicalScore(
         ToolCatalogEntry entry,
         string query,
         IReadOnlySet<string> searchTerms)

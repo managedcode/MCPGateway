@@ -103,7 +103,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const double TokenCoverageWeight = 0.1d;
     private const double DistinctCoverageWeight = 0.15d;
     private const double LexicalSimilarityWeight = 0.06d;
-    private const double LegacyLexicalFeatureWeight = 0.16d;
+    private const double HeuristicLexicalFeatureWeight = 0.16d;
     private const double ToolNameSignalWeight = 0.05d;
 
     private static readonly char[] TokenSeparators =

@@ -1,21 +1,111 @@
 using ManagedCode.MCPGateway.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace ManagedCode.MCPGateway;
 
-public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbeddingStore
+public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbeddingStore, IDisposable
 {
-    private readonly McpGatewayToolEmbeddingStoreIndex _index = new();
+    private readonly IMemoryCache _cache;
+    private readonly IDisposable? _ownedCache;
+
+    public McpGatewayInMemoryToolEmbeddingStore()
+    {
+        var cache = new MemoryCache(new MemoryCacheOptions());
+        _cache = cache;
+        _ownedCache = cache;
+    }
+
+    public McpGatewayInMemoryToolEmbeddingStore(IMemoryCache cache)
+    {
+        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
+    }
 
     public Task<IReadOnlyList<McpGatewayToolEmbedding>> GetAsync(
         IReadOnlyList<McpGatewayToolEmbeddingLookup> lookups,
         CancellationToken cancellationToken = default)
-        => Task.FromResult(_index.Get(lookups, cancellationToken));
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var results = new List<McpGatewayToolEmbedding>(lookups.Count);
+        foreach (var lookup in lookups)
+        {
+            if (TryGetEmbedding(lookup, out var embedding))
+            {
+                results.Add(Clone(embedding));
+            }
+        }
+
+        return Task.FromResult<IReadOnlyList<McpGatewayToolEmbedding>>(results);
+    }
 
     public Task UpsertAsync(
         IReadOnlyList<McpGatewayToolEmbedding> embeddings,
         CancellationToken cancellationToken = default)
     {
-        _index.Upsert(embeddings, cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        foreach (var embedding in embeddings)
+        {
+            var clonedEmbedding = Clone(embedding);
+            _cache.Set(ExactCacheKey.FromEmbedding(clonedEmbedding), clonedEmbedding);
+            _cache.Set(FallbackCacheKey.FromEmbedding(clonedEmbedding), clonedEmbedding);
+        }
+
         return Task.CompletedTask;
+    }
+
+    public void Dispose() => _ownedCache?.Dispose();
+
+    private bool TryGetEmbedding(
+        McpGatewayToolEmbeddingLookup lookup,
+        out McpGatewayToolEmbedding embedding)
+    {
+        if (lookup.EmbeddingGeneratorFingerprint is not null)
+        {
+            return _cache.TryGetValue(ExactCacheKey.FromLookup(lookup), out embedding!);
+        }
+
+        return _cache.TryGetValue(FallbackCacheKey.FromLookup(lookup), out embedding!);
+    }
+
+    private static McpGatewayToolEmbedding Clone(McpGatewayToolEmbedding embedding)
+        => embedding with
+        {
+            Vector = [.. embedding.Vector]
+        };
+
+    private static string NormalizeToolId(string toolId) => toolId.ToUpperInvariant();
+
+    private readonly record struct ExactCacheKey(
+        string NormalizedToolId,
+        string DocumentHash,
+        string? EmbeddingGeneratorFingerprint)
+    {
+        public static ExactCacheKey FromLookup(McpGatewayToolEmbeddingLookup lookup)
+            => new(
+                NormalizeToolId(lookup.ToolId),
+                lookup.DocumentHash,
+                lookup.EmbeddingGeneratorFingerprint);
+
+        public static ExactCacheKey FromEmbedding(McpGatewayToolEmbedding embedding)
+            => new(
+                NormalizeToolId(embedding.ToolId),
+                embedding.DocumentHash,
+                embedding.EmbeddingGeneratorFingerprint);
+    }
+
+    private readonly record struct FallbackCacheKey(
+        string NormalizedToolId,
+        string DocumentHash)
+    {
+        public static FallbackCacheKey FromLookup(McpGatewayToolEmbeddingLookup lookup)
+            => new(
+                NormalizeToolId(lookup.ToolId),
+                lookup.DocumentHash);
+
+        public static FallbackCacheKey FromEmbedding(McpGatewayToolEmbedding embedding)
+            => new(
+                NormalizeToolId(embedding.ToolId),
+                embedding.DocumentHash);
     }
 }

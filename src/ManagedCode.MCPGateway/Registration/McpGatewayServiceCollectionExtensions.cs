@@ -1,4 +1,5 @@
 using ManagedCode.MCPGateway.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -23,6 +24,15 @@ public static class McpGatewayServiceCollectionExtensions
         services.TryAddSingleton<IMcpGatewayRegistry, McpGatewayRegistry>();
         services.TryAddSingleton<McpGatewayToolSet>();
 
+        return services;
+    }
+
+    public static IServiceCollection AddMcpGatewayInMemoryToolEmbeddingStore(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddMemoryCache();
+        services.TryAddSingleton<IMcpGatewayToolEmbeddingStore, McpGatewayInMemoryToolEmbeddingStore>();
         return services;
     }
 

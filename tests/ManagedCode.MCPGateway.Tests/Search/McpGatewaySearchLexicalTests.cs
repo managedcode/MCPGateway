@@ -137,7 +137,7 @@ public sealed partial class McpGatewaySearchTests
                     ["category"] = "weather",
                     ["mode"] = "lookup"
                 },
-                ["legacy"] = new Hashtable
+                ["compatibility"] = new Hashtable
                 {
                     ["location"] = "Paris",
                     ["active"] = true

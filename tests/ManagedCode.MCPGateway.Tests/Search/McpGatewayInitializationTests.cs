@@ -1,4 +1,5 @@
 using ManagedCode.MCPGateway.Abstractions;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -41,6 +42,21 @@ public sealed partial class McpGatewaySearchTests
         await hostedService.StopAsync(cancellationSource.Token);
 
         await Assert.That(probeGateway.BuildIndexCallCount).IsEqualTo(1);
+    }
+
+    [TUnit.Core.Test]
+    public async Task AddMcpGatewayInMemoryToolEmbeddingStore_RegistersSharedCacheBackedStore()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddMcpGatewayInMemoryToolEmbeddingStore();
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var cache = serviceProvider.GetRequiredService<IMemoryCache>();
+        var store = serviceProvider.GetRequiredService<IMcpGatewayToolEmbeddingStore>();
+
+        await Assert.That(cache).IsNotNull();
+        await Assert.That(store).IsTypeOf<McpGatewayInMemoryToolEmbeddingStore>();
     }
 }
 

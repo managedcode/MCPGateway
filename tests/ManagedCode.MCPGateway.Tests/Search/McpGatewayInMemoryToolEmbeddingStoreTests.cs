@@ -5,7 +5,7 @@ public sealed class McpGatewayInMemoryToolEmbeddingStoreTests
     [TUnit.Core.Test]
     public async Task GetAsync_ReturnsEmbeddingsForMatchingLookups()
     {
-        var store = await CreateStoreAsync(
+        using var store = await CreateStoreAsync(
             CreateEmbedding("local:github_search_issues", "github_search_issues", "hash-1", "fingerprint-a", [1f, 2f, 3f]),
             CreateEmbedding("local:weather_search_forecast", "weather_search_forecast", "hash-2", "fingerprint-a", [4f, 5f, 6f]));
 
@@ -24,7 +24,7 @@ public sealed class McpGatewayInMemoryToolEmbeddingStoreTests
     [TUnit.Core.Test]
     public async Task UpsertAsync_ClonesVectorsOnWriteAndRead()
     {
-        var store = new McpGatewayInMemoryToolEmbeddingStore();
+        using var store = new McpGatewayInMemoryToolEmbeddingStore();
         var inputVector = new[] { 1f, 2f, 3f };
 
         await store.UpsertAsync([CreateEmbedding("local:github_search_issues", "github_search_issues", "hash-1", "fingerprint-a", inputVector)]);
@@ -50,7 +50,7 @@ public sealed class McpGatewayInMemoryToolEmbeddingStoreTests
     [TUnit.Core.Test]
     public async Task GetAsync_TreatsToolIdsCaseInsensitivelyAndSupportsFingerprintFallback()
     {
-        var store = await CreateStoreAsync(
+        using var store = await CreateStoreAsync(
             CreateEmbedding("local:github_search_issues", "github_search_issues", "hash-1", "fingerprint-a", [1f, 2f, 3f]));
 
         var fingerprintMatch = await store.GetAsync(
@@ -65,6 +65,27 @@ public sealed class McpGatewayInMemoryToolEmbeddingStoreTests
         await Assert.That(fingerprintMatch.Count).IsEqualTo(1);
         await Assert.That(fingerprintAgnosticMatch.Count).IsEqualTo(1);
         await Assert.That(fingerprintAgnosticMatch[0].ToolId).IsEqualTo("local:github_search_issues");
+    }
+
+    [TUnit.Core.Test]
+    public async Task GetAsync_WithoutFingerprintReturnsMostRecentlyUpsertedEmbeddingForDocument()
+    {
+        using var store = new McpGatewayInMemoryToolEmbeddingStore();
+
+        await store.UpsertAsync(
+        [
+            CreateEmbedding("local:github_search_issues", "github_search_issues", "hash-1", "fingerprint-a", [1f, 2f, 3f]),
+            CreateEmbedding("local:github_search_issues", "github_search_issues", "hash-1", "fingerprint-b", [9f, 8f, 7f])
+        ]);
+
+        var result = await store.GetAsync(
+        [
+            CreateLookup("LOCAL:GITHUB_SEARCH_ISSUES", "hash-1")
+        ]);
+
+        await Assert.That(result.Count).IsEqualTo(1);
+        await Assert.That(result[0].EmbeddingGeneratorFingerprint).IsEqualTo("fingerprint-b");
+        await Assert.That(result[0].Vector[0]).IsEqualTo(9f);
     }
 
     private static async Task<McpGatewayInMemoryToolEmbeddingStore> CreateStoreAsync(params McpGatewayToolEmbedding[] embeddings)

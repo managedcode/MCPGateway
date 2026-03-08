@@ -427,17 +427,21 @@ services.AddManagedCodeMcpGateway(options =>
 
 If the keyed chat client is missing or normalization fails, search continues normally.
 
-## Optional Persistent Tool Embeddings
+## Optional Tool Embedding Stores
 
-For process-local caching, use the built-in in-memory store:
+For process-local caching, use the built-in `IMemoryCache`-backed store:
 
 ```csharp
 services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>, MyEmbeddingGenerator>(
     McpGatewayServiceKeys.EmbeddingGenerator);
-services.AddSingleton<IMcpGatewayToolEmbeddingStore, McpGatewayInMemoryToolEmbeddingStore>();
+services.AddMcpGatewayInMemoryToolEmbeddingStore();
 ```
 
-For durable caching, register your own `IMcpGatewayToolEmbeddingStore` implementation:
+This built-in store reuses the application's shared `IMemoryCache` and only caches embeddings inside the current process. It is useful for local reuse, but it is not durable and does not synchronize across replicas.
+
+.NET also provides `IDistributedCache` for out-of-process cache storage and `HybridCache` for a combined local + distributed cache model. `ManagedCode.MCPGateway` does not hardcode either dependency into the gateway runtime. If you need shared cache state across instances, implement `IMcpGatewayToolEmbeddingStore` over the cache technology your host already uses.
+
+For multi-instance or durable caching, register your own `IMcpGatewayToolEmbeddingStore` implementation:
 
 ```csharp
 services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>, MyEmbeddingGenerator>(
