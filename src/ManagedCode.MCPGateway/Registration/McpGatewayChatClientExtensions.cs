@@ -6,7 +6,7 @@ namespace ManagedCode.MCPGateway;
 
 public static class McpGatewayChatClientExtensions
 {
-    public static IChatClient UseManagedCodeMcpGatewayAutoDiscovery(
+    public static IChatClient UseMcpGatewayAutoDiscovery(
         this IChatClient chatClient,
         McpGatewayToolSet toolSet,
         ILoggerFactory? loggerFactory = null,
@@ -24,7 +24,7 @@ public static class McpGatewayChatClientExtensions
             options);
     }
 
-    public static IChatClient UseManagedCodeMcpGatewayAutoDiscovery(
+    public static IChatClient UseMcpGatewayAutoDiscovery(
         this IChatClient chatClient,
         IServiceProvider serviceProvider,
         Action<McpGatewayAutoDiscoveryOptions>? configure = null)
@@ -35,7 +35,7 @@ public static class McpGatewayChatClientExtensions
         var options = new McpGatewayAutoDiscoveryOptions();
         configure?.Invoke(options);
 
-        return chatClient.UseManagedCodeMcpGatewayAutoDiscovery(
+        return chatClient.UseMcpGatewayAutoDiscovery(
             serviceProvider.GetRequiredService<McpGatewayToolSet>(),
             serviceProvider.GetService<ILoggerFactory>(),
             serviceProvider,

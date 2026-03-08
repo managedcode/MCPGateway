@@ -230,12 +230,19 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
             }
 
             var serialized = McpGatewayJsonSerializer.TrySerializeToElement(result);
-            if (serialized is not JsonElement jsonElement)
+            if (serialized is not JsonElement { ValueKind: JsonValueKind.Object } jsonElement)
             {
                 return null;
             }
 
-            return jsonElement.Deserialize<McpGatewaySearchResult>(McpGatewayJsonSerializer.Options);
+            try
+            {
+                return jsonElement.Deserialize<McpGatewaySearchResult>(McpGatewayJsonSerializer.Options);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
     }
 

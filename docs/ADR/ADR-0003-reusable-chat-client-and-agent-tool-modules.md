@@ -26,7 +26,7 @@ At the same time, the repository still wants to keep the core package generic, l
 - `McpGatewayToolSet.AddTools(...)` composes those tools into an existing `IList<AITool>` without duplicating names
 - `ChatOptions.AddMcpGatewayTools(...)` attaches the same tools to chat-client requests
 - `McpGatewayToolSet.CreateDiscoveredTools(...)` projects the latest search matches as direct proxy tools
-- `McpGatewayAutoDiscoveryChatClient` and `UseManagedCodeMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper for both plain `IChatClient` and Agent Framework hosts
+- `McpGatewayAutoDiscoveryChatClient` and `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper for both plain `IChatClient` and Agent Framework hosts
 
 The recommended host flow is:
 
@@ -127,7 +127,7 @@ Mitigations:
 Rollout:
 
 1. Keep `McpGatewayToolSet` as the reusable module entry point.
-2. Add `McpGatewayAutoDiscoveryChatClient` and `UseManagedCodeMcpGatewayAutoDiscovery(...)` as the recommended host wrapper.
+2. Add `McpGatewayAutoDiscoveryChatClient` and `UseMcpGatewayAutoDiscovery(...)` as the recommended host wrapper.
 3. Document both chat-client and agent composition examples in `README.md`.
 4. Keep architecture docs aligned with the generic `AITool`-module approach.
 

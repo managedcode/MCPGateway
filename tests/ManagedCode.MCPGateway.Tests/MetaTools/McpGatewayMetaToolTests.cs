@@ -69,6 +69,30 @@ public sealed class McpGatewayMetaToolTests
         await Assert.That(GetJsonProperty(invokeResult, "output").GetString()).IsEqualTo("open github|user is on repository settings page");
     }
 
+    [TUnit.Core.Test]
+    public async Task CreateDiscoveredTools_PrefixesNamesThatStartWithDigits()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
+        var toolSet = serviceProvider.GetRequiredService<McpGatewayToolSet>();
+
+        var discoveredTools = toolSet.CreateDiscoveredTools(
+        [
+            new McpGatewaySearchMatch(
+                ToolId: "local:123-tool",
+                SourceId: "9-source",
+                SourceKind: McpGatewaySourceKind.Local,
+                ToolName: "123 tool",
+                DisplayName: null,
+                Description: "Example tool.",
+                RequiredArguments: [],
+                InputSchemaJson: null,
+                Score: 0.9d)
+        ]);
+
+        await Assert.That(discoveredTools.Count).IsEqualTo(1);
+        await Assert.That(discoveredTools[0].Name).IsEqualTo("t_123_tool");
+    }
+
     private static AIFunction GetFunction(IReadOnlyList<AITool> tools, string toolName)
         => (tools.Single(tool => tool.Name == toolName) as AIFunction)
            ?? throw new InvalidOperationException($"Tool '{toolName}' is not an AIFunction.");

@@ -26,7 +26,7 @@ Out of scope:
 
 `McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates vector or tokenizer-backed search, optionally rewrites queries through a keyed `IChatClient`, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
 
-The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` meta-tools and discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseManagedCodeMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with two meta-tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
+The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` meta-tools and discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with two meta-tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
 
 ## System And Module Map
 
@@ -63,7 +63,7 @@ flowchart LR
     ToolSet --> ToolList["IList<AITool> composition"]
     ToolSet --> DiscoveredTools["CreateDiscoveredTools(...)"]
     ChatOptions["ChatOptions.AddMcpGatewayTools(...)"] --> ToolSet
-    AutoDiscovery["McpGatewayAutoDiscoveryChatClient / UseManagedCodeMcpGatewayAutoDiscovery(...)"] --> ToolSet
+    AutoDiscovery["McpGatewayAutoDiscoveryChatClient / UseMcpGatewayAutoDiscovery(...)"] --> ToolSet
     AutoDiscovery --> ChatClient
     Warmup["McpGatewayServiceProviderExtensions / McpGatewayIndexWarmupService"] --> IMcpGateway
     McpGateway --> Runtime["McpGatewayRuntime"]

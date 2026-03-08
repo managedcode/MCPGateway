@@ -50,7 +50,7 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
     {
         ArgumentNullException.ThrowIfNull(tools);
 
-        var targetTools = tools.IsReadOnly ? new List<AITool>(tools) : tools;
+        var targetTools = new List<AITool>(tools);
         var toolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var tool in targetTools)
@@ -247,6 +247,16 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
         foreach (var character in value)
         {
             builder.Append(char.IsLetterOrDigit(character) || character == '_' ? character : '_');
+        }
+
+        if (builder.Length == 0)
+        {
+            return "gateway_tool";
+        }
+
+        if (!char.IsLetter(builder[0]) && builder[0] != '_')
+        {
+            builder.Insert(0, "t_");
         }
 
         return builder.ToString();

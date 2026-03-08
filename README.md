@@ -278,7 +278,7 @@ using Microsoft.Extensions.DependencyInjection;
 await using var serviceProvider = services.BuildServiceProvider();
 
 var innerChatClient = serviceProvider.GetRequiredService<IChatClient>();
-using var chatClient = innerChatClient.UseManagedCodeMcpGatewayAutoDiscovery(
+using var chatClient = innerChatClient.UseMcpGatewayAutoDiscovery(
     serviceProvider,
     options =>
     {
@@ -321,7 +321,7 @@ await using var serviceProvider = services.BuildServiceProvider();
 
 var innerChatClient = serviceProvider.GetRequiredService<IChatClient>();
 var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
-using var chatClient = innerChatClient.UseManagedCodeMcpGatewayAutoDiscovery(
+using var chatClient = innerChatClient.UseMcpGatewayAutoDiscovery(
     serviceProvider,
     options =>
     {

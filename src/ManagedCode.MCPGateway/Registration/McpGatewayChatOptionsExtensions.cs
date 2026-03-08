@@ -32,20 +32,4 @@ public static class McpGatewayChatOptionsExtensions
             searchToolName,
             invokeToolName);
     }
-
-    [Obsolete("Use AddMcpGatewayTools(...) instead.")]
-    public static ChatOptions AddManagedCodeMcpGatewayTools(
-        this ChatOptions options,
-        McpGatewayToolSet toolSet,
-        string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
-        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName)
-        => options.AddMcpGatewayTools(toolSet, searchToolName, invokeToolName);
-
-    [Obsolete("Use AddMcpGatewayTools(...) instead.")]
-    public static ChatOptions AddManagedCodeMcpGatewayTools(
-        this ChatOptions options,
-        IServiceProvider serviceProvider,
-        string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
-        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName)
-        => options.AddMcpGatewayTools(serviceProvider, searchToolName, invokeToolName);
 }

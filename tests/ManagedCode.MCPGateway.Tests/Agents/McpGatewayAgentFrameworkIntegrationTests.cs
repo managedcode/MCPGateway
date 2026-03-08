@@ -22,7 +22,7 @@ public sealed class McpGatewayAgentFrameworkIntegrationTests
         {
             Scenarios = GatewayIntegrationTestSupport.CreateAutoDiscoveryScenarios(useSemanticQueries: false)
         });
-        using var autoDiscoveryClient = modelClient.UseManagedCodeMcpGatewayAutoDiscovery(
+        using var autoDiscoveryClient = modelClient.UseMcpGatewayAutoDiscovery(
             serviceProvider,
             options => options.MaxDiscoveredTools = 2);
 
@@ -67,7 +67,7 @@ public sealed class McpGatewayAgentFrameworkIntegrationTests
         {
             Scenarios = GatewayIntegrationTestSupport.CreateAutoDiscoveryScenarios(useSemanticQueries: true)
         });
-        using var autoDiscoveryClient = modelClient.UseManagedCodeMcpGatewayAutoDiscovery(
+        using var autoDiscoveryClient = modelClient.UseMcpGatewayAutoDiscovery(
             serviceProvider,
             options => options.MaxDiscoveredTools = 2);
 

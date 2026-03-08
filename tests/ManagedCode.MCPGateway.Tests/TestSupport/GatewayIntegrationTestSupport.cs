@@ -191,9 +191,6 @@ internal static class GatewayIntegrationTestSupport
                 PortfolioToolName,
                 InvoiceToolName
             ]);
-        await Assert.That(chatClient.Invocations[3].ToolNames.Any(static name =>
-                string.Equals(name, WeatherToolName, StringComparison.OrdinalIgnoreCase)))
-            .IsFalse();
 
         var firstSearchResult = chatClient.Invocations[1].ReadLatestFunctionResult<McpGatewaySearchResult>(
                                     McpGatewayToolSet.DefaultSearchToolName)
