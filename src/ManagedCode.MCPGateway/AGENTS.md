@@ -41,7 +41,12 @@ For this .NET project:
 ## Applicable Skills
 
 - `mcaf-dotnet`
+- `mcaf-dotnet-analyzer-config`
+- `mcaf-dotnet-code-analysis`
+- `mcaf-dotnet-codeql`
+- `mcaf-dotnet-format`
 - `mcaf-dotnet-features`
+- `mcaf-dotnet-roslynator`
 - `mcaf-testing`
 - `mcaf-dotnet-tunit`
 - `mcaf-dotnet-quality-ci`

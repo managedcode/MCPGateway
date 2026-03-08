@@ -40,7 +40,11 @@ For this .NET project:
 
 ## Applicable Skills
 
+- `mcaf-dotnet-analyzer-config`
+- `mcaf-dotnet-code-analysis`
+- `mcaf-dotnet-format`
 - `mcaf-testing`
+- `mcaf-dotnet-roslynator`
 - `mcaf-dotnet-tunit`
 - `mcaf-dotnet-quality-ci`
 - `mcaf-dotnet-complexity`

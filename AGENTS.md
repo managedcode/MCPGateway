@@ -85,8 +85,12 @@ If no new rule is detected -> do not update the file.
 ### Global Skills
 
 - Core .NET routing: `mcaf-dotnet`, `mcaf-dotnet-features`, `mcaf-testing`, `mcaf-dotnet-tunit`
+- Standardized .NET toolchain: `mcaf-dotnet-analyzer-config`, `mcaf-dotnet-code-analysis`, `mcaf-dotnet-format`, `mcaf-dotnet-roslynator`, `mcaf-dotnet-codeql`
 - Quality and maintainability: `mcaf-dotnet-quality-ci`, `mcaf-dotnet-complexity`, `mcaf-solid-maintainability`
 - Governance and docs: `mcaf-solution-governance`, `mcaf-architecture-overview`, `mcaf-adr-writing`, `mcaf-feature-spec`, `mcaf-ci-cd`
+- Delivery and review: `mcaf-agile-delivery`, `mcaf-code-review`, `mcaf-devex`, `mcaf-documentation`, `mcaf-human-review-planning`, `mcaf-source-control`
+- Cross-cutting quality: `mcaf-nfr`, `mcaf-observability`, `mcaf-security-baseline`
+- Domain-specific optional skills: `mcaf-ml-ai-delivery`, `mcaf-ui-ux`
 - Repo-local extras: `cloc`, `dotnet-strict`, `pre-pr`, `profile`, `quickdup`, `roslynator`
 
 ### Maintainability Limits
@@ -138,7 +142,7 @@ If no new rule is detected -> do not update the file.
 ### Skills (ALL TASKS)
 
 - Bootstrap or refresh MCAF skills from the canonical tutorial and raw GitHub skill folders; do not rely on a shell installer because MCAF `v1.2` is URL-first.
-- When the user asks to sync or use all .NET MCAF skills, enumerate the full available .NET skill inventory instead of assuming the minimal recommended bundle is sufficient, because undercounting the skill set causes stale local bootstrap state.
+- For MCAF skill refresh tasks, treat the current tutorial as the source of truth for which skill folders should exist locally; keep the baseline bundle from the tutorial and add tool-specific `.NET` skills only when this repository is actually standardized on them.
 - Keep repo-local MCAF skills under `.codex/skills/`, not in ad-hoc folders.
 - Keep one workflow per skill folder with a required `SKILL.md`.
 - Keep skill metadata concise and fix the YAML `description` when a skill mis-triggers.
