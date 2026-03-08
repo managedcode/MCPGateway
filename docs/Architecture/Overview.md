@@ -28,6 +28,22 @@ Out of scope:
 
 The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` meta-tools and discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with two meta-tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
 
+## Governance Map
+
+The solution uses root and project-local `AGENTS.md` files so agents can scope work without scanning the whole repository first.
+
+- Root governance: [`AGENTS.md`](../../AGENTS.md)
+- Package project guidance: [`src/ManagedCode.MCPGateway/AGENTS.md`](../../src/ManagedCode.MCPGateway/AGENTS.md)
+- Test project guidance: [`tests/ManagedCode.MCPGateway.Tests/AGENTS.md`](../../tests/ManagedCode.MCPGateway.Tests/AGENTS.md)
+
+```mermaid
+flowchart LR
+    Root["Root AGENTS.md"] --> Package["src/ManagedCode.MCPGateway/AGENTS.md"]
+    Root --> Tests["tests/ManagedCode.MCPGateway.Tests/AGENTS.md"]
+    Package --> SourceTree["Package source and runtime code"]
+    Tests --> TestTree["Integration-style TUnit coverage"]
+```
+
 ## System And Module Map
 
 ```mermaid
@@ -147,3 +163,5 @@ flowchart LR
 - [`docs/ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md`](../ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md)
 - [`docs/Features/SearchQueryNormalizationAndRanking.md`](../Features/SearchQueryNormalizationAndRanking.md)
 - [`AGENTS.md`](../../AGENTS.md)
+- [`src/ManagedCode.MCPGateway/AGENTS.md`](../../src/ManagedCode.MCPGateway/AGENTS.md)
+- [`tests/ManagedCode.MCPGateway.Tests/AGENTS.md`](../../tests/ManagedCode.MCPGateway.Tests/AGENTS.md)

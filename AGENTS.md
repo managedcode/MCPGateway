@@ -73,8 +73,29 @@ If no new rule is detected -> do not update the file.
 - test-trx: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build --report-trx --results-directory ./artifacts/test-results`
 - test-runner-help: `tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests --help`
 - format: `dotnet format ManagedCode.MCPGateway.slnx`
-- skills-validate: `python3 .codex/skills/mcaf-skill-curation/scripts/validate_skills.py .codex/skills`
-- skills-metadata: `python3 .codex/skills/mcaf-skill-curation/scripts/generate_available_skills.py .codex/skills --absolute`
+
+### Rule Precedence
+
+- Read the solution-root `AGENTS.md` first for every task.
+- Read the nearest project-local `AGENTS.md` after the root file when the task touches a specific project subtree.
+- Apply the stricter rule when root and local guidance overlap.
+- If a local rule appears weaker than the root policy, stop and clarify it before editing code.
+- Record justified exceptions in the nearest durable doc such as a local `AGENTS.md`, ADR, or feature doc.
+
+### Global Skills
+
+- Core .NET routing: `mcaf-dotnet`, `mcaf-dotnet-features`, `mcaf-testing`, `mcaf-dotnet-tunit`
+- Quality and maintainability: `mcaf-dotnet-quality-ci`, `mcaf-dotnet-complexity`, `mcaf-solid-maintainability`
+- Governance and docs: `mcaf-solution-governance`, `mcaf-architecture-overview`, `mcaf-adr-writing`, `mcaf-feature-spec`, `mcaf-ci-cd`
+- Repo-local extras: `cloc`, `dotnet-strict`, `pre-pr`, `profile`, `quickdup`, `roslynator`
+
+### Maintainability Limits
+
+- `file_max_loc`: `650`
+- `type_max_loc`: `350`
+- `function_max_loc`: `90`
+- `max_nesting_depth`: `4`
+- `exception_policy`: Temporary limit breaches require an explicit justification in the nearest durable doc and a follow-up path to remove the debt.
 
 ### Task Delivery (ALL TASKS)
 
@@ -116,12 +137,12 @@ If no new rule is detected -> do not update the file.
 
 ### Skills (ALL TASKS)
 
+- Bootstrap or refresh MCAF skills from the canonical tutorial and raw GitHub skill folders; do not rely on a shell installer because MCAF `v1.2` is URL-first.
 - Keep repo-local MCAF skills under `.codex/skills/`, not in ad-hoc folders.
 - Keep one workflow per skill folder with a required `SKILL.md`.
 - Keep skill metadata concise and fix the YAML `description` when a skill mis-triggers.
 - Keep skill folders lean: only `SKILL.md`, `scripts/`, `references/`, `assets/`, and agent metadata when needed.
-- Validate skills after skill changes with `skills-validate`.
-- Regenerate the available-skills metadata block with `skills-metadata` when skill inventory or metadata changes.
+- Do not reference or depend on `mcaf-skill-curation` in this repository until the skill is intentionally added back, because the folder is absent here and stale references break the workflow.
 
 ### Documentation (ALL TASKS)
 

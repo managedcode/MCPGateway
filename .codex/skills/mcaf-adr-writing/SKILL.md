@@ -1,69 +1,61 @@
 ---
 name: mcaf-adr-writing
-description: "Create or update an ADR under `docs/ADR/` with context, decision, alternatives, consequences, rollout, verification, and Mermaid diagrams. Use when changing architecture, dependencies, public boundaries, data flow, or cross-cutting package patterns."
-compatibility: "Requires repository write access; produces Markdown docs with Mermaid diagrams."
+description: "Create or update an ADR under `docs/ADR/` for architectural decisions, dependency changes, data-model changes, or cross-cutting policy shifts. Use `references/adr-template.md` for scaffolding and keep the ADR self-contained, diagrammed, and testable."
+compatibility: "Requires repository write access; produces Markdown ADRs with Mermaid diagrams."
 ---
 
 # MCAF: ADR Writing
 
-## Outputs
+## Trigger On
 
-- `docs/ADR/ADR-XXXX-<short-title>.md` (create or update)
-- update `docs/Architecture/Overview.md` when boundaries or interactions change
+- a dependency, boundary, platform, contract, or data model is changing
+- a design decision has meaningful trade-offs that should be recorded
+- a repo-wide engineering policy needs a durable rationale
 
-## Decision Quality
+## Do Not Use For
 
-Before writing, make the ADR executable:
+- feature-level behaviour details without an architecture decision
+- generic architecture overview content
 
-- decision: one direct sentence
-- scope: what changes and what does not
-- no invented reality: every component exists today or is explicitly part of this change
-- invariants: write them as MUST or MUST NOT statements
-- verification: use exact commands from `AGENTS.md`
-- stakeholders: include what Product, Dev, QA, and DevOps must know
+## Inputs
+
+- `docs/Architecture/Overview.md`
+- related feature docs
+- the nearest `AGENTS.md`
+- current constraints, options, and risks
 
 ## Workflow
 
-1. Confirm the decision scope:
-   - what changes
-   - what stays the same
-   - which module or public surface is affected
-2. Create or update `docs/ADR/ADR-XXXX-<short-title>.md`.
-   - If `docs/ADR/` does not exist yet, create it.
-   - If `docs/templates/ADR-Template.md` exists, use it.
-   - Otherwise create the ADR with these sections:
-     - `## Context`
-     - `## Decision`
-     - `## Diagram`
-     - `## Alternatives`
-     - `## Consequences`
-     - `## Invariants`
-     - `## Rollout And Rollback`
-     - `## Verification`
-     - `## Implementation Plan (step-by-step)`
-3. Write the record:
-   - context and why the change is needed now
-   - a short decision statement
-   - at least one Mermaid diagram
-   - realistic alternatives with pros and cons
-   - consequences, trade-offs, and mitigations
-4. Make it executable:
-   - include invariants that tests or static analysis must prove
-   - include verification commands copied from `AGENTS.md`
-   - explain how we know rollout is safe
-5. Make impacts explicit:
-   - code and modules affected
-   - config or dependency changes
-   - backward compatibility strategy
-6. For this repo, anchor the ADR to real package boundaries:
-   - `src/ManagedCode.MCPGateway/`
-   - `tests/ManagedCode.MCPGateway.Tests/`
-   - public abstractions in `Abstractions/`
-   - DI registration in `Registration/`
-7. If the decision changes package boundaries or search/invocation flow, update `docs/Architecture/Overview.md`.
+1. Start from the concrete decision that must be made now.
+2. If the ADR is missing, scaffold it from `references/adr-template.md`.
+3. Record:
+   - context and problem
+   - chosen decision
+   - alternatives considered
+   - trade-offs and consequences
+   - implementation plan
+4. Add diagrams only when they remove ambiguity.
+5. Link the ADR to affected feature docs and `docs/Architecture/Overview.md`.
 
-## Guardrails
+## Deliver
 
-- ADRs are self-contained. Do not rely on hidden chat context.
-- ADRs justify why. Feature specs describe what the system does.
-- If you cannot state the decision in one or two sentences, the ADR is not ready.
+- `docs/ADR/ADR-XXXX-<short-title>.md`
+- linked updates to architecture docs when the decision changes boundaries
+
+## Validate
+
+- the decision and rejected alternatives are explicit
+- trade-offs are concrete, not hand-wavy
+- implementation impact is clear
+- a future engineer can understand why this path was chosen
+
+## Load References
+
+- start with `references/adr-template.md`
+- use `references/ADR-FORMATS.md` only for numbering or formatting conventions
+
+## Example Requests
+
+- "Write an ADR for moving to event-driven notifications."
+- "Document why we are adding PostgreSQL instead of keeping SQLite."
+- "Capture the policy decision behind local project AGENTS files."

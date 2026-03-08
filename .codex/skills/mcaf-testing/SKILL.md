@@ -1,79 +1,70 @@
 ---
 name: mcaf-testing
-description: "Add or update automated tests for a bugfix, feature, or refactor using this repository's TUnit-based rules from `AGENTS.md`. Use TDD where possible, prefer integration-style gateway tests, and verify local tools, MCP tools, vector search, and lexical fallback with real assertions."
-compatibility: "Requires the repository build and test tooling; uses commands from AGENTS.md."
+description: "Add or update automated tests for a change using the repository’s verification rules in `AGENTS.md`. Use when implementing a feature, bugfix, refactor, or regression test; prefer stable integration/API/UI coverage and pull deeper test strategy from the bundled references."
+compatibility: "Requires the repository’s build and test tooling; uses commands from root or local `AGENTS.md`."
 ---
 
 # MCAF: Testing
 
-## Outputs
+## Trigger On
 
-- new or updated automated tests that encode documented behavior
-- for new behavior and bugfixes: tests drive the change when practical
-- updated verification sections in docs when those docs exist and the test plan changed
-- evidence of verification: commands run, result, and artifact path when applicable
+- implementing a feature or bugfix
+- adding a regression test for a failure
+- protecting a refactor with automated verification
 
-For this repository:
+## Do Not Use For
 
-- test framework is TUnit
-- package behavior tests live in `tests/ManagedCode.MCPGateway.Tests/`
-- repository-wide execution uses `dotnet test --solution ManagedCode.MCPGateway.slnx ...`
-- xUnit is not allowed here
+- repo-wide delivery policy with no test change
+- documentation-only changes unless they alter executable verification
+
+## Inputs
+
+- the nearest `AGENTS.md`
+- the changed behaviour and touched boundaries
+- existing tests near the impacted code path
 
 ## Workflow
 
-1. Read `AGENTS.md`:
-   - canonical commands: `build`, `analyze`, `test`, `format`, `pack`
-   - testing rules and verification order
-2. Start from the docs that define behavior when they exist:
-   - `docs/Features/*` for user and system flows
-   - `docs/ADR/*` for architectural invariants
-   - if docs do not exist yet, derive scenarios from the task, `README.md`, public API, and current tests
-3. Follow `AGENTS.md` verification timing:
-   - use the smallest scope that proves the change first
-   - expand to the required suite after the focused tests pass
-4. Define the scenarios you must prove:
-   - positive
-   - negative
-   - edge
-   - for ADRs, invariants and must-not-happen behaviors
-5. Choose the highest meaningful test level:
-   - prefer integration-style package tests when behavior crosses boundaries
-   - use smaller isolated tests only when higher-level coverage is impractical
-6. Implement via a TDD loop when possible:
-   - write the test first
-   - confirm it fails for the right reason
-   - implement the smallest change to make it pass
-   - refactor while keeping tests green
-7. Use repository-specific TUnit conventions:
-   - prefer `TUnit.Core.Test` for attributes
-   - use `Assert.That(...)` assertions
-   - run solution tests with `dotnet test --solution ...`
-   - never add `xunit` packages or assertions
-8. Write tests that assert outcomes, not just execution:
-   - returned values and search results
-   - normalized tool outputs
-   - emitted side effects when they are observable
-9. Keep tests stable:
-   - deterministic fixtures
-   - no hidden network dependencies unless the test is explicitly about transport
-   - avoid sleep-based timing
-10. For `ManagedCode.MCPGateway`, keep coverage focused on real gateway behavior:
-   - local tool indexing and invocation
-   - MCP tool indexing and invocation
-   - vector search behavior
-   - lexical fallback behavior
-11. Run verification in layers:
-   - focused or changed tests first when practical
-   - `build`
-   - `analyze` if the change touched code paths that could trip analyzers
-   - `test`
-   - `pack` when package output is affected
-12. Keep docs and skills consistent:
-   - if you changed test commands or rules, update `AGENTS.md` and relevant skills in the same change
+1. Read the repo’s real verification commands from `AGENTS.md`.
+2. Start with a failing test first when the change adds behaviour or fixes a bug.
+3. Start with the smallest meaningful test scope:
+   - new or changed tests
+   - related suite
+   - broader regressions
+4. When the stack is .NET, use `mcaf-dotnet` as the orchestration skill when the task spans code, tests, and verification, and route framework mechanics through exactly one matching skill:
+   - `mcaf-dotnet-xunit`
+   - `mcaf-dotnet-tunit`
+   - `mcaf-dotnet-mstest`
+5. Prefer integration, API, or UI coverage when behaviour crosses boundaries.
+6. Prove the user flow or caller-visible system flow, not just internal details.
+7. Add a regression test for every bug that can be captured reliably.
+8. If the stack is .NET and production code changed, do not stop at tests only. Finish with the repo-defined format and analyzer pass as well.
+9. Use deeper testing references only when the repo’s current strategy is unclear.
 
-## Guardrails
+## Deliver
 
-- All test discipline and prohibitions come from `AGENTS.md`. This skill must not contradict it.
-- Do not remove tests to get a green build.
-- Do not downgrade behavior coverage from integration-style tests without a concrete reason.
+- automated tests close to the changed behaviour
+- verification results that match the repo’s real commands
+
+## Validate
+
+- the new behaviour is covered at the right level
+- the main user flow or caller-visible system flow is proven
+- tests assert meaningful outcomes, not implementation trivia
+- coverage expectations from `AGENTS.md` are met, or the exception is documented
+- the verification sequence matches `AGENTS.md`
+- for .NET changes, tests were not treated as a substitute for formatting or analyzer gates
+- broader suites are run after there is something real to verify
+
+## Load References
+
+- read `references/test-planning.md` first
+- open `references/automated-testing.md` for deeper strategy and trade-offs
+- for broader .NET implementation flow, use `mcaf-dotnet`
+- for .NET framework-specific mechanics, use exactly one of `mcaf-dotnet-xunit`, `mcaf-dotnet-tunit`, or `mcaf-dotnet-mstest`
+
+## Example Requests
+
+- "Add tests for this bugfix."
+- "Protect this refactor with regression coverage."
+- "Choose the right test level for this API change."
