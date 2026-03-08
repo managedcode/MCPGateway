@@ -5,6 +5,7 @@ namespace ManagedCode.MCPGateway;
 
 public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbeddingStore, IDisposable
 {
+    private const long CacheEntrySize = 1;
     private readonly IMemoryCache _cache;
     private readonly IDisposable? _ownedCache;
 
@@ -47,8 +48,8 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbedd
         foreach (var embedding in embeddings)
         {
             var clonedEmbedding = Clone(embedding);
-            _cache.Set(ExactCacheKey.FromEmbedding(clonedEmbedding), clonedEmbedding);
-            _cache.Set(FallbackCacheKey.FromEmbedding(clonedEmbedding), clonedEmbedding);
+            SetCacheEntry(ExactCacheKey.FromEmbedding(clonedEmbedding), clonedEmbedding);
+            SetCacheEntry(FallbackCacheKey.FromEmbedding(clonedEmbedding), clonedEmbedding);
         }
 
         return Task.CompletedTask;
@@ -75,6 +76,13 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbedd
         };
 
     private static string NormalizeToolId(string toolId) => toolId.ToUpperInvariant();
+
+    private void SetCacheEntry(object key, McpGatewayToolEmbedding embedding)
+    {
+        using var entry = _cache.CreateEntry(key);
+        entry.Size = CacheEntrySize;
+        entry.Value = embedding;
+    }
 
     private readonly record struct ExactCacheKey(
         string NormalizedToolId,

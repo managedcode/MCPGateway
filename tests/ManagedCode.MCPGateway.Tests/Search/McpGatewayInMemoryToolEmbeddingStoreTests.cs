@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Caching.Memory;
+
 namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayInMemoryToolEmbeddingStoreTests
@@ -86,6 +88,29 @@ public sealed class McpGatewayInMemoryToolEmbeddingStoreTests
         await Assert.That(result.Count).IsEqualTo(1);
         await Assert.That(result[0].EmbeddingGeneratorFingerprint).IsEqualTo("fingerprint-b");
         await Assert.That(result[0].Vector[0]).IsEqualTo(9f);
+    }
+
+    [TUnit.Core.Test]
+    public async Task UpsertAsync_WorksWithSizeLimitedSharedCache()
+    {
+        using var cache = new MemoryCache(new MemoryCacheOptions
+        {
+            SizeLimit = 10
+        });
+        using var store = new McpGatewayInMemoryToolEmbeddingStore(cache);
+
+        await store.UpsertAsync(
+        [
+            CreateEmbedding("local:github_search_issues", "github_search_issues", "hash-1", "fingerprint-a", [1f, 2f, 3f])
+        ]);
+
+        var result = await store.GetAsync(
+        [
+            CreateLookup("local:github_search_issues", "hash-1", "fingerprint-a"),
+            CreateLookup("local:github_search_issues", "hash-1")
+        ]);
+
+        await Assert.That(result.Count).IsEqualTo(2);
     }
 
     private static async Task<McpGatewayInMemoryToolEmbeddingStore> CreateStoreAsync(params McpGatewayToolEmbedding[] embeddings)
