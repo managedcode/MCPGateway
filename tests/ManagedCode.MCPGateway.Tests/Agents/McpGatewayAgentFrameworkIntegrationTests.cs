@@ -48,7 +48,7 @@ public sealed class McpGatewayAgentFrameworkIntegrationTests
 
         await Assert.That(registeredTools.Count).IsEqualTo(GatewayIntegrationTestSupport.CatalogToolCount);
         await Assert.That(response.Text).IsEqualTo(GatewayIntegrationTestSupport.FinalAssistantResponse);
-        await GatewayIntegrationTestSupport.AssertAutoDiscoveryFlow(modelClient, "lexical");
+        await GatewayIntegrationTestSupport.AssertAutoDiscoveryFlow(modelClient, "graph");
     }
 
     [TUnit.Core.Test]
@@ -57,7 +57,7 @@ public sealed class McpGatewayAgentFrameworkIntegrationTests
         var embeddingGenerator = GatewayIntegrationTestSupport.CreateAutoDiscoveryEmbeddingGenerator();
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            GatewayIntegrationTestSupport.ConfigureFiftyToolCatalog,
+            ConfigureFiftyToolEmbeddingCatalog,
             embeddingGenerator: embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
@@ -95,5 +95,11 @@ public sealed class McpGatewayAgentFrameworkIntegrationTests
         await Assert.That(response.Text).IsEqualTo(GatewayIntegrationTestSupport.FinalAssistantResponse);
         await Assert.That(embeddingGenerator.Calls.Count >= 3).IsTrue();
         await GatewayIntegrationTestSupport.AssertAutoDiscoveryFlow(modelClient, "vector");
+    }
+
+    private static void ConfigureFiftyToolEmbeddingCatalog(McpGatewayOptions options)
+    {
+        options.SearchStrategy = McpGatewaySearchStrategy.Embeddings;
+        GatewayIntegrationTestSupport.ConfigureFiftyToolCatalog(options);
     }
 }

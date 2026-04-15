@@ -26,12 +26,23 @@ internal sealed class TestMcpServerHost(
     public IReadOnlyList<JsonObject> CapturedMeta { get; } = capturedMeta;
 
     public static async Task<TestMcpServerHost> StartAsync(CancellationToken cancellationToken = default)
+        => await StartAsync(
+            static builder => builder.WithToolsFromAssembly(typeof(TestMcpTools).Assembly),
+            cancellationToken);
+
+    public static async Task<TestMcpServerHost> StartGraphAsync(CancellationToken cancellationToken = default)
+        => await StartAsync(
+            static builder => builder.WithTools<TestMcpGraphTools>(),
+            cancellationToken);
+
+    private static async Task<TestMcpServerHost> StartAsync(
+        Action<IMcpServerBuilder> configureTools,
+        CancellationToken cancellationToken)
     {
         var capturedMeta = new List<JsonObject>();
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
-        services.AddMcpServer()
-            .WithToolsFromAssembly(typeof(TestMcpTools).Assembly);
+        configureTools(services.AddMcpServer());
 
         var serviceProvider = services.BuildServiceProvider();
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
@@ -148,6 +159,53 @@ internal sealed class TestMcpServerHost(
         public static string ReturnPlainText(
             [Description("Payload query text.")] string query)
             => $"plain:{query}";
+    }
+
+    private sealed class TestMcpGraphTools
+    {
+        [McpServerTool(
+            Name = "story_item_search",
+            Title = "Search story feed items",
+            Idempotent = true,
+            ReadOnly = true,
+            UseStructuredContent = true)]
+        [Description("Search story feed items by query text before detail lookup or comments.")]
+        public static TestMcpSearchResult SearchStoryItems(
+            [Description("Story feed search query.")] string query)
+            => new(query, "story-search");
+
+        [McpServerTool(
+            Name = "story_item_detail",
+            Title = "Read story feed item detail",
+            Idempotent = true,
+            ReadOnly = true,
+            UseStructuredContent = true)]
+        [Description("Read story feed item detail by story id after search resolves the item.")]
+        public static TestMcpSearchResult ReadStoryItem(
+            [Description("Story item id.")] string storyId)
+            => new(storyId, "story-detail");
+
+        [McpServerTool(
+            Name = "story_comments_list",
+            Title = "List story comments",
+            Idempotent = true,
+            ReadOnly = true,
+            UseStructuredContent = true)]
+        [Description("List story comments after a story item has been found.")]
+        public static TestMcpSearchResult ListStoryComments(
+            [Description("Story item id.")] string storyId)
+            => new(storyId, "story-comments");
+
+        [McpServerTool(
+            Name = "people_profile_search",
+            Title = "Search people profiles",
+            Idempotent = true,
+            ReadOnly = true,
+            UseStructuredContent = true)]
+        [Description("Search people profiles by name, relationship, or organization.")]
+        public static TestMcpSearchResult SearchPeople(
+            [Description("People profile search query.")] string query)
+            => new(query, "people-search");
     }
 
     private sealed record TestMcpSearchResult(string Query, string Source);

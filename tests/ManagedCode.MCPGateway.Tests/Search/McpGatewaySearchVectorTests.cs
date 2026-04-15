@@ -12,7 +12,7 @@ public sealed partial class McpGatewaySearchTests
     {
         var embeddingGenerator = new TestEmbeddingGenerator();
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
@@ -36,7 +36,7 @@ public sealed partial class McpGatewaySearchTests
     {
         var embeddingGenerator = new TestEmbeddingGenerator();
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
@@ -55,7 +55,7 @@ public sealed partial class McpGatewaySearchTests
     {
         var embeddingGenerator = new TestEmbeddingGenerator();
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
@@ -75,7 +75,7 @@ public sealed partial class McpGatewaySearchTests
     {
         var embeddingGenerator = new TestEmbeddingGenerator();
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
@@ -104,7 +104,7 @@ public sealed partial class McpGatewaySearchTests
         services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
             McpGatewayServiceKeys.EmbeddingGenerator,
             keyedEmbeddingGenerator);
-        services.AddMcpGateway(ConfigureSearchTools);
+        services.AddMcpGateway(ConfigureVectorSearchTools);
 
         await using var serviceProvider = services.BuildServiceProvider();
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
@@ -126,7 +126,7 @@ public sealed partial class McpGatewaySearchTests
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
         services.AddScoped<IEmbeddingGenerator<string, Embedding<float>>>(_ => new ScopedTestEmbeddingGenerator(tracker));
-        services.AddMcpGateway(ConfigureSearchTools);
+        services.AddMcpGateway(ConfigureVectorSearchTools);
 
         await using var serviceProvider = services.BuildServiceProvider(new ServiceProviderOptions
         {
@@ -142,5 +142,11 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
         await Assert.That(tracker.InstanceIds.Distinct().Count()).IsEqualTo(2);
         await Assert.That(tracker.Calls.Count).IsEqualTo(2);
+    }
+
+    private static void ConfigureVectorSearchTools(McpGatewayOptions options)
+    {
+        options.SearchStrategy = McpGatewaySearchStrategy.Embeddings;
+        ConfigureSearchTools(options);
     }
 }

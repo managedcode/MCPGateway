@@ -99,7 +99,7 @@ Positive:
 - direct `IChatClient` hosts get a one-line staged auto-discovery wrapper
 - agent hosts can reuse the same staged wrapper without a separate host-specific package module
 - the core package stays generic and avoids a hard Agent Framework dependency
-- deterministic tests can validate both chat-client and agent loops against the same 50-tool gateway catalog in lexical fallback mode and vector mode
+- deterministic tests can validate both chat-client and agent loops against the same 50-tool gateway catalog in default graph mode and opt-in vector mode
 
 Trade-offs:
 
@@ -110,7 +110,7 @@ Mitigations:
 
 - keep README examples for both `IChatClient` and Agent Framework
 - keep `McpGatewayToolSet.AddTools(...)` and `ChatOptions.AddMcpGatewayTools(...)` as the low-level escape hatch
-- keep integration tests covering both host patterns with a scenario-driven test chat client and both search modes
+- keep integration tests covering both host patterns with a scenario-driven test chat client and both graph/vector search modes
 
 ## Invariants
 
@@ -120,7 +120,7 @@ Mitigations:
 - `McpGatewayAutoDiscoveryChatClient` MUST start each host loop with only the two gateway meta-tools visible unless the host already supplied other non-gateway tools.
 - `McpGatewayAutoDiscoveryChatClient` MUST replace the discovered proxy-tool set when a newer gateway search result is present instead of accumulating old discovered tools forever.
 - The core package MUST stay generic around `AITool` composition and MUST NOT require Microsoft Agent Framework for normal package use.
-- Chat-client and agent integration tests MUST prove the staged auto-discovery lifecycle against a realistic multi-tool catalog in both lexical fallback mode and vector mode.
+- Chat-client and agent integration tests MUST prove the staged auto-discovery lifecycle against a realistic multi-tool catalog in both default graph mode and opt-in vector mode.
 
 ## Rollout And Rollback
 

@@ -7,7 +7,12 @@ public sealed class McpGatewayOptions
 {
     private readonly McpGatewayRegistrationCollection _sourceRegistrations = new();
 
-    public McpGatewaySearchStrategy SearchStrategy { get; set; } = McpGatewaySearchStrategy.Auto;
+    public McpGatewaySearchStrategy SearchStrategy { get; set; } = McpGatewaySearchStrategy.Graph;
+
+    public McpGatewayMarkdownLdGraphSource MarkdownLdGraphSource { get; set; } =
+        McpGatewayMarkdownLdGraphSource.GeneratedToolGraph;
+
+    public string? MarkdownLdGraphPath { get; set; }
 
     public McpGatewaySearchQueryNormalization SearchQueryNormalization { get; set; } =
         McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable;
@@ -61,6 +66,22 @@ public sealed class McpGatewayOptions
         bool disposeClient = true,
         string? displayName = null)
         => ConfigureRegistrations(registrations => registrations.AddMcpClientFactory(sourceId, clientFactory, disposeClient, displayName));
+
+    public McpGatewayOptions UseGeneratedMarkdownLdGraph()
+    {
+        MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.GeneratedToolGraph;
+        MarkdownLdGraphPath = null;
+        return this;
+    }
+
+    public McpGatewayOptions UseMarkdownLdGraphFile(string graphPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(graphPath);
+
+        MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.FileSystem;
+        MarkdownLdGraphPath = graphPath;
+        return this;
+    }
 
     private McpGatewayOptions ConfigureRegistrations(Action<McpGatewayRegistrationCollection> configure)
     {

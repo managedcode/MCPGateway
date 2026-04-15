@@ -18,9 +18,9 @@ internal static class GatewayIntegrationTestSupport
     public const string WeatherInvokeQuery = "Kyiv";
     public const string PortfolioInvokeQuery = "ACME";
     public const string FinalAssistantResponse = "done:weather:Kyiv|portfolio:ACME";
-    private const string WeatherLexicalQuery = "kyiv weather forecast";
+    private const string WeatherGraphQuery = "kyiv weather forecast";
     private const string WeatherSemanticQuery = "umbrella planning for kyiv";
-    private const string PortfolioLexicalQuery = "portfolio market value exposure billing";
+    private const string PortfolioGraphQuery = "portfolio market value exposure billing";
     private const string PortfolioSemanticQuery = "brokerage holdings snapshot";
 
     public static void ConfigureFiftyToolCatalog(McpGatewayOptions options)
@@ -88,8 +88,8 @@ internal static class GatewayIntegrationTestSupport
 
     public static IReadOnlyList<TestChatClientScenario> CreateAutoDiscoveryScenarios(bool useSemanticQueries)
     {
-        var firstSearchQuery = useSemanticQueries ? WeatherSemanticQuery : WeatherLexicalQuery;
-        var secondSearchQuery = useSemanticQueries ? PortfolioSemanticQuery : PortfolioLexicalQuery;
+        var firstSearchQuery = useSemanticQueries ? WeatherSemanticQuery : WeatherGraphQuery;
+        var secondSearchQuery = useSemanticQueries ? PortfolioSemanticQuery : PortfolioGraphQuery;
 
         return
         [

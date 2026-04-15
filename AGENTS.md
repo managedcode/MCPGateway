@@ -148,9 +148,12 @@ If no new rule is detected -> do not update the file.
 - Implement code and tests together for every behavior change.
 - Keep the gateway reusable as a NuGet library, not as an app-specific host.
 - Preserve one public execution surface for local `AITool` instances and MCP tools.
-- Preserve one searchable catalog that supports vector ranking when embeddings are available and lexical fallback when they are not.
+- Preserve one searchable catalog that uses Markdown-LD graph ranking by default and supports vector ranking only when embeddings are explicitly selected.
+- Tool search must support sparse high-confidence selection plus an explicit related/next-step expansion path; do not make consumers pass the full tool catalog when a smaller capability set can answer the request.
 - For multilingual or noisy search inputs, prefer a generic English-normalization step before ranking when an AI/query-rewrite component is available, because the user wants the searchable representation to converge to English instead of relying only on language-specific token overlap.
 - Keep meta-tools available through `McpGatewayToolSet` and `IMcpGateway.CreateMetaTools(...)`.
+- When Markdown-LD graph search is selected, startup or explicit index initialization must build and validate the tool graph before search/tool discovery so LLM-facing MCP tool selection is based on the correct focused graph.
+- Markdown-LD graph search must support both startup-generated graphs and filesystem-provided graph files; tests for file-backed graph mode must generate the graph fixture through the package flow rather than relying on a hand-authored static artifact.
 - If a user adds or corrects a persistent workflow rule, update `AGENTS.md` first and only then continue with the task.
 
 ### Repository Layout
@@ -209,7 +212,7 @@ If no new rule is detected -> do not update the file.
   - local tool indexing and invocation
   - MCP tool indexing and invocation
   - vector search behavior
-  - lexical fallback behavior
+  - Markdown-LD graph search and vector-to-graph fallback behavior
 - Keep embedding-based search covered with deterministic local tests by using a fake or test-only embedding generator.
 - Keep request context behavior covered when search or invocation consumes contextual inputs.
 - Do not remove tests to get green builds.
@@ -252,7 +255,8 @@ If no new rule is detected -> do not update the file.
 - Prefer direct generic DI registrations such as `services.TryAddSingleton<IService, Implementation>()` over lambda alias registrations when wiring package services, because the lambda style has already been called out as unreadable and error-prone in this repository.
 - Keep runtime services DI-native from their public/internal constructors; types such as `McpGatewayRegistry` must be creatable through `IOptions<McpGatewayOptions>` and other DI-managed dependencies rather than ad-hoc state-only constructors, because the package design requires services to live fully inside the container.
 - When emitting package identity to external protocols such as MCP client info, never hardcode a fake version string; use the actual assembly/build version so runtime metadata stays aligned with the package being shipped.
-- For search-quality improvements, prefer mathematical or statistical ranking changes over hardcoded phrase lists or ad-hoc query text hacks, because the user explicitly wants tokenizer search to improve through general scoring behavior rather than manual exceptions.
+- For search-quality improvements, prefer mathematical, statistical, or graph-ranking changes over hardcoded phrase lists or ad-hoc query text hacks, because the user explicitly wants token-distance search to improve through general scoring behavior rather than manual exceptions.
+- Do not keep a separate local tokenizer search path when `ManagedCode.MarkdownLd.Kb` already provides token-based graph search; route tokenizer-backed retrieval through Markdown-LD so the package does not carry duplicate ranking implementations.
 - Prefer framework-provided in-memory caching primitives such as `IMemoryCache` over custom process-local storage implementations when they cover the lifecycle and lookup needs, because self-rolled memory stores age poorly and make scaling/concurrency behavior harder to trust.
 - Never keep legacy compatibility shims, obsolete paths, or lingering documentation references to removed implementations when a replacement is accepted, because this repository should converge on the current design instead of carrying dead historical baggage.
 - Never leave `ManagedCode`-prefixed DI/setup extension method names such as `AddManagedCodeMcpGateway(...)` in the public API once concise `McpGateway` naming is available, because these branded leftovers make the package surface inconsistent and read like stale legacy.

@@ -4,5 +4,6 @@ public enum McpGatewaySearchStrategy
 {
     Auto = 0,
     Embeddings = 1,
-    Tokenizer = 2
+    MarkdownLd = 2,
+    Graph = MarkdownLd
 }

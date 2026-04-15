@@ -6,13 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ManagedCode.MarkdownLd.Kb" />
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    <PackageReference Include="Microsoft.ML.Tokenizers" />
-    <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" />
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="ModelContextProtocol" />
   </ItemGroup>

@@ -18,7 +18,7 @@ public sealed partial class McpGatewaySearchTests
         });
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
@@ -28,17 +28,53 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(buildResult.IsVectorSearchEnabled).IsFalse();
         await Assert.That(buildResult.VectorizedToolCount).IsEqualTo(0);
         await Assert.That(buildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "embedding_count_mismatch")).IsTrue();
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(buildResult.IsGraphSearchEnabled).IsTrue();
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
     }
 
     [TUnit.Core.Test]
-    public async Task McpGatewayOptions_DefaultSearchConfigurationUsesAutoAndTopFiveLimit()
+    public async Task McpGatewayOptions_DefaultSearchConfigurationUsesGraphAndTopFiveLimit()
     {
         var options = new McpGatewayOptions();
 
-        await Assert.That(options.SearchStrategy).IsEqualTo(McpGatewaySearchStrategy.Auto);
+        await Assert.That(options.SearchStrategy).IsEqualTo(McpGatewaySearchStrategy.Graph);
+        await Assert.That(options.MarkdownLdGraphSource).IsEqualTo(McpGatewayMarkdownLdGraphSource.GeneratedToolGraph);
+        await Assert.That(options.MarkdownLdGraphPath).IsNull();
         await Assert.That(options.SearchQueryNormalization).IsEqualTo(McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable);
         await Assert.That(options.DefaultSearchLimit).IsEqualTo(5);
+    }
+
+    [TUnit.Core.Test]
+    public async Task McpGatewayOptions_UseMarkdownLdGraphFileSelectsFileSystemSource()
+    {
+        var options = new McpGatewayOptions();
+
+        options.UseMarkdownLdGraphFile("/tmp/mcp-tools.graph.json");
+
+        await Assert.That(options.MarkdownLdGraphSource).IsEqualTo(McpGatewayMarkdownLdGraphSource.FileSystem);
+        await Assert.That(options.MarkdownLdGraphPath).IsEqualTo("/tmp/mcp-tools.graph.json");
+    }
+
+    [TUnit.Core.Test]
+    public async Task BuildIndexAsync_DefaultGraphStrategyDoesNotCallEmbeddingGenerator()
+    {
+        var embeddingGenerator = new TestEmbeddingGenerator(new TestEmbeddingGeneratorOptions
+        {
+            ThrowOnInput = static _ => true
+        });
+
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigureSearchTools,
+            embeddingGenerator);
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var buildResult = await gateway.BuildIndexAsync();
+
+        await Assert.That(buildResult.IsGraphSearchEnabled).IsTrue();
+        await Assert.That(buildResult.IsVectorSearchEnabled).IsFalse();
+        await Assert.That(buildResult.VectorizedToolCount).IsEqualTo(0);
+        await Assert.That(embeddingGenerator.Calls.Count).IsEqualTo(0);
+        await Assert.That(buildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "embedding_failed")).IsFalse();
     }
 
     [TUnit.Core.Test]
@@ -61,7 +97,7 @@ public sealed partial class McpGatewaySearchTests
         });
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 

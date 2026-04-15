@@ -1,3 +1,4 @@
+using ManagedCode.MarkdownLd.Kb.Pipeline;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -21,33 +22,37 @@ internal sealed partial class McpGatewayRuntime
 
     private sealed record ScoredToolEntry(ToolCatalogEntry Entry, double Score);
 
-    private sealed record RetrievalCandidate(
-        ToolCatalogEntry Entry,
-        double Bm25Score,
-        double TokenSimilarity,
-        double CharacterNGramSimilarity,
-        double HeuristicLexicalScore);
-
     private sealed record ToolCatalogEntry(
         McpGatewayToolDescriptor Descriptor,
         AITool Tool,
         string Document,
-        IReadOnlyList<TokenizedSearchField> SearchFields,
-        IReadOnlySet<string> LexicalTerms,
-        TokenSearchProfile TokenProfile,
-        TokenSearchProfile CharacterNGramProfile,
         float[]? Vector = null,
         double Magnitude = 0d);
 
     private sealed record ToolCatalogSnapshot(
         IReadOnlyList<ToolCatalogEntry> Entries,
         bool HasVectors,
-        IReadOnlyDictionary<string, double> TokenInverseDocumentFrequencies,
-        IReadOnlyDictionary<string, double> CharacterNGramInverseDocumentFrequencies,
-        double AverageSearchFieldLength)
+        ToolGraphSearchIndex? GraphIndex)
     {
-        public static ToolCatalogSnapshot Empty { get; } = new([], false, EmptyTokenWeights, EmptyTokenWeights, 1d);
+        public static ToolCatalogSnapshot Empty { get; } = new([], false, null);
     }
+
+    private sealed record ToolGraphSearchIndex(
+        KnowledgeGraph Graph,
+        IReadOnlyDictionary<string, ToolCatalogEntry> EntriesByNodeId,
+        int NodeCount,
+        int EdgeCount)
+    {
+        public bool CanSearch => Graph.CanSearchByTokenDistance && EntriesByNodeId.Count > 0;
+    }
+
+    private sealed record ToolGraphDocumentSource(
+        McpGatewayToolDescriptor Descriptor,
+        string Document,
+        Uri DocumentUri,
+        string SourcePath,
+        IReadOnlySet<string> Groups,
+        string Operation);
 
     private sealed record RuntimeState(
         ToolCatalogSnapshot Snapshot,
@@ -57,27 +62,6 @@ internal sealed partial class McpGatewayRuntime
         public static RuntimeState Empty { get; } = new(ToolCatalogSnapshot.Empty, -1, false);
 
         public static RuntimeState Disposed { get; } = new(ToolCatalogSnapshot.Empty, -1, true);
-    }
-
-    private sealed record WeightedTextSegment(string Text, double Weight);
-
-    private sealed record TokenizedSearchField(
-        double Weight,
-        int Length,
-        IReadOnlyDictionary<string, double> TermWeights,
-        IReadOnlyDictionary<string, double> CharacterNGramWeights);
-
-    private sealed record TokenSearchProfile(
-        IReadOnlyDictionary<string, double> TermWeights,
-        IReadOnlySet<string> Terms,
-        double Magnitude,
-        double TotalWeight)
-    {
-        public static TokenSearchProfile Empty { get; } = new(
-            EmptyTokenWeights,
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-            0d,
-            0d);
     }
 
     private sealed record SearchInput(

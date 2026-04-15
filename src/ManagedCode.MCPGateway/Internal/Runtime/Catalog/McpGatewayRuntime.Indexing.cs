@@ -124,42 +124,17 @@ internal sealed partial class McpGatewayRuntime
                     continue;
                 }
 
-                var tokenSearchSegments = BuildDescriptorTokenSearchSegments(descriptor);
-                var searchFields = BuildTokenizedSearchFields(tokenSearchSegments);
                 entries.Add(new ToolCatalogEntry(
                     descriptor,
                     tool,
-                    BuildDescriptorDocument(descriptor),
-                    searchFields,
-                    BuildLexicalTerms(tokenSearchSegments),
-                    TokenSearchProfile.Empty,
-                    TokenSearchProfile.Empty));
+                    BuildDescriptorDocument(descriptor)));
             }
-        }
-
-        var rawTokenProfiles = entries
-            .Select(entry => BuildTokenSearchProfile(entry.SearchFields))
-            .ToList();
-        var rawCharacterNGramProfiles = entries
-            .Select(entry => BuildCharacterNGramProfile(entry.SearchFields))
-            .ToList();
-        var tokenInverseDocumentFrequencies = BuildTokenInverseDocumentFrequencies(rawTokenProfiles);
-        var characterNGramInverseDocumentFrequencies = BuildTokenInverseDocumentFrequencies(rawCharacterNGramProfiles);
-        var averageSearchFieldLength = CalculateAverageSearchFieldLength(entries);
-        for (var index = 0; index < entries.Count; index++)
-        {
-            entries[index] = entries[index] with
-            {
-                TokenProfile = ApplyTokenInverseDocumentFrequencies(rawTokenProfiles[index], tokenInverseDocumentFrequencies),
-                CharacterNGramProfile = ApplyTokenInverseDocumentFrequencies(
-                    rawCharacterNGramProfiles[index],
-                    characterNGramInverseDocumentFrequencies)
-            };
         }
 
         var vectorizedToolCount = 0;
         var isVectorSearchEnabled = false;
-        if (entries.Count > 0 && _searchStrategy is not McpGatewaySearchStrategy.Tokenizer)
+        if (entries.Count > 0 &&
+            _searchStrategy is McpGatewaySearchStrategy.Auto or McpGatewaySearchStrategy.Embeddings)
         {
             await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
             await using var embeddingStoreLease = ResolveToolEmbeddingStore();
@@ -289,28 +264,49 @@ internal sealed partial class McpGatewayRuntime
             isVectorSearchEnabled = vectorizedToolCount > 0 && embeddingGenerator is not null;
         }
 
+        ToolGraphSearchIndex? graphIndex = null;
+        if (entries.Count > 0 && ShouldBuildGraphSearchIndex())
+        {
+            try
+            {
+                graphIndex = await BuildToolGraphSearchIndexAsync(entries, diagnostics, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                diagnostics.Add(new McpGatewayDiagnostic(
+                    GraphBuildFailedDiagnosticCode,
+                    string.Format(CultureInfo.InvariantCulture, GraphBuildFailedMessageFormat, ex.GetBaseException().Message)));
+                _logger.LogWarning(ex, GatewayGraphBuildFailedLogMessage);
+            }
+        }
+
         var snapshot = new ToolCatalogSnapshot(
             entries
                 .OrderBy(static item => item.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
                 .ThenBy(static item => item.Descriptor.SourceId, StringComparer.OrdinalIgnoreCase)
                 .ToList(),
             isVectorSearchEnabled,
-            tokenInverseDocumentFrequencies,
-            characterNGramInverseDocumentFrequencies,
-            averageSearchFieldLength);
+            graphIndex);
 
         TryUpdateState(snapshot, registrySnapshot.Version);
 
         _logger.LogInformation(
             GatewayIndexRebuiltLogMessage,
             snapshot.Entries.Count,
-            vectorizedToolCount);
+            vectorizedToolCount,
+            graphIndex?.NodeCount ?? 0,
+            graphIndex?.EdgeCount ?? 0);
 
         return new McpGatewayIndexBuildResult(
             snapshot.Entries.Count,
             vectorizedToolCount,
             snapshot.HasVectors,
-            diagnostics);
+            diagnostics)
+        {
+            IsGraphSearchEnabled = graphIndex?.CanSearch ?? false,
+            GraphNodeCount = graphIndex?.NodeCount ?? 0,
+            GraphEdgeCount = graphIndex?.EdgeCount ?? 0
+        };
     }
 
     private void TryUpdateState(ToolCatalogSnapshot snapshot, int snapshotVersion)
@@ -330,24 +326,6 @@ internal sealed partial class McpGatewayRuntime
 
             state = Volatile.Read(ref _state);
         }
-    }
-
-    private static double CalculateAverageSearchFieldLength(IReadOnlyList<ToolCatalogEntry> entries)
-    {
-        var totalLength = 0d;
-        var fieldCount = 0;
-        foreach (var entry in entries)
-        {
-            foreach (var field in entry.SearchFields)
-            {
-                totalLength += Math.Max(1, field.Length);
-                fieldCount++;
-            }
-        }
-
-        return fieldCount == 0
-            ? 1d
-            : totalLength / fieldCount;
     }
 
     private static async Task AwaitCanceledBuildAsync(BuildOperation buildOperation)

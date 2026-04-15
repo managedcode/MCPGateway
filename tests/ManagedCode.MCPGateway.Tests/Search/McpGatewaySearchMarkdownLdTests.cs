@@ -9,7 +9,7 @@ namespace ManagedCode.MCPGateway.Tests;
 public sealed partial class McpGatewaySearchTests
 {
     [TUnit.Core.Test]
-    public async Task SearchAsync_UsesContextDictionaryForLexicalFallback()
+    public async Task SearchAsync_UsesContextDictionaryForMarkdownLdGraphSearch()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureSearchTools);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
@@ -24,13 +24,13 @@ public sealed partial class McpGatewaySearchTests
                 ["intent"] = "temperature lookup"
             }));
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
-        await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "lexical_fallback")).IsTrue();
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
+        await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "graph_fallback")).IsFalse();
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:weather_search_forecast");
     }
 
     [TUnit.Core.Test]
-    public async Task SearchAsync_UsesSchemaTermsForLexicalFallback()
+    public async Task SearchAsync_UsesSchemaTermsForMarkdownLdGraphSearch()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
@@ -42,33 +42,31 @@ public sealed partial class McpGatewaySearchTests
         await gateway.BuildIndexAsync();
         var searchResult = await gateway.SearchAsync("severity filter", maxResults: 1);
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:advisory_lookup");
     }
 
     [TUnit.Core.Test]
-    public async Task SearchAsync_DefaultAutoStrategyUsesTokenizerFallbackAndTopFiveLimit()
+    public async Task SearchAsync_DefaultGraphStrategyUsesMarkdownLdTokenSearchAndTopFiveLimit()
     {
-        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureDefaultAutoTokenizerFallbackTools);
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureDefaultMarkdownLdSearchTools);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var searchResult = await gateway.SearchAsync("search");
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
-        await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "lexical_fallback")).IsTrue();
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.Matches.Count).IsEqualTo(5);
     }
 
     [TUnit.Core.Test]
-    public async Task SearchAsync_DefaultAutoStrategyHandlesTypoHeavyQueryWithoutEmbeddings()
+    public async Task SearchAsync_MarkdownLdGraphHandlesTypoHeavyQueryWithoutEmbeddings()
     {
-        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureDefaultAutoTokenizerFallbackTools);
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureDefaultMarkdownLdSearchTools);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var searchResult = await gateway.SearchAsync("track shipmnt 1z999");
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
-        await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "lexical_fallback")).IsTrue();
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.Matches.Any(static match => match.ToolId == "local:commerce_shipping_tracking")).IsTrue();
     }
 
@@ -83,13 +81,13 @@ public sealed partial class McpGatewaySearchTests
         });
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureTravelTokenizerTools,
+            ConfigureTravelMarkdownLdTools,
             searchQueryChatClient: chatClient);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var searchResult = await gateway.SearchAsync("trouver un hôtel avec petit déjeuner près du centre", maxResults: 1);
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "query_normalized")).IsTrue();
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:travel_hotel_search");
         await Assert.That(chatClient.Calls.Count).IsEqualTo(1);
@@ -104,7 +102,7 @@ public sealed partial class McpGatewaySearchTests
         });
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureTokenizerSearchToolsForNormalizationFallback,
+            ConfigureMarkdownLdSearchToolsForNormalizationFallback,
             searchQueryChatClient: chatClient);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
@@ -145,8 +143,8 @@ public sealed partial class McpGatewaySearchTests
                 ["signals"] = new object?[] { "forecast", 5 }
             }));
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
-        await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "lexical_fallback")).IsTrue();
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
+        await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "graph_fallback")).IsFalse();
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:weather_search_forecast");
     }
 
@@ -167,7 +165,7 @@ public sealed partial class McpGatewaySearchTests
                 ["broken"] = cyclicContext
             }));
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:weather_search_forecast");
     }
 
@@ -195,14 +193,14 @@ public sealed partial class McpGatewaySearchTests
         });
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         await gateway.BuildIndexAsync();
         var searchResult = await gateway.SearchAsync("explode query", maxResults: 1);
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "vector_search_failed")).IsTrue();
     }
 
@@ -215,18 +213,18 @@ public sealed partial class McpGatewaySearchTests
         });
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         await gateway.BuildIndexAsync();
         var searchResult = await gateway.SearchAsync("empty query vector", maxResults: 1);
 
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "query_vector_empty")).IsTrue();
     }
 
-    private static void ConfigureDefaultAutoTokenizerFallbackTools(McpGatewayOptions options)
+    private static void ConfigureDefaultMarkdownLdSearchTools(McpGatewayOptions options)
     {
         options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
         options.AddTool("local", TestFunctionFactory.CreateFunction(SearchWeather, "weather_search_forecast", "Search weather forecast and temperature information by city name."));
@@ -236,17 +234,15 @@ public sealed partial class McpGatewaySearchTests
         options.AddTool("local", TestFunctionFactory.CreateFunction(SearchWeather, "crm_contact_search", "Find CRM contacts by name, email, title, account, or segment."));
     }
 
-    private static void ConfigureTravelTokenizerTools(McpGatewayOptions options)
+    private static void ConfigureTravelMarkdownLdTools(McpGatewayOptions options)
     {
-        options.SearchStrategy = McpGatewaySearchStrategy.Tokenizer;
         options.AddTool("local", TestFunctionFactory.CreateFunction(SearchWeather, "travel_hotel_search", "Find hotels by city, district, amenities, breakfast, or cancellation policy."));
         options.AddTool("local", TestFunctionFactory.CreateFunction(SearchWeather, "travel_itinerary_builder", "Build a travel itinerary with flights, stays, meetings, and transfer timing."));
         options.AddTool("local", TestFunctionFactory.CreateFunction(SearchWeather, "travel_booking_lookup", "Lookup booking confirmation details, ticket numbers, and reservation status."));
     }
 
-    private static void ConfigureTokenizerSearchToolsForNormalizationFallback(McpGatewayOptions options)
+    private static void ConfigureMarkdownLdSearchToolsForNormalizationFallback(McpGatewayOptions options)
     {
-        options.SearchStrategy = McpGatewaySearchStrategy.Tokenizer;
         options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_pull_request_search", "Search GitHub pull requests by repository, reviewer queue, review approvals, branch, or merge status. Aliases: merge request, demande de fusion."));
         options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_code_search", "Search GitHub source code for files, symbols, snippets, or API usages inside repositories."));
     }

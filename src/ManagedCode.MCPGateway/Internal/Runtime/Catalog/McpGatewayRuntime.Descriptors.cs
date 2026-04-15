@@ -39,6 +39,11 @@ internal sealed partial class McpGatewayRuntime
     }
 
     private string BuildDescriptorDocument(McpGatewayToolDescriptor descriptor)
+        => BuildDescriptorDocument(descriptor, _maxDescriptorLength);
+
+    internal static string BuildDescriptorDocument(
+        McpGatewayToolDescriptor descriptor,
+        int maxDescriptorLength)
     {
         var builder = new StringBuilder();
         builder.Append(ToolNameLabel);
@@ -64,9 +69,10 @@ internal sealed partial class McpGatewayRuntime
 
         AppendInputSchema(builder, descriptor.InputSchemaJson);
         var document = builder.ToString().Trim();
-        return document.Length <= _maxDescriptorLength
+        var effectiveMaxLength = Math.Max(256, maxDescriptorLength);
+        return document.Length <= effectiveMaxLength
             ? document
-            : document[.._maxDescriptorLength];
+            : document[..effectiveMaxLength];
     }
 
     private static void AppendInputSchema(StringBuilder builder, string? inputSchemaJson)

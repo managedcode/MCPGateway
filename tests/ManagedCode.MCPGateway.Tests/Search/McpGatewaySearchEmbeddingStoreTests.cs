@@ -23,7 +23,7 @@ public sealed partial class McpGatewaySearchTests
         });
 
         await using var secondServiceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             secondEmbeddingGenerator,
             embeddingStore);
         var secondGateway = secondServiceProvider.GetRequiredService<IMcpGateway>();
@@ -60,7 +60,7 @@ public sealed partial class McpGatewaySearchTests
         });
 
         await using var secondServiceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             secondEmbeddingGenerator,
             embeddingStore);
         var secondGateway = secondServiceProvider.GetRequiredService<IMcpGateway>();
@@ -83,7 +83,7 @@ public sealed partial class McpGatewaySearchTests
         await SeedSearchEmbeddingsAsync(embeddingStore, initialEmbeddingGenerator);
 
         await using var secondServiceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingStore: embeddingStore);
         var secondGateway = secondServiceProvider.GetRequiredService<IMcpGateway>();
 
@@ -93,7 +93,8 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(buildResult.VectorizedToolCount).IsEqualTo(2);
         await Assert.That(buildResult.IsVectorSearchEnabled).IsFalse();
         await Assert.That(buildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "embedding_generator_missing")).IsTrue();
-        await Assert.That(searchResult.RankingMode).IsEqualTo("lexical");
+        await Assert.That(buildResult.IsGraphSearchEnabled).IsTrue();
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
     }
 
     [TUnit.Core.Test]
@@ -108,7 +109,7 @@ public sealed partial class McpGatewaySearchTests
 
         var incrementalEmbeddingGenerator = new TestEmbeddingGenerator();
         await using var incrementalServiceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             incrementalEmbeddingGenerator,
             embeddingStore);
         var incrementalGateway = incrementalServiceProvider.GetRequiredService<IMcpGateway>();
@@ -129,7 +130,7 @@ public sealed partial class McpGatewaySearchTests
         IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator = null)
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureSearchTools,
+            ConfigureVectorSearchTools,
             embeddingGenerator,
             embeddingStore);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();

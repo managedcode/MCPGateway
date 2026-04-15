@@ -4,7 +4,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.ML.Tokenizers;
 
 namespace ManagedCode.MCPGateway;
 
@@ -16,10 +15,14 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string GatewayInvocationMetaKey = "managedCodeMcpGateway";
     private const string SearchModeEmpty = "empty";
     private const string SearchModeBrowse = "browse";
-    private const string SearchModeLexical = "lexical";
+    private const string SearchModeGraph = "graph";
     private const string SearchModeVector = "vector";
     private const string SourceLoadFailedDiagnosticCode = "source_load_failed";
     private const string DuplicateToolIdDiagnosticCode = "duplicate_tool_id";
+    private const string GraphBuildFailedDiagnosticCode = "graph_build_failed";
+    private const string GraphFallbackDiagnosticCode = "graph_fallback";
+    private const string GraphUnavailableDiagnosticCode = "graph_unavailable";
+    private const string GraphSearchFailedDiagnosticCode = "graph_search_failed";
     private const string EmbeddingCountMismatchDiagnosticCode = "embedding_count_mismatch";
     private const string EmbeddingGeneratorMissingDiagnosticCode = "embedding_generator_missing";
     private const string EmbeddingFailedDiagnosticCode = "embedding_failed";
@@ -28,29 +31,35 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string QueryVectorEmptyDiagnosticCode = "query_vector_empty";
     private const string QueryNormalizedDiagnosticCode = "query_normalized";
     private const string QueryNormalizationFailedDiagnosticCode = "query_normalization_failed";
-    private const string LexicalFallbackDiagnosticCode = "lexical_fallback";
     private const string VectorSearchFailedDiagnosticCode = "vector_search_failed";
+    private const string MarkdownLdGraphPathMissingDiagnosticCode = "markdown_ld_graph_path_missing";
     private const string SourceLoadFailedMessageTemplate = "Failed to load tools from source '{0}': {1}";
     private const string DuplicateToolIdMessageTemplate = "Skipped duplicate tool id '{0}'.";
+    private const string GraphBuildFailedMessageTemplate = "Building the Markdown-LD tool graph failed: {0}";
+    private const string GraphFallbackMessage = "Vector search is unavailable. Markdown-LD graph ranking was used.";
+    private const string GraphUnavailableMessage = "Markdown-LD graph ranking is unavailable.";
+    private const string GraphSearchFailedMessageTemplate = "Markdown-LD graph ranking failed: {0}";
     private const string EmbeddingCountMismatchMessageTemplate = "Embedding generation returned {0} vectors for {1} tools.";
-    private const string EmbeddingGeneratorMissingMessage = "No keyed or unkeyed IEmbeddingGenerator<string, Embedding<float>> is registered. Stored tool embeddings may be reused, but search falls back lexically without a query embedding generator.";
+    private const string EmbeddingGeneratorMissingMessage = "No keyed or unkeyed IEmbeddingGenerator<string, Embedding<float>> is registered. Stored tool embeddings may be reused, but search falls back to Markdown-LD graph ranking without a query embedding generator.";
     private const string EmbeddingFailedMessageTemplate = "Embedding generation failed: {0}";
     private const string EmbeddingStoreLoadFailedMessageTemplate = "Loading stored tool embeddings failed: {0}";
     private const string EmbeddingStoreSaveFailedMessageTemplate = "Persisting generated tool embeddings failed: {0}";
     private const string QueryVectorEmptyMessage = "Embedding generator returned an empty query vector.";
     private const string QueryNormalizedMessage = "Search query was normalized to English before ranking.";
     private const string QueryNormalizationFailedMessageTemplate = "Search query normalization failed and the original query was used: {0}";
-    private const string LexicalFallbackMessage = "Vector search is unavailable. Lexical ranking was used.";
-    private const string VectorSearchFailedMessageTemplate = "Vector ranking failed and lexical fallback was used: {0}";
+    private const string VectorSearchFailedMessageTemplate = "Vector ranking failed and Markdown-LD graph fallback was used: {0}";
+    private const string MarkdownLdGraphPathMissingMessage = "Markdown-LD graph file mode requires MarkdownLdGraphPath to point to a graph bundle file, Markdown source file, or directory.";
     private const string ToolNotInvokableMessageTemplate = "Tool '{0}' is not invokable.";
     private const string ToolIdOrToolNameRequiredMessage = "Either ToolId or ToolName is required.";
     private const string ToolIdNotFoundMessageTemplate = "Tool '{0}' was not found.";
     private const string ToolNameAmbiguousMessageTemplate = "Tool '{0}' is ambiguous. Use ToolId or specify SourceId explicitly.";
     private const string CatalogSourceMissingMessage = "ManagedCode.MCPGateway requires IMcpGatewayRegistry to be registered in the service provider. Use AddMcpGateway(...) to wire the package services.";
     private const string FailedToLoadGatewaySourceLogMessage = "Failed to load gateway source {SourceId}.";
-    private const string EmbeddingGenerationFailedLogMessage = "Gateway embedding generation failed. Falling back to lexical search.";
-    private const string GatewayIndexRebuiltLogMessage = "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount}.";
-    private const string GatewayVectorSearchFailedLogMessage = "Gateway vector search failed. Falling back to lexical ranking.";
+    private const string GatewayGraphBuildFailedLogMessage = "Gateway Markdown-LD graph build failed.";
+    private const string GatewayGraphSearchFailedLogMessage = "Gateway Markdown-LD graph search failed.";
+    private const string EmbeddingGenerationFailedLogMessage = "Gateway embedding generation failed. Falling back to Markdown-LD graph search.";
+    private const string GatewayIndexRebuiltLogMessage = "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount} GraphNodes={GraphNodeCount} GraphEdges={GraphEdgeCount}.";
+    private const string GatewayVectorSearchFailedLogMessage = "Gateway vector search failed. Falling back to Markdown-LD graph ranking.";
     private const string GatewayInvocationFailedLogMessage = "Gateway invocation failed for {ToolId}.";
     private const string EmbeddingStoreLoadFailedLogMessage = "Loading stored tool embeddings failed. Falling back to generator-backed indexing.";
     private const string EmbeddingStoreSaveFailedLogMessage = "Persisting generated tool embeddings failed.";
@@ -71,39 +80,81 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string InputSchemaLabel = "Input schema: ";
     private const string ContextSummaryPrefix = "context summary: ";
     private const string ContextPrefix = "context: ";
+    private const string GraphKnowledgeBaseUriText = "https://managedcode.com/mcpgateway/knowledge/";
+    private const string GraphToolDocumentPathPrefix = "tools/";
+    private const string GraphToolDocumentExtension = ".md";
+    private const string GraphToolDocumentUriPrefix = "tools/";
+    private const string GraphMarkdownFrontMatterDelimiter = "---";
+    private const string GraphMarkdownHeadingPrefix = "# ";
+    private const string GraphMarkdownToolIdentityHeading = "## Tool Identity";
+    private const string GraphMarkdownExecutionContractHeading = "## Execution Contract";
+    private const string GraphMarkdownInputSchemaHeading = "## Input Schema";
+    private const string GraphMarkdownJsonFenceStart = "```json";
+    private const string GraphMarkdownFenceEnd = "```";
+    private const string GraphMarkdownListPrefix = "- ";
+    private const string GraphYamlTitleKey = "title";
+    private const string GraphYamlSummaryKey = "summary";
+    private const string GraphYamlDescriptionKey = "description";
+    private const string GraphYamlTagsKey = "tags";
+    private const string GraphYamlGroupsKey = "graph_groups";
+    private const string GraphYamlRelatedKey = "graph_related";
+    private const string GraphYamlNextStepsKey = "graph_next_steps";
+    private const string GraphTagGatewayTool = "mcp-gateway-tool";
+    private const string GraphTagSourcePrefix = "source:";
+    private const string GraphTagKindPrefix = "kind:";
+    private const string GraphTagArgumentPrefix = "argument:";
+    private const string GraphToolIdLabel = "Tool id: ";
+    private const string GraphSourceIdLabel = "Source id: ";
+    private const string GraphSourceKindLabel = "Source kind: ";
+    private const string GraphGroupDomainPrefix = "domain:";
+    private const string GraphGroupSourceDomainPrefix = "source-domain:";
+    private const string GraphRelatedOperationDiscover = "discover";
+    private const string GraphRelatedOperationInspect = "inspect";
+    private const string GraphRelatedOperationAct = "act";
+    private const string GraphRelatedOperationOther = "other";
+    private const string GraphOperationTermSearch = "search";
+    private const string GraphOperationTermFind = "find";
+    private const string GraphOperationTermList = "list";
+    private const string GraphOperationTermQuery = "query";
+    private const string GraphOperationTermDiscover = "discover";
+    private const string GraphOperationTermBrowse = "browse";
+    private const string GraphOperationTermGet = "get";
+    private const string GraphOperationTermRead = "read";
+    private const string GraphOperationTermLookup = "lookup";
+    private const string GraphOperationTermDetail = "detail";
+    private const string GraphOperationTermDetails = "details";
+    private const string GraphOperationTermFetch = "fetch";
+    private const string GraphOperationTermShow = "show";
+    private const string GraphOperationTermInspect = "inspect";
+    private const string GraphOperationTermStatus = "status";
+    private const string GraphOperationTermRetrieve = "retrieve";
+    private const string GraphOperationTermCreate = "create";
+    private const string GraphOperationTermUpdate = "update";
+    private const string GraphOperationTermDelete = "delete";
+    private const string GraphOperationTermRemove = "remove";
+    private const string GraphOperationTermAdd = "add";
+    private const string GraphOperationTermSet = "set";
+    private const string GraphOperationTermSend = "send";
+    private const string GraphOperationTermPost = "post";
+    private const string GraphOperationTermWrite = "write";
+    private const string GraphOperationTermInvoke = "invoke";
+    private const string GraphOperationTermRun = "run";
+    private const string GraphOperationTermExecute = "execute";
+    private const string GraphGenericToolTerm = "tool";
+    private const string GraphGenericToolsTerm = "tools";
+    private const string GraphGenericMcpTerm = "mcp";
+    private const string GraphGenericGatewayTerm = "gateway";
     private const string PluralSuffixIes = "ies";
     private const string PluralSuffixEs = "es";
-    private const string CharacterNGramPrefix = "tri:";
     private const string EmbeddingGeneratorFingerprintUnknownComponent = "unknown";
     private const string EmbeddingGeneratorFingerprintComponentSeparator = "\n";
     private const string SearchQueryNormalizationInstructions = "Rewrite the user search request as a concise English tool-search query. Preserve identifiers, emails, repository names, CVE references, order numbers, tracking numbers, SKUs, version strings, filenames, and product names exactly. Do not answer the request. Do not explain anything. Return only the rewritten English search query. If the request is already concise English, return it unchanged.";
-    private const int CharacterNGramLength = 3;
+    private const int GraphMaxRelatedTokenSegments = 6;
+    private const int GraphMaxRelatedToolsPerDocument = 4;
+    private const int GraphMaxNextStepToolsPerDocument = 3;
+    private const int GraphFocusedRelatedResultsLimit = 6;
+    private const int GraphFocusedNextStepResultsLimit = 6;
     private const int SearchQueryNormalizationMaxOutputTokens = 96;
-    private const int StageOneCandidatePoolSize = 10;
-    private const double ToolNameTokenWeight = 5d;
-    private const double DisplayNameTokenWeight = 4d;
-    private const double DescriptionTokenWeight = 3d;
-    private const double RequiredArgumentTokenWeight = 2.25d;
-    private const double ParameterNameTokenWeight = 2.5d;
-    private const double ParameterDescriptionTokenWeight = 2d;
-    private const double ParameterTypeTokenWeight = 0.75d;
-    private const double EnumValuesTokenWeight = 0d;
-    private const double HumanizedIdentifierWeightFactor = 0.85d;
-    private const double CharacterNGramTokenWeightFactor = 0.35d;
-    private const double QueryTokenWeight = 3d;
-    private const double OriginalQueryBackoffWeight = 1.25d;
-    private const double ContextSummaryTokenWeight = 1.5d;
-    private const double ContextTokenWeight = 1d;
-    private const double ReciprocalRankFusionConstant = 60d;
-    private const double Bm25K1 = 1.2d;
-    private const double Bm25FieldLengthNormalization = 0.75d;
-    private const double Bm25FeatureWeight = 0.2d;
-    private const double TokenSimilarityWeight = 0.16d;
-    private const double CharacterNGramSimilarityWeight = 0.12d;
-    private const double TokenCoverageWeight = 0.1d;
-    private const double DistinctCoverageWeight = 0.15d;
-    private const double LexicalSimilarityWeight = 0.06d;
-    private const double HeuristicLexicalFeatureWeight = 0.16d;
     private const double ToolNameSignalWeight = 0.05d;
 
     private static readonly char[] TokenSeparators =
@@ -156,8 +207,54 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         "to",
         "with"
     };
+    private static readonly IReadOnlySet<string> GraphDiscoveryTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        GraphOperationTermSearch,
+        GraphOperationTermFind,
+        GraphOperationTermList,
+        GraphOperationTermQuery,
+        GraphOperationTermDiscover,
+        GraphOperationTermBrowse
+    };
+    private static readonly IReadOnlySet<string> GraphInspectionTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        GraphOperationTermGet,
+        GraphOperationTermRead,
+        GraphOperationTermLookup,
+        GraphOperationTermDetail,
+        GraphOperationTermDetails,
+        GraphOperationTermFetch,
+        GraphOperationTermShow,
+        GraphOperationTermInspect,
+        GraphOperationTermStatus,
+        GraphOperationTermRetrieve
+    };
+    private static readonly IReadOnlySet<string> GraphActionTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        GraphOperationTermCreate,
+        GraphOperationTermUpdate,
+        GraphOperationTermDelete,
+        GraphOperationTermRemove,
+        GraphOperationTermAdd,
+        GraphOperationTermSet,
+        GraphOperationTermSend,
+        GraphOperationTermPost,
+        GraphOperationTermWrite,
+        GraphOperationTermInvoke,
+        GraphOperationTermRun,
+        GraphOperationTermExecute
+    };
+    private static readonly IReadOnlySet<string> GraphGenericTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        GraphGenericToolTerm,
+        GraphGenericToolsTerm,
+        GraphGenericMcpTerm,
+        GraphGenericGatewayTerm
+    };
     private static readonly CompositeFormat SourceLoadFailedMessageFormat = CompositeFormat.Parse(SourceLoadFailedMessageTemplate);
     private static readonly CompositeFormat DuplicateToolIdMessageFormat = CompositeFormat.Parse(DuplicateToolIdMessageTemplate);
+    private static readonly CompositeFormat GraphBuildFailedMessageFormat = CompositeFormat.Parse(GraphBuildFailedMessageTemplate);
+    private static readonly CompositeFormat GraphSearchFailedMessageFormat = CompositeFormat.Parse(GraphSearchFailedMessageTemplate);
     private static readonly CompositeFormat EmbeddingCountMismatchMessageFormat = CompositeFormat.Parse(EmbeddingCountMismatchMessageTemplate);
     private static readonly CompositeFormat EmbeddingFailedMessageFormat = CompositeFormat.Parse(EmbeddingFailedMessageTemplate);
     private static readonly CompositeFormat EmbeddingStoreLoadFailedMessageFormat = CompositeFormat.Parse(EmbeddingStoreLoadFailedMessageTemplate);
@@ -167,16 +264,14 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private static readonly CompositeFormat ToolNotInvokableMessageFormat = CompositeFormat.Parse(ToolNotInvokableMessageTemplate);
     private static readonly CompositeFormat ToolIdNotFoundMessageFormat = CompositeFormat.Parse(ToolIdNotFoundMessageTemplate);
     private static readonly CompositeFormat ToolNameAmbiguousMessageFormat = CompositeFormat.Parse(ToolNameAmbiguousMessageTemplate);
-    private static readonly IReadOnlyDictionary<string, double> EmptyTokenWeights =
-        new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
-
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<McpGatewayRuntime> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IMcpGatewayCatalogSource _catalogSource;
     private readonly McpGatewaySearchStrategy _searchStrategy;
+    private readonly McpGatewayMarkdownLdGraphSource _markdownLdGraphSource;
     private readonly McpGatewaySearchQueryNormalization _searchQueryNormalization;
-    private readonly Tokenizer _searchTokenizer;
+    private readonly string? _markdownLdGraphPath;
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
@@ -201,8 +296,9 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         var resolvedOptions = options.Value;
         _catalogSource = ResolveCatalogSource(serviceProvider);
         _searchStrategy = resolvedOptions.SearchStrategy;
+        _markdownLdGraphSource = resolvedOptions.MarkdownLdGraphSource;
         _searchQueryNormalization = resolvedOptions.SearchQueryNormalization;
-        _searchTokenizer = McpGatewaySearchTokenizerFactory.GetTokenizer();
+        _markdownLdGraphPath = resolvedOptions.MarkdownLdGraphPath;
         _defaultSearchLimit = Math.Max(1, resolvedOptions.DefaultSearchLimit);
         _maxSearchResults = Math.Max(1, resolvedOptions.MaxSearchResults);
         _maxDescriptorLength = Math.Max(256, resolvedOptions.MaxDescriptorLength);

@@ -22,7 +22,7 @@ dotnet add package ManagedCode.MCPGateway
 ## What It Gives You
 
 - one gateway for local `AITool` instances and MCP tools
-- one search surface with vector ranking when embeddings are available and lexical fallback when they are not
+- one search surface with default Markdown-LD graph ranking and opt-in vector ranking
 - one invoke surface for both local tools and MCP tools
 - runtime registration through `IMcpGatewayRegistry`
 - reusable gateway meta-tools for chat clients and agents
@@ -75,8 +75,9 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
 
 Important defaults:
 
-- search is `Auto` by default
-- `Auto` uses embeddings when available and lexical fallback otherwise
+- search is `Graph` by default
+- graph search uses `ManagedCode.MarkdownLd.Kb` and does not require embeddings
+- embeddings are opt-in through `McpGatewaySearchStrategy.Embeddings` or `McpGatewaySearchStrategy.Auto`
 - the default result size is `5`
 - the maximum result size is `15`
 - the index is built lazily on first list, search, or invoke
@@ -350,7 +351,7 @@ var response = await agent.RunAsync(
 
 ## Optional Warmup
 
-The gateway works without explicit initialization, but you can warm the index eagerly when you want startup validation or a pre-built cache.
+The gateway works without explicit initialization, but you can warm the index eagerly when you want startup validation or a pre-built cache. When Markdown-LD graph search is selected, warmup builds the graph during startup instead of waiting for the first search.
 
 Manual warmup:
 
@@ -393,6 +394,8 @@ services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>, MyEmbe
 
 services.AddMcpGateway(options =>
 {
+    options.SearchStrategy = McpGatewaySearchStrategy.Embeddings;
+
     options.AddTool(
         "local",
         AIFunctionFactory.Create(
@@ -405,7 +408,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-If no embedding generator is registered, the same gateway still works and falls back to lexical search automatically.
+If vector search cannot run for a request, the gateway falls back to the same Markdown-LD graph index used by the default mode and reports a diagnostic. If you register an embedding generator but leave the default `Graph` strategy in place, the generator is not used.
 
 ## Optional Query Normalization
 
@@ -420,8 +423,17 @@ services.AddKeyedSingleton<IChatClient>(
 
 services.AddMcpGateway(options =>
 {
-    options.SearchStrategy = McpGatewaySearchStrategy.Auto;
     options.SearchQueryNormalization = McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable;
+
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
 });
 ```
 
@@ -435,6 +447,20 @@ For process-local caching, use the built-in `IMemoryCache`-backed store:
 services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>, MyEmbeddingGenerator>(
     McpGatewayServiceKeys.EmbeddingGenerator);
 services.AddMcpGatewayInMemoryToolEmbeddingStore();
+services.AddMcpGateway(options =>
+{
+    options.SearchStrategy = McpGatewaySearchStrategy.Embeddings;
+
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
 ```
 
 This built-in store reuses the application's shared `IMemoryCache` and only caches embeddings inside the current process. It is useful for local reuse, but it is not durable and does not synchronize across replicas.
@@ -447,25 +473,117 @@ For multi-instance or durable caching, register your own `IMcpGatewayToolEmbeddi
 services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>, MyEmbeddingGenerator>(
     McpGatewayServiceKeys.EmbeddingGenerator);
 services.AddSingleton<IMcpGatewayToolEmbeddingStore, MyToolEmbeddingStore>();
+services.AddMcpGateway(options =>
+{
+    options.SearchStrategy = McpGatewaySearchStrategy.Embeddings;
+
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
 ```
 
-## Search Modes
+## Markdown-LD Graph Sources
 
-`McpGatewaySearchStrategy.Auto` is the default and usually the right choice:
-
-- use vector ranking when embeddings are available
-- fall back to lexical ranking when they are not
-
-You can also force a mode:
+By default the gateway generates Markdown-LD tool documents from the current local `AITool` and MCP catalog during index build:
 
 ```csharp
 services.AddMcpGateway(options =>
 {
-    options.SearchStrategy = McpGatewaySearchStrategy.Tokenizer;
+    options.SearchStrategy = McpGatewaySearchStrategy.Graph;
+    options.UseGeneratedMarkdownLdGraph();
+
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
 });
 ```
 
-Or:
+You can also build the same Markdown-LD source documents ahead of time and point the gateway at a file or directory. This is useful when the graph should be generated in a separate step and loaded by the runtime:
+
+```csharp
+var authoringServices = new ServiceCollection();
+authoringServices.AddMcpGateway(options =>
+{
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
+
+await using (var authoringProvider = authoringServices.BuildServiceProvider())
+{
+    var authoringGateway = authoringProvider.GetRequiredService<IMcpGateway>();
+    var descriptors = await authoringGateway.ListToolsAsync();
+    var documents = McpGatewayMarkdownLdGraphFile.CreateDocuments(descriptors);
+
+    await McpGatewayMarkdownLdGraphFile.WriteAsync(
+        "artifacts/mcp-tools.graph.json",
+        documents);
+}
+
+var runtimeServices = new ServiceCollection();
+runtimeServices.AddMcpGateway(options =>
+{
+    options.SearchStrategy = McpGatewaySearchStrategy.Graph;
+    options.UseMarkdownLdGraphFile("artifacts/mcp-tools.graph.json");
+
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
+```
+
+`UseMarkdownLdGraphFile(...)` accepts:
+
+- a gateway graph bundle JSON file created by `McpGatewayMarkdownLdGraphFile.WriteAsync(...)`
+- a directory containing Markdown-LD source documents
+- a single Markdown-LD source file supported by `ManagedCode.MarkdownLd.Kb`
+
+The bundle is a portable set of Markdown-LD source documents, not a serialized RDF store. The runtime still builds the in-memory `ManagedCode.MarkdownLd.Kb` graph from those documents so focused graph search, related matches, and next-step matches behave the same way as generated startup mode.
+
+## Search Modes
+
+`McpGatewaySearchStrategy.Graph` is the default and usually the right choice for zero-cost local retrieval:
+
+- build or load a Markdown-LD graph during index build
+- use deterministic token-distance search from `ManagedCode.MarkdownLd.Kb`
+- return primary matches, related matches, next-step matches, and focused graph counts
+- keep invocation on the same `ToolId` flow
+
+You can force graph mode explicitly:
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.SearchStrategy = McpGatewaySearchStrategy.Graph;
+});
+```
+
+Use embedding mode when the host has an embedding generator and wants vector ranking first:
 
 ```csharp
 services.AddMcpGateway(options =>
@@ -474,12 +592,27 @@ services.AddMcpGateway(options =>
 });
 ```
 
+Use `Auto` only when the host wants a policy mode that can use embeddings when the graph is unavailable and otherwise prefer the graph path:
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.SearchStrategy = McpGatewaySearchStrategy.Auto;
+});
+```
+
+Graph mode uses `ManagedCode.MarkdownLd.Kb` to convert every local `AITool` and MCP tool descriptor into an in-memory Markdown-LD knowledge graph. Each tool becomes a Markdown document with structured front matter, source metadata, required arguments, input schema text, graph groups, related-tool hints, and next-step hints. Search uses the graph's deterministic Tiktoken token-distance focused search to rank tool documents and returns normal `McpGatewaySearchMatch` results, so invocation still uses the same `ToolId` flow.
+
+The old separate local tokenizer strategy is intentionally not exposed. Token-based search is provided by `ManagedCode.MarkdownLd.Kb` inside the Markdown-LD graph path.
+
 `McpGatewaySearchResult.RankingMode` reports:
 
 - `vector`
-- `lexical`
+- `graph`
 - `browse`
 - `empty`
+
+`McpGatewayIndexBuildResult` also reports graph index state through `IsGraphSearchEnabled`, `GraphNodeCount`, and `GraphEdgeCount`. These values are useful for startup validation and tests when a host requires graph-backed search to be available.
 
 ## Deeper Docs
 
@@ -489,6 +622,7 @@ Use these when you need design details rather than package onboarding:
 - [ADR-0001: Runtime boundaries and index lifecycle](docs/ADR/ADR-0001-runtime-boundaries-and-index-lifecycle.md)
 - [ADR-0002: Search ranking and query normalization](docs/ADR/ADR-0002-search-ranking-and-query-normalization.md)
 - [ADR-0003: Reusable chat-client and agent auto-discovery modules](docs/ADR/ADR-0003-reusable-chat-client-and-agent-tool-modules.md)
+- [ADR-0005: Markdown-LD graph search for tool retrieval](docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md)
 - [Feature spec: Search query normalization and ranking](docs/Features/SearchQueryNormalizationAndRanking.md)
 
 ## Local Development

@@ -169,7 +169,7 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
                 StringComparer.OrdinalIgnoreCase);
 
             foreach (var discoveredTool in _toolSet.CreateDiscoveredTools(
-                         latestSearchResult.Matches,
+                         EnumerateDiscoveryMatches(latestSearchResult),
                          reservedToolNames,
                          Math.Max(0, _options.MaxDiscoveredTools)))
             {
@@ -177,6 +177,34 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
             }
 
             return gatewayTools;
+        }
+
+        private static IEnumerable<McpGatewaySearchMatch> EnumerateDiscoveryMatches(McpGatewaySearchResult searchResult)
+        {
+            var discoveredToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var match in searchResult.Matches)
+            {
+                if (discoveredToolIds.Add(match.ToolId))
+                {
+                    yield return match;
+                }
+            }
+
+            foreach (var match in searchResult.RelatedMatches)
+            {
+                if (discoveredToolIds.Add(match.ToolId))
+                {
+                    yield return match;
+                }
+            }
+
+            foreach (var match in searchResult.NextStepMatches)
+            {
+                if (discoveredToolIds.Add(match.ToolId))
+                {
+                    yield return match;
+                }
+            }
         }
 
         private static ChatOptions CreateOptions(ChatOptions? options, IReadOnlyList<AITool> gatewayTools)

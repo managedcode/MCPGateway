@@ -2,41 +2,49 @@
 
 ## Purpose And Scope
 
-This feature improves `ManagedCode.MCPGateway` search quality for multilingual, typo-heavy, and weakly specified search requests without introducing phrase-level hardcoded rules.
+This feature improves `ManagedCode.MCPGateway` search quality for multilingual, typo-heavy, and weakly specified search requests without introducing phrase-level hardcoded rules or a mandatory embedding dependency.
 
 In scope:
 
 - optional English query normalization before ranking
-- tokenizer-backed ranking improvements for non-embedding search
-- deterministic fallback when no AI normalizer is registered
-- automated verification for multilingual, noisy, and borderline search buckets
+- Markdown-LD focused graph ranking as the default search path
+- opt-in vector ranking with graph fallback
+- file-system Markdown-LD graph sources for pre-generated graph documents
+- deterministic behavior when no AI normalizer or embedding generator is registered
+- automated verification for graph, vector fallback, multilingual, noisy, and focused expansion scenarios
 
 Out of scope:
 
 - embedding model changes
 - vendor-specific AI SDK setup inside the package
 - domain-specific synonym lists or handcrafted query exceptions
+- exposing a separate local tokenizer strategy
 
 ## Affected Modules
 
 - `src/ManagedCode.MCPGateway/Configuration/McpGatewayOptions.cs`
+- `src/ManagedCode.MCPGateway/Configuration/McpGatewayMarkdownLdGraphSource.cs`
 - `src/ManagedCode.MCPGateway/Configuration/McpGatewayServiceKeys.cs`
 - `src/ManagedCode.MCPGateway/Models/Search/*`
+- `src/ManagedCode.MCPGateway/Internal/Runtime/Graph/*`
 - `src/ManagedCode.MCPGateway/Internal/Runtime/Search/*`
 - `tests/ManagedCode.MCPGateway.Tests/Search/*`
 - `README.md`
 
 ## Business Rules
 
-1. Tokenizer-backed search must stay functional with zero embedding or chat-model dependencies.
-2. When query normalization is enabled and a keyed `IChatClient` is available, the gateway must normalize the user query into concise English before ranking.
-3. Query normalization must preserve identifiers and retrieval-critical literals such as emails, repository names, CVE references, order numbers, tracking numbers, and SKUs.
-4. If normalization is enabled but no keyed normalizer client is registered, the gateway must continue with the original query and must not fail the search.
-5. If normalization fails, the gateway must continue with the original query and expose a diagnostic rather than throwing.
-6. Tokenizer-backed ranking must prefer mathematical retrieval improvements over text-level hardcoded exceptions.
-7. Tokenizer-backed ranking must improve recall for typos and multilingual cognates while also reducing domain-local ties such as `invoice` versus `payment reconciliation`.
-8. The package must keep one built-in tokenizer-backed search path and must not expose stale tokenizer-selection options.
-9. Default search result limits and existing public search/invoke entry points must remain intact.
+1. Graph-backed search must be the default and must stay functional with zero embedding or chat-model dependencies.
+2. Embedding search must be opt-in and must fall back to Markdown-LD graph ranking when vector search cannot complete.
+3. `Auto` may exist as an explicit policy mode, but it must not be documented as the default or as a third retrieval engine.
+4. Token-based retrieval must come from `ManagedCode.MarkdownLd.Kb` inside the graph path; the package must not expose a separate local `Tokenizer` strategy.
+5. Markdown-LD graph mode must support generated tool documents at index build/startup and file-system graph sources through a configured path.
+6. File-backed graph tests must generate graph fixtures through package APIs or generated Markdown-LD documents, not hand-authored static artifacts.
+7. When query normalization is enabled and a keyed `IChatClient` is available, the gateway must normalize the user query into concise English before ranking.
+8. Query normalization must preserve identifiers and retrieval-critical literals such as emails, repository names, CVE references, order numbers, tracking numbers, and SKUs.
+9. If normalization is enabled but no keyed normalizer client is registered, the gateway must continue with the original query and must not fail the search.
+10. If normalization fails, the gateway must continue with the original query and expose a diagnostic rather than throwing.
+11. Search-quality improvements must prefer mathematical or graph-ranking changes over text-level hardcoded exceptions.
+12. Default search result limits and existing public search/invoke entry points must remain intact.
 
 ## Main Flow
 
@@ -45,22 +53,33 @@ flowchart LR
     Request["Search request"] --> Normalize{"English normalization enabled\nand keyed IChatClient present?"}
     Normalize -->|Yes| Rewrite["Rewrite query to concise English"]
     Normalize -->|No| Original["Use original query"]
-    Rewrite --> Retrieval["Stage 1 retrieval\nBM25F + token cosine + char 3-gram"]
-    Original --> Retrieval
-    Retrieval --> CandidatePool["Top candidate pool"]
-    CandidatePool --> Rerank["Stage 2 rerank\nfield-aware features"]
-    Rerank --> Result["Search result + diagnostics"]
+    Rewrite --> Strategy{"Selected strategy"}
+    Original --> Strategy
+    Strategy -->|Graph / MarkdownLd| GraphSource{"Markdown-LD source"}
+    GraphSource -->|GeneratedToolGraph| Generated["Generate tool documents\nfrom catalog snapshot"]
+    GraphSource -->|FileSystem| FileDocs["Load bundle file,\ndirectory, or source file"]
+    Generated --> Graph["Focused graph search"]
+    FileDocs --> Graph
+    Strategy -->|Embeddings| Vector["Embedding ranking"]
+    Strategy -->|Auto| Policy["Explicit policy mode"]
+    Vector -->|Failure / unusable vector| Graph
+    Policy --> Graph
+    Policy --> Vector
+    Graph --> Result["Primary + related + next-step matches"]
+    Vector --> Result
 ```
 
 ## Negative And Edge Cases
 
 - Empty query with no context still returns `browse` mode.
 - Empty catalog still returns `empty` mode.
-- A registered embedding generator still takes precedence when vector search is active.
+- Default graph mode must not call a registered embedding generator.
+- Forced graph mode must build or load the graph during explicit init, lazy first use, or hosted warmup.
+- Missing file-system graph path must be reported as a diagnostic and must not crash list/search/invoke.
+- A registered embedding generator is used only when the selected strategy allows vector search.
 - A normalization client that returns blank output must not replace the original query.
 - A normalization client that times out or throws must emit a diagnostic and fall back to the original query.
-- Typo-heavy inputs such as `shipmnt` and `contcat` must still retrieve the expected tool in the result set.
-- Multilingual inputs without a normalizer must still benefit from tokenizer aliases and character n-grams.
+- Typo-heavy inputs such as `shipmnt` must still retrieve the expected tool through Markdown-LD token-distance graph search.
 
 ## System Behavior
 
@@ -70,16 +89,21 @@ flowchart LR
 - Reads:
   - tool catalog snapshot from `IMcpGatewayCatalogSource`
   - keyed optional search normalizer client from DI
-  - search options from `McpGatewayOptions`
+  - optional embedding generator and embedding store from DI when vector strategy is selected
+  - search and graph-source options from `McpGatewayOptions`
+  - file-system Markdown-LD graph source when `MarkdownLdGraphSource.FileSystem` is selected
 - Writes:
   - no persistent writes beyond existing optional embedding-store behavior
+  - graph bundle authoring uses `McpGatewayMarkdownLdGraphFile.WriteAsync(...)` when the host chooses to generate a file
 - Side effects:
   - optional `IChatClient` request for query normalization
-  - diagnostics describing normalization fallback or low-confidence conditions
+  - in-memory Markdown-LD graph construction during index build for graph-capable strategies
+  - diagnostics describing normalization fallback, vector fallback, graph-source problems, or low-confidence conditions
 - Idempotency:
-  - same indexed catalog and same deterministic query-normalizer response yield stable ranking
+  - same indexed catalog, same graph source, and same deterministic query-normalizer response yield stable ranking
 - Errors:
   - search must not throw only because the optional normalizer is missing or fails
+  - graph build failures must be diagnostic-only
 
 ## Verification
 
@@ -97,28 +121,36 @@ Verification commands:
 
 Test mapping:
 
-- normalization success and fallback behavior in `tests/ManagedCode.MCPGateway.Tests/Search/`
-- tokenizer ranking regression coverage in `McpGatewayTokenizerSearchTests.cs`
-- evaluation-bucket quality coverage in `McpGatewayTokenizerSearchEvaluationTests.cs`
+- normalization success and fallback behavior in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchMarkdownLdTests.cs`
+- generated graph ranking coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchGraphTests.cs`
+- file-backed graph bundle and directory coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchGraphTests.cs`
+- embedding fallback coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchMarkdownLdTests.cs`
+- default graph/no-embedding coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchBuildTests.cs`
+- auto-discovery graph expansion coverage in `tests/ManagedCode.MCPGateway.Tests/ChatClient/` and `tests/ManagedCode.MCPGateway.Tests/Agents/`
 
 ## Definition Of Done
 
-- tokenizer-backed search supports optional English query normalization through `Microsoft.Extensions.AI`
-- multilingual and typo-heavy evaluation scenarios remain covered by automated tests
-- docs explain how to register the optional query-normalization client
+- graph-backed search is the default no-embedding path
+- graph mode supports generated startup/index-build documents and file-system graph sources
+- vector ranking is opt-in and falls back to graph ranking on query vector failure
+- optional English query normalization works through `Microsoft.Extensions.AI`
+- multilingual, typo-heavy, focused expansion, and file-backed graph scenarios are covered by automated tests
+- docs explain how to configure graph, file-backed graph, embeddings, and optional query normalization
 - build, analyzers, and tests stay green
 
 ## Related Docs
 
 - [`README.md`](../../README.md)
 - [`docs/ADR/ADR-0002-search-ranking-and-query-normalization.md`](../ADR/ADR-0002-search-ranking-and-query-normalization.md)
+- [`docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md`](../ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md)
 - [`docs/ADR/ADR-0001-runtime-boundaries-and-index-lifecycle.md`](../ADR/ADR-0001-runtime-boundaries-and-index-lifecycle.md)
 - [`docs/Architecture/Overview.md`](../Architecture/Overview.md)
 
-## Implementation Plan (step-by-step)
+## Implementation Plan
 
-1. Add search-normalization configuration to `McpGatewayOptions` and a keyed DI service key for the optional normalizer chat client.
-2. Implement normalization in the search pipeline with graceful fallback and diagnostics.
-3. Replace the flat tokenizer score with a two-stage ranking flow that uses field-aware BM25-style retrieval plus character n-gram retrieval.
-4. Add deterministic tests for query normalization, failure fallback, and updated ranking behavior.
-5. Update `README.md` with configuration and operational guidance.
+1. Keep search-normalization configuration in `McpGatewayOptions` and a keyed DI service key for the optional normalizer chat client.
+2. Keep normalization in the search pipeline with graceful fallback and diagnostics.
+3. Use `ManagedCode.MarkdownLd.Kb` as the Markdown-LD graph and token-distance search implementation.
+4. Support generated and file-system graph sources in the runtime graph index.
+5. Keep deterministic tests for query normalization, generated graph, file-backed graph, vector fallback, and auto-discovery graph expansion.
+6. Update `README.md` with configuration and operational guidance.

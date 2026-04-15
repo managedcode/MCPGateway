@@ -18,6 +18,8 @@ public sealed partial class McpGatewaySearchTests
         var tools = await gateway.ListToolsAsync();
 
         await Assert.That(buildResult.ToolCount).IsEqualTo(2);
+        await Assert.That(buildResult.IsGraphSearchEnabled).IsTrue();
+        await Assert.That(buildResult.GraphNodeCount).IsGreaterThan(2);
         await Assert.That(tools.Count).IsEqualTo(2);
     }
 
