@@ -151,10 +151,12 @@ If no new rule is detected -> do not update the file.
 - Preserve one searchable catalog that uses Markdown-LD graph ranking by default and supports vector ranking only when embeddings are explicitly selected.
 - Tool search must support sparse high-confidence selection plus an explicit related/next-step expansion path; do not make consumers pass the full tool catalog when a smaller capability set can answer the request.
 - For multilingual or noisy search inputs, prefer a generic English-normalization step before ranking when an AI/query-rewrite component is available, because the user wants the searchable representation to converge to English instead of relying only on language-specific token overlap.
+- For multilingual, typo-heavy, or noisy search inputs, keep confidence calibration strict: clearly weak or irrelevant matches must not surface with saturated `Score = 1`, because inflated certainty hides ranking defects and breaks tool selection trust.
 - Keep meta-tools available through `McpGatewayToolSet` and `IMcpGateway.CreateMetaTools(...)`.
 - When Markdown-LD graph search is selected, startup or explicit index initialization must build and validate the tool graph before search/tool discovery so LLM-facing MCP tool selection is based on the correct focused graph.
 - Markdown-LD graph search must support both startup-generated graphs and filesystem-provided graph files; tests for file-backed graph mode must generate the graph fixture through the package flow rather than relying on a hand-authored static artifact.
 - If a user adds or corrects a persistent workflow rule, update `AGENTS.md` first and only then continue with the task.
+- When a search-quality fix is requested as a concrete architectural change, finish the intended runtime behavior in the same task instead of stopping at a partial scoring-only step, because partial search fixes leave the real retrieval defect unresolved.
 
 ### Repository Layout
 
@@ -256,6 +258,7 @@ If no new rule is detected -> do not update the file.
 - Keep runtime services DI-native from their public/internal constructors; types such as `McpGatewayRegistry` must be creatable through `IOptions<McpGatewayOptions>` and other DI-managed dependencies rather than ad-hoc state-only constructors, because the package design requires services to live fully inside the container.
 - When emitting package identity to external protocols such as MCP client info, never hardcode a fake version string; use the actual assembly/build version so runtime metadata stays aligned with the package being shipped.
 - For search-quality improvements, prefer mathematical, statistical, or graph-ranking changes over hardcoded phrase lists or ad-hoc query text hacks, because the user explicitly wants token-distance search to improve through general scoring behavior rather than manual exceptions.
+- Never clamp weak multilingual/noisy search matches to perfect confidence through boost stacking or score saturation, because this produces obviously wrong `Score = 1` results and makes relevance debugging impossible.
 - Do not keep a separate local tokenizer search path when `ManagedCode.MarkdownLd.Kb` already provides token-based graph search; route tokenizer-backed retrieval through Markdown-LD so the package does not carry duplicate ranking implementations.
 - Prefer framework-provided in-memory caching primitives such as `IMemoryCache` over custom process-local storage implementations when they cover the lifecycle and lookup needs, because self-rolled memory stores age poorly and make scaling/concurrency behavior harder to trust.
 - Never keep legacy compatibility shims, obsolete paths, or lingering documentation references to removed implementations when a replacement is accepted, because this repository should converge on the current design instead of carrying dead historical baggage.

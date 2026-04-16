@@ -192,6 +192,55 @@ public sealed class McpGatewayChatClientIntegrationTests
         await GatewayIntegrationTestSupport.AssertAutoDiscoveryFlow(modelClient, "vector");
     }
 
+    [TUnit.Core.Test]
+    public async Task AutoDiscoveryChatClient_ReplacesDiscoveredToolsWithAutoHybridSearch()
+    {
+        var embeddingGenerator = GatewayIntegrationTestSupport.CreateAutoDiscoveryEmbeddingGenerator();
+
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigureFiftyToolAutoCatalog,
+            embeddingGenerator: embeddingGenerator);
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        await gateway.BuildIndexAsync();
+
+        var modelClient = new TestChatClient(new TestChatClientOptions
+        {
+            Scenarios = GatewayIntegrationTestSupport.CreateAutoDiscoveryScenarios(useSemanticQueries: true)
+        });
+
+        using var chatClient = modelClient.UseMcpGatewayAutoDiscovery(
+            serviceProvider,
+            options => options.MaxDiscoveredTools = 2);
+
+        var response = await chatClient.GetResponseAsync(
+            [new ChatMessage(ChatRole.User, "Find the right tools as you go and execute them.")],
+            new ChatOptions
+            {
+                AllowMultipleToolCalls = false
+            });
+
+        var registeredTools = await gateway.ListToolsAsync();
+
+        await Assert.That(registeredTools.Count).IsEqualTo(GatewayIntegrationTestSupport.CatalogToolCount);
+        await Assert.That(response.Text).IsEqualTo(GatewayIntegrationTestSupport.FinalAssistantResponse);
+        await Assert.That(modelClient.Invocations.Count).IsEqualTo(5);
+        await Assert.That(modelClient.Invocations[1].ToolNames).Contains(GatewayIntegrationTestSupport.WeatherToolName);
+        await Assert.That(modelClient.Invocations[3].ToolNames).Contains(GatewayIntegrationTestSupport.PortfolioToolName);
+
+        var firstSearchResult = modelClient.Invocations[1].ReadLatestFunctionResult<McpGatewaySearchResult>(
+                                    McpGatewayToolSet.DefaultSearchToolName)
+                                ?? throw new InvalidOperationException("First hybrid search result is missing.");
+        var secondSearchResult = modelClient.Invocations[3].ReadLatestFunctionResult<McpGatewaySearchResult>(
+                                     McpGatewayToolSet.DefaultSearchToolName)
+                                 ?? throw new InvalidOperationException("Second hybrid search result is missing.");
+
+        await Assert.That(firstSearchResult.RankingMode).IsEqualTo("hybrid");
+        await Assert.That(firstSearchResult.Matches[0].ToolId).IsEqualTo(GatewayIntegrationTestSupport.WeatherToolId);
+        await Assert.That(
+            secondSearchResult.RankingMode is "graph" or "hybrid").IsTrue();
+        await Assert.That(secondSearchResult.Matches[0].ToolId).IsEqualTo(GatewayIntegrationTestSupport.PortfolioToolId);
+    }
+
     private static McpGatewaySearchMatch CreateSearchMatch(string toolId, string toolName)
         => new(
             toolId,
@@ -207,6 +256,12 @@ public sealed class McpGatewayChatClientIntegrationTests
     private static void ConfigureFiftyToolEmbeddingCatalog(McpGatewayOptions options)
     {
         options.SearchStrategy = McpGatewaySearchStrategy.Embeddings;
+        GatewayIntegrationTestSupport.ConfigureFiftyToolCatalog(options);
+    }
+
+    private static void ConfigureFiftyToolAutoCatalog(McpGatewayOptions options)
+    {
+        options.SearchStrategy = McpGatewaySearchStrategy.Auto;
         GatewayIntegrationTestSupport.ConfigureFiftyToolCatalog(options);
     }
 }

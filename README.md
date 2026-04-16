@@ -78,6 +78,7 @@ Important defaults:
 - search is `Graph` by default
 - graph search uses `ManagedCode.MarkdownLd.Kb` and does not require embeddings
 - embeddings are opt-in through `McpGatewaySearchStrategy.Embeddings` or `McpGatewaySearchStrategy.Auto`
+- `McpGatewaySearchMatch.Score` is a gateway-calibrated confidence value, not a raw backend rank
 - the default result size is `5`
 - the maximum result size is `15`
 - the index is built lazily on first list, search, or invoke
@@ -592,7 +593,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Use `Auto` only when the host wants a policy mode that can use embeddings when the graph is unavailable and otherwise prefer the graph path:
+Use `Auto` when the host wants graph-first retrieval with semantic rescue. It runs graph search first, keeps graph as the canonical local path, and only merges vector ranking when graph confidence is low or graph search is unavailable:
 
 ```csharp
 services.AddMcpGateway(options =>
@@ -603,10 +604,15 @@ services.AddMcpGateway(options =>
 
 Graph mode uses `ManagedCode.MarkdownLd.Kb` to convert every local `AITool` and MCP tool descriptor into an in-memory Markdown-LD knowledge graph. Each tool becomes a Markdown document with structured front matter, source metadata, required arguments, input schema text, graph groups, related-tool hints, and next-step hints. Search uses the graph's deterministic Tiktoken token-distance focused search to rank tool documents and returns normal `McpGatewaySearchMatch` results, so invocation still uses the same `ToolId` flow.
 
+The gateway calibrates graph-facing `Score` values before returning them to callers. This keeps obviously weak multilingual or noisy matches from surfacing with fake perfect confidence and emits a `low_confidence_results` diagnostic when the top graph hit is still weak after calibration.
+
+In `Auto` mode, low-confidence graph results can trigger a semantic vector rescue pass. The final `Matches` list is returned with `RankingMode = "hybrid"` when vector results were merged into the graph-first result set.
+
 The old separate local tokenizer strategy is intentionally not exposed. Token-based search is provided by `ManagedCode.MarkdownLd.Kb` inside the Markdown-LD graph path.
 
 `McpGatewaySearchResult.RankingMode` reports:
 
+- `hybrid`
 - `vector`
 - `graph`
 - `browse`

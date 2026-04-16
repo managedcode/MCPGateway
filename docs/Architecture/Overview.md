@@ -24,7 +24,7 @@ Out of scope:
 - `IMcpGatewayRegistry` for catalog mutation
 - `McpGatewayToolSet` for reusable meta-tools
 
-`McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default Markdown-LD graph search or opt-in vector search, optionally rewrites queries through a keyed `IChatClient`, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
+`McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default Markdown-LD graph search, graph-first `Auto` hybrid rescue, or opt-in vector-first search, optionally rewrites queries through a keyed `IChatClient`, calibrates user-facing search confidence before returning matches, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
 
 The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` meta-tools and discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with two meta-tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
 
@@ -149,7 +149,7 @@ flowchart LR
 - `Models` should stay contract-first. Internal transport, registry, or lifecycle helpers do not belong there.
 - Embedding support must stay optional and isolated behind `IMcpGatewayToolEmbeddingStore` and embedding-generator abstractions.
 - The built-in process-local embedding store may depend on `IMemoryCache`, but cross-instance persistence and cache replication must stay behind host-provided `IMcpGatewayToolEmbeddingStore` implementations.
-- Markdown-LD graph search is the default internal retrieval strategy. It may depend on `ManagedCode.MarkdownLd.Kb`, but it must still return the same public `McpGatewaySearchMatch` contracts and must not create a separate invocation surface.
+- Markdown-LD graph search is the default internal retrieval strategy. It may depend on `ManagedCode.MarkdownLd.Kb`, but it must still return the same public `McpGatewaySearchMatch` contracts, calibrate user-facing confidence at the gateway layer, and must not create a separate invocation surface.
 - Markdown-LD graph sources may be generated from the live catalog at index build time or loaded from a file-system path configured through `McpGatewayOptions`. File-backed mode must still map graph documents back to the current catalog before returning matches.
 - Warmup remains optional. The package must work correctly with lazy indexing and must not require manual initialization for every host.
 

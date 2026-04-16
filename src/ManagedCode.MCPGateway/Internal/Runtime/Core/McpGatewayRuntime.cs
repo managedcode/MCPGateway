@@ -16,11 +16,14 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string SearchModeEmpty = "empty";
     private const string SearchModeBrowse = "browse";
     private const string SearchModeGraph = "graph";
+    private const string SearchModeHybrid = "hybrid";
     private const string SearchModeVector = "vector";
     private const string SourceLoadFailedDiagnosticCode = "source_load_failed";
     private const string DuplicateToolIdDiagnosticCode = "duplicate_tool_id";
     private const string GraphBuildFailedDiagnosticCode = "graph_build_failed";
     private const string GraphFallbackDiagnosticCode = "graph_fallback";
+    private const string LowConfidenceResultsDiagnosticCode = "low_confidence_results";
+    private const string HybridVectorMergeDiagnosticCode = "hybrid_vector_merge_used";
     private const string GraphUnavailableDiagnosticCode = "graph_unavailable";
     private const string GraphSearchFailedDiagnosticCode = "graph_search_failed";
     private const string EmbeddingCountMismatchDiagnosticCode = "embedding_count_mismatch";
@@ -37,6 +40,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string DuplicateToolIdMessageTemplate = "Skipped duplicate tool id '{0}'.";
     private const string GraphBuildFailedMessageTemplate = "Building the Markdown-LD tool graph failed: {0}";
     private const string GraphFallbackMessage = "Vector search is unavailable. Markdown-LD graph ranking was used.";
+    private const string LowConfidenceResultsMessage = "Graph ranking confidence was low for this query.";
+    private const string HybridVectorMergeMessage = "Graph confidence was low, so semantic vector ranking was merged into the final results.";
     private const string GraphUnavailableMessage = "Markdown-LD graph ranking is unavailable.";
     private const string GraphSearchFailedMessageTemplate = "Markdown-LD graph ranking failed: {0}";
     private const string EmbeddingCountMismatchMessageTemplate = "Embedding generation returned {0} vectors for {1} tools.";
@@ -155,7 +160,15 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const int GraphFocusedRelatedResultsLimit = 6;
     private const int GraphFocusedNextStepResultsLimit = 6;
     private const int SearchQueryNormalizationMaxOutputTokens = 96;
+    private const int GraphConfidenceMaxQueryTerms = 8;
+    private const int GraphConfidenceTermWeightCap = 12;
+    private const int GraphMinimumFuzzyTermLength = 4;
     private const double ToolNameSignalWeight = 0.05d;
+    private const double MinimumGraphMatchConfidence = 0.35d;
+    private const double HybridVectorOnlyCandidateDamping = 0.85d;
+    private const double GraphConfidenceEvidenceWeight = 2d;
+    private const double GraphContainsTermSimilarity = 0.92d;
+    private const double GraphMinimumFuzzySimilarity = 0.55d;
 
     private static readonly char[] TokenSeparators =
     [

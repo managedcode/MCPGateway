@@ -102,7 +102,10 @@ internal sealed partial class McpGatewayRuntime
                 continue;
             }
 
-            var score = ApplySearchBoosts(entry, boostQuery, Math.Clamp(match.Score, 0d, 1d));
+            var score = CalibrateGraphConfidence(
+                entry,
+                boostQuery,
+                ApplySearchBoosts(entry, boostQuery, Math.Clamp(match.Score, 0d, 1d)));
             if (!bestScores.TryGetValue(entry.Descriptor.ToolId, out var existing) || score > existing.Score)
             {
                 bestScores[entry.Descriptor.ToolId] = new ScoredToolEntry(entry, score);

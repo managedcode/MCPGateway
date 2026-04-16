@@ -1,7 +1,3 @@
-using System.Globalization;
-using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging;
-
 namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
@@ -50,93 +46,12 @@ internal sealed partial class McpGatewayRuntime
             return new McpGatewaySearchResult(browse, diagnostics, SearchModeBrowse);
         }
 
-        RankedSearch rankedSearch;
-        var shouldPreferVectorSearch =
-            (_searchStrategy is McpGatewaySearchStrategy.Embeddings ||
-             (_searchStrategy is McpGatewaySearchStrategy.Auto && snapshot.GraphIndex?.CanSearch != true)) &&
-            snapshot.HasVectors;
-        if (shouldPreferVectorSearch)
-        {
-            try
-            {
-                await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
-                if (embeddingGeneratorLease.Generator is IEmbeddingGenerator<string, Embedding<float>> generator)
-                {
-                    var embedding = await generator.GenerateAsync(searchInput.EffectiveQuery, cancellationToken: cancellationToken);
-                    var queryVector = embedding.Vector.ToArray();
-                    var queryMagnitude = CalculateMagnitude(queryVector);
-                    if (queryMagnitude > double.Epsilon)
-                    {
-                        var ranked = snapshot.Entries
-                            .Select(entry => new ScoredToolEntry(
-                                entry,
-                                ApplySearchBoosts(
-                                    entry,
-                                    searchInput.BoostQuery,
-                                    CalculateCosine(entry, queryVector, queryMagnitude))))
-                            .OrderByDescending(static item => item.Score)
-                            .ThenBy(static item => item.Entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-                        rankedSearch = new RankedSearch(ranked, SearchModeVector);
-                    }
-                    else
-                    {
-                        diagnostics.Add(new McpGatewayDiagnostic(QueryVectorEmptyDiagnosticCode, QueryVectorEmptyMessage));
-                        rankedSearch = await RankWithGraphOrEmptyAsync(
-                            snapshot,
-                            searchInput,
-                            limit,
-                            diagnostics,
-                            addGraphFallbackDiagnostic: false,
-                            cancellationToken);
-                    }
-                }
-                else
-                {
-                    rankedSearch = await RankWithGraphOrEmptyAsync(
-                        snapshot,
-                        searchInput,
-                        limit,
-                        diagnostics,
-                        addGraphFallbackDiagnostic: true,
-                        cancellationToken);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                diagnostics.Add(new McpGatewayDiagnostic(
-                    VectorSearchFailedDiagnosticCode,
-                    string.Format(CultureInfo.InvariantCulture, VectorSearchFailedMessageFormat, ex.GetBaseException().Message)));
-                _logger.LogWarning(ex, GatewayVectorSearchFailedLogMessage);
-                rankedSearch = await RankWithGraphOrEmptyAsync(
-                    snapshot,
-                    searchInput,
-                    limit,
-                    diagnostics,
-                    addGraphFallbackDiagnostic: false,
-                    cancellationToken);
-            }
-        }
-        else if (_searchStrategy is McpGatewaySearchStrategy.Embeddings)
-        {
-            rankedSearch = await RankWithGraphOrEmptyAsync(
-                snapshot,
-                searchInput,
-                limit,
-                diagnostics,
-                addGraphFallbackDiagnostic: true,
-                cancellationToken);
-        }
-        else
-        {
-            rankedSearch = await RankWithGraphOrEmptyAsync(
-                snapshot,
-                searchInput,
-                limit,
-                diagnostics,
-                addGraphFallbackDiagnostic: false,
-                cancellationToken);
-        }
+        var rankedSearch = await RankWithConfiguredStrategyAsync(
+            snapshot,
+            searchInput,
+            limit,
+            diagnostics,
+            cancellationToken);
 
         var matches = rankedSearch.Ranked
             .Take(limit)
@@ -168,5 +83,5 @@ internal sealed partial class McpGatewayRuntime
             entry.Descriptor.Description,
             entry.Descriptor.RequiredArguments,
             entry.Descriptor.InputSchemaJson,
-            score);
+            Math.Clamp(score, 0d, 1d));
 }

@@ -9,6 +9,7 @@ In scope:
 - optional English query normalization before ranking
 - Markdown-LD focused graph ranking as the default search path
 - opt-in vector ranking with graph fallback
+- gateway-level confidence calibration for graph-ranked results
 - file-system Markdown-LD graph sources for pre-generated graph documents
 - deterministic behavior when no AI normalizer or embedding generator is registered
 - automated verification for graph, vector fallback, multilingual, noisy, and focused expansion scenarios
@@ -36,15 +37,18 @@ Out of scope:
 1. Graph-backed search must be the default and must stay functional with zero embedding or chat-model dependencies.
 2. Embedding search must be opt-in and must fall back to Markdown-LD graph ranking when vector search cannot complete.
 3. `Auto` may exist as an explicit policy mode, but it must not be documented as the default or as a third retrieval engine.
-4. Token-based retrieval must come from `ManagedCode.MarkdownLd.Kb` inside the graph path; the package must not expose a separate local `Tokenizer` strategy.
-5. Markdown-LD graph mode must support generated tool documents at index build/startup and file-system graph sources through a configured path.
-6. File-backed graph tests must generate graph fixtures through package APIs or generated Markdown-LD documents, not hand-authored static artifacts.
-7. When query normalization is enabled and a keyed `IChatClient` is available, the gateway must normalize the user query into concise English before ranking.
-8. Query normalization must preserve identifiers and retrieval-critical literals such as emails, repository names, CVE references, order numbers, tracking numbers, and SKUs.
-9. If normalization is enabled but no keyed normalizer client is registered, the gateway must continue with the original query and must not fail the search.
-10. If normalization fails, the gateway must continue with the original query and expose a diagnostic rather than throwing.
-11. Search-quality improvements must prefer mathematical or graph-ranking changes over text-level hardcoded exceptions.
-12. Default search result limits and existing public search/invoke entry points must remain intact.
+4. `Auto` must run graph first and use vector ranking only as semantic rescue/merge when graph confidence is low or graph search is unavailable.
+5. Token-based retrieval must come from `ManagedCode.MarkdownLd.Kb` inside the graph path; the package must not expose a separate local `Tokenizer` strategy.
+6. Markdown-LD graph mode must support generated tool documents at index build/startup and file-system graph sources through a configured path.
+7. File-backed graph tests must generate graph fixtures through package APIs or generated Markdown-LD documents, not hand-authored static artifacts.
+8. When query normalization is enabled and a keyed `IChatClient` is available, the gateway must normalize the user query into concise English before ranking.
+9. Query normalization must preserve identifiers and retrieval-critical literals such as emails, repository names, CVE references, order numbers, tracking numbers, and SKUs.
+10. If normalization is enabled but no keyed normalizer client is registered, the gateway must continue with the original query and must not fail the search.
+11. If normalization fails, the gateway must continue with the original query and expose a diagnostic rather than throwing.
+12. Search-quality improvements must prefer mathematical or graph-ranking changes over text-level hardcoded exceptions.
+13. Gateway-facing `McpGatewaySearchMatch.Score` values must be calibrated confidence values rather than raw graph-library ranks, because callers need trustworthy confidence for multilingual and noisy queries.
+14. Low-confidence graph results must emit a diagnostic instead of surfacing fake perfect confidence.
+15. Default search result limits and existing public search/invoke entry points must remain intact.
 
 ## Main Flow
 
@@ -61,10 +65,10 @@ flowchart LR
     Generated --> Graph["Focused graph search"]
     FileDocs --> Graph
     Strategy -->|Embeddings| Vector["Embedding ranking"]
-    Strategy -->|Auto| Policy["Explicit policy mode"]
+    Strategy -->|Auto| Policy["Graph-first hybrid policy"]
     Vector -->|Failure / unusable vector| Graph
     Policy --> Graph
-    Policy --> Vector
+    Graph -->|Low confidence / unavailable| Vector
     Graph --> Result["Primary + related + next-step matches"]
     Vector --> Result
 ```
@@ -77,9 +81,11 @@ flowchart LR
 - Forced graph mode must build or load the graph during explicit init, lazy first use, or hosted warmup.
 - Missing file-system graph path must be reported as a diagnostic and must not crash list/search/invoke.
 - A registered embedding generator is used only when the selected strategy allows vector search.
+- `Auto` must not spend a query embedding call when graph confidence is already high.
 - A normalization client that returns blank output must not replace the original query.
 - A normalization client that times out or throws must emit a diagnostic and fall back to the original query.
 - Typo-heavy inputs such as `shipmnt` must still retrieve the expected tool through Markdown-LD token-distance graph search.
+- Clearly irrelevant multilingual or noisy graph matches must not surface with `Score = 1`.
 
 ## System Behavior
 
@@ -98,7 +104,7 @@ flowchart LR
 - Side effects:
   - optional `IChatClient` request for query normalization
   - in-memory Markdown-LD graph construction during index build for graph-capable strategies
-  - diagnostics describing normalization fallback, vector fallback, graph-source problems, or low-confidence conditions
+  - diagnostics describing normalization fallback, vector fallback, graph-source problems, or low-confidence graph conditions
 - Idempotency:
   - same indexed catalog, same graph source, and same deterministic query-normalizer response yield stable ranking
 - Errors:
@@ -126,6 +132,8 @@ Test mapping:
 - file-backed graph bundle and directory coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchGraphTests.cs`
 - embedding fallback coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchMarkdownLdTests.cs`
 - default graph/no-embedding coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchBuildTests.cs`
+- confidence calibration coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchConfidenceTests.cs`
+- `Auto` hybrid rescue coverage in `tests/ManagedCode.MCPGateway.Tests/Search/McpGatewaySearchAutoTests.cs`
 - auto-discovery graph expansion coverage in `tests/ManagedCode.MCPGateway.Tests/ChatClient/` and `tests/ManagedCode.MCPGateway.Tests/Agents/`
 
 ## Definition Of Done
@@ -133,6 +141,7 @@ Test mapping:
 - graph-backed search is the default no-embedding path
 - graph mode supports generated startup/index-build documents and file-system graph sources
 - vector ranking is opt-in and falls back to graph ranking on query vector failure
+- `Auto` uses graph-first ranking and returns `hybrid` when semantic vector rescue is merged into the final result set
 - optional English query normalization works through `Microsoft.Extensions.AI`
 - multilingual, typo-heavy, focused expansion, and file-backed graph scenarios are covered by automated tests
 - docs explain how to configure graph, file-backed graph, embeddings, and optional query normalization

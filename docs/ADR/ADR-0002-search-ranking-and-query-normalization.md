@@ -16,11 +16,13 @@ This decision record now documents the stable query-normalization policy and the
 
 `ManagedCode.MCPGateway` will use `SearchStrategy.Graph` as the default production mode. Optional English query normalization remains available through a keyed `IChatClient` before ranking. Vector search remains available only when the host chooses `SearchStrategy.Embeddings` or explicitly chooses `SearchStrategy.Auto`.
 
+The gateway will also treat `McpGatewaySearchMatch.Score` as a gateway-owned confidence value, not as a raw backend rank. Graph-library ranks must be calibrated against descriptor/query evidence before they are returned to callers so clearly weak multilingual or noisy matches do not surface with fake perfect confidence.
+
 Search modes:
 
 - `Graph` / `MarkdownLd`: default deterministic local graph retrieval using `ManagedCode.MarkdownLd.Kb`
 - `Embeddings`: vector ranking first, Markdown-LD graph fallback when vector query generation fails or returns an unusable vector
-- `Auto`: policy mode for hosts that intentionally want adaptive behavior; it is not the default and not a separate retrieval engine
+- `Auto`: graph-first policy mode that keeps graph canonical and performs semantic vector rescue/merge only when graph confidence is low or graph search is unavailable
 
 ## Diagram
 
@@ -33,10 +35,10 @@ flowchart LR
     Raw --> Strategy
     Strategy -->|Graph / MarkdownLd| Graph["Markdown-LD focused graph search"]
     Strategy -->|Embeddings| Vector["Embedding search"]
-    Strategy -->|Auto| Policy["Policy selection"]
+    Strategy -->|Auto| Policy["Graph-first policy"]
     Vector -->|Failure / unusable vector| Graph
     Policy --> Graph
-    Policy --> Vector
+    Graph -->|Low confidence / unavailable| Vector
     Graph --> Result["Search result + diagnostics"]
     Vector --> Result
 ```
@@ -88,6 +90,8 @@ Positive:
 - the default search path works without embeddings or a chat model
 - optional English normalization improves multilingual/noisy inputs without making the package depend on an AI client
 - graph-focused search can return primary matches plus related and next-step expansion matches
+- callers receive a more trustworthy confidence signal for multilingual and typo-heavy graph queries
+- `Auto` can rescue low-confidence graph results with semantic vector matches without changing the default `Graph` mode
 - vector ranking stays available for hosts that explicitly configure it
 
 Trade-offs:
@@ -110,6 +114,9 @@ Mitigations:
 - If no embedding generator is registered, search MUST still function through Markdown-LD graph ranking.
 - If vector search fails for a request, the gateway MUST fall back to Markdown-LD graph ranking and emit diagnostics instead of failing the request.
 - If English normalization is enabled but no keyed `IChatClient` is registered, search MUST continue with the original query.
+- `McpGatewaySearchMatch.Score` MUST remain a calibrated confidence value, not a raw graph-library rank.
+- Clearly weak graph matches MUST NOT surface with `Score = 1` only because they were the best relative graph hit.
+- `Auto` MUST run graph search first when graph search is available and MUST use vector ranking only as a low-confidence semantic rescue or when graph search is unavailable.
 - Search-quality improvements MUST prefer mathematical or graph-ranking changes over hardcoded phrase exceptions.
 
 ## Rollout And Rollback
@@ -119,6 +126,7 @@ Rollout:
 1. Keep README defaults aligned with `SearchStrategy.Graph`, `SearchQueryNormalization`, and the top-5 default result size.
 2. Keep `McpGatewayServiceKeys.SearchQueryChatClient` documented as the optional keyed normalizer dependency.
 3. Keep graph tests current with generated and file-backed graph sources.
+4. Keep confidence-calibration tests for multilingual, typo-heavy, and weak-intent graph queries.
 
 Rollback:
 
