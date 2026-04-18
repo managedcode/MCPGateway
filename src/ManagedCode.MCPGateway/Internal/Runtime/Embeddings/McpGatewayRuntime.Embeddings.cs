@@ -150,4 +150,22 @@ internal sealed partial class McpGatewayRuntime
             metadata?.DefaultModelDimensions?.ToString(CultureInfo.InvariantCulture) ?? EmbeddingGeneratorFingerprintUnknownComponent,
             generatorTypeName ?? EmbeddingGeneratorFingerprintUnknownComponent));
     }
+
+    private string? GetOrCreateEmbeddingGeneratorFingerprint(
+        IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator)
+    {
+        var cachedFingerprint = Volatile.Read(ref _embeddingGeneratorFingerprint);
+        if (cachedFingerprint is not null)
+        {
+            return cachedFingerprint;
+        }
+
+        var resolvedFingerprint = ResolveEmbeddingGeneratorFingerprint(embeddingGenerator);
+        if (resolvedFingerprint is null)
+        {
+            return null;
+        }
+
+        return Interlocked.CompareExchange(ref _embeddingGeneratorFingerprint, resolvedFingerprint, null) ?? resolvedFingerprint;
+    }
 }

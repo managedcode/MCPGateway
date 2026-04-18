@@ -19,6 +19,8 @@ public static class McpGatewayServiceCollectionExtensions
             services.Configure(configure);
         }
 
+        services.AddMemoryCache();
+        services.TryAddSingleton<McpGatewaySearchRuntimeCache>();
         services.TryAddSingleton<IMcpGateway, McpGateway>();
         services.TryAddSingleton<IMcpGatewayRegistry, McpGatewayRegistry>();
         services.TryAddSingleton<McpGatewayToolSet>();

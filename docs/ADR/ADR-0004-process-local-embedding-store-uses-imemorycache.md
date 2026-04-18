@@ -4,11 +4,18 @@
 
 `ManagedCode.MCPGateway` exposes `IMcpGatewayToolEmbeddingStore` so hosts can reuse tool embeddings between index builds.
 
-The package still needs a built-in process-local option for hosts that only want cheap embedding reuse inside one app instance, but horizontal scale, durability, and cross-replica cache coherence remain separate concerns.
+The package still needs built-in process-local caching for two different concerns:
+
+- tool-embedding reuse between index builds
+- ephemeral runtime reuse for normalized queries, query embeddings, and exact repeated search results
+
+Horizontal scale, durability, and cross-replica cache coherence remain separate concerns.
 
 ## Decision
 
 The built-in `McpGatewayInMemoryToolEmbeddingStore` will use `IMemoryCache` for process-local embedding reuse, and the package will expose a dedicated `AddMcpGatewayInMemoryToolEmbeddingStore()` registration path that wires the store to the host's shared cache services.
+
+The gateway runtime will also use an internal typed cache service backed by the same host `IMemoryCache` registration for ephemeral search-path reuse. That internal cache may store normalized queries, query embeddings, and exact repeated search results, but it must stay process-local and must not replace the durable `IMcpGatewayToolEmbeddingStore` abstraction.
 
 Durable or distributed embedding reuse will remain the responsibility of host-provided `IMcpGatewayToolEmbeddingStore` implementations.
 
@@ -22,6 +29,8 @@ flowchart LR
     CacheRegistration --> Store["IMcpGatewayToolEmbeddingStore"]
     Store --> Runtime["McpGatewayRuntime"]
     Runtime --> Search["Index build / vector reuse"]
+    Runtime --> RuntimeCache["Internal search cache"]
+    RuntimeCache --> MemoryCache
     Host --> CustomStore["Custom durable store (optional)"]
     CustomStore --> Runtime
 ```
@@ -72,6 +81,7 @@ Positive:
 
 - the built-in store relies on a standard .NET caching primitive
 - hosts can register the process-local store with one DI call and reuse the shared `IMemoryCache`
+- the runtime can reuse expensive search-path artifacts without wrapping `IChatClient` or `IEmbeddingGenerator`
 - process-local cache behavior stays explicitly separate from durable/distributed storage concerns
 - fingerprint-agnostic lookups become deterministic by reusing the latest cached embedding for the same tool document
 
@@ -89,7 +99,7 @@ Mitigations:
 
 ## Invariants
 
-- `McpGatewayRuntime` MUST continue to depend only on `IMcpGatewayToolEmbeddingStore`, not on `IMemoryCache` directly.
+- `McpGatewayRuntime` MAY consume internal typed cache services, but it MUST NOT depend on `IMemoryCache` directly.
 - `McpGatewayInMemoryToolEmbeddingStore` MUST remain optional and MUST NOT become a mandatory dependency for gateway usage.
 - `AddMcpGatewayInMemoryToolEmbeddingStore()` MUST register the built-in store through the host `IServiceCollection` and MUST provision `IMemoryCache`.
 - Hosts that need cross-instance persistence or replication MUST continue to provide their own `IMcpGatewayToolEmbeddingStore`.
@@ -102,7 +112,8 @@ Rollout:
 1. Add the `Microsoft.Extensions.Caching.Memory` dependency to the package.
 2. Implement `McpGatewayInMemoryToolEmbeddingStore` with `IMemoryCache`.
 3. Expose `AddMcpGatewayInMemoryToolEmbeddingStore()` for host DI registration.
-4. Update README and architecture docs to distinguish process-local cache reuse from durable storage.
+4. Add the internal runtime cache for normalized queries, query embeddings, and repeated search results through the same shared `IMemoryCache`.
+5. Update README and architecture docs to distinguish process-local cache reuse from durable storage.
 
 Rollback:
 
@@ -123,13 +134,14 @@ Rollback:
 
 1. Register `Microsoft.Extensions.Caching.Memory` as a package dependency.
 2. Implement the built-in store with `IMemoryCache` lookups keyed by tool id, document hash, and embedding fingerprint.
-3. Keep the runtime abstraction unchanged by continuing to consume `IMcpGatewayToolEmbeddingStore`.
-4. Add tests for the cache-backed store, including deterministic fingerprint-agnostic fallback behavior.
-5. Update README and architecture docs so process-local cache reuse is not described as durable persistence.
+3. Keep durable vector reuse behind `IMcpGatewayToolEmbeddingStore`.
+4. Add the internal runtime cache for normalized-query reuse, query-embedding reuse, and repeated search-result reuse.
+5. Add tests for the cache-backed store, runtime cache reuse, and cache invalidation after rebuilds.
+6. Update README and architecture docs so process-local cache reuse is not described as durable persistence.
 
 ## Stakeholder Notes
 
 - Product: the package still offers a zero-infrastructure local cache option, but durable storage remains opt-in.
-- Dev: use `AddMcpGatewayInMemoryToolEmbeddingStore()` when the host only needs process-local embedding reuse.
-- QA: verify vector reuse, clone safety, and fallback-to-latest behavior through the embedding-store tests.
+- Dev: use `AddMcpGatewayInMemoryToolEmbeddingStore()` when the host only needs process-local embedding reuse, and rely on the built-in runtime cache for normalized queries, query embeddings, and repeated search results.
+- QA: verify vector reuse, clone safety, normalization/query cache reuse, and cache invalidation after rebuilds.
 - DevOps: multi-instance deployments still need a host-provided durable/distributed `IMcpGatewayToolEmbeddingStore`.

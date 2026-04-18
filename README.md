@@ -22,7 +22,7 @@ dotnet add package ManagedCode.MCPGateway
 ## What It Gives You
 
 - one gateway for local `AITool` instances and MCP tools
-- one search surface with default Markdown-LD graph ranking and opt-in vector ranking
+- one search surface with default Markdown-LD graph ranking, opt-in vector ranking, and vector-first `Auto` supplementation
 - one invoke surface for both local tools and MCP tools
 - runtime registration through `IMcpGatewayRegistry`
 - reusable gateway meta-tools for chat clients and agents
@@ -78,6 +78,7 @@ Important defaults:
 - search is `Graph` by default
 - graph search uses `ManagedCode.MarkdownLd.Kb` and does not require embeddings
 - embeddings are opt-in through `McpGatewaySearchStrategy.Embeddings` or `McpGatewaySearchStrategy.Auto`
+- `Auto` runs vector ranking first when vectors are available, then uses the Markdown-LD graph for bounded related and next-step expansion
 - `McpGatewaySearchMatch.Score` is a gateway-calibrated confidence value, not a raw backend rank
 - the default result size is `5`
 - the maximum result size is `15`
@@ -440,6 +441,8 @@ services.AddMcpGateway(options =>
 
 If the keyed chat client is missing or normalization fails, search continues normally.
 
+`AddMcpGateway(...)` also wires an internal process-local runtime cache backed by the application's shared `IMemoryCache`. The gateway reuses normalized queries, query embeddings, and exact repeated search results inside the current process, but it does not wrap `IChatClient` or `IEmbeddingGenerator` with custom proxy layers. Durable or cross-instance reuse still belongs behind `IMcpGatewayToolEmbeddingStore`.
+
 ## Optional Tool Embedding Stores
 
 For process-local caching, use the built-in `IMemoryCache`-backed store:
@@ -593,7 +596,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Use `Auto` when the host wants graph-first retrieval with semantic rescue. It runs graph search first, keeps graph as the canonical local path, and only merges vector ranking when graph confidence is low or graph search is unavailable:
+Use `Auto` when the host wants semantic primary ranking without losing Markdown-LD graph expansion. It runs vector search first when vectors are available, keeps the vector ordering as the primary result set, and then uses the graph to add bounded related or next-step matches:
 
 ```csharp
 services.AddMcpGateway(options =>
@@ -606,7 +609,25 @@ Graph mode uses `ManagedCode.MarkdownLd.Kb` to convert every local `AITool` and 
 
 The gateway calibrates graph-facing `Score` values before returning them to callers. This keeps obviously weak multilingual or noisy matches from surfacing with fake perfect confidence and emits a `low_confidence_results` diagnostic when the top graph hit is still weak after calibration.
 
-In `Auto` mode, low-confidence graph results can trigger a semantic vector rescue pass. The final `Matches` list is returned with `RankingMode = "hybrid"` when vector results were merged into the graph-first result set.
+In `Auto` mode, multilingual or noisy queries can preserve both the original query text and the optional English-normalized rewrite for vector ranking. The Markdown-LD graph then runs as a bounded supplement over the semantic candidate window. `RankingMode = "hybrid"` is returned when graph expansion contributes related or next-step matches. If vector search is unavailable or unusable, `Auto` falls back to graph ranking and reports diagnostics.
+
+## Runtime Telemetry
+
+The gateway emits built-in .NET diagnostics so hosts can observe index and search behavior without extra packages:
+
+- `ActivitySource`: `ManagedCode.MCPGateway`
+- search activity: `ManagedCode.MCPGateway.Search`
+- build activity: `ManagedCode.MCPGateway.BuildIndex`
+- `Meter`: `ManagedCode.MCPGateway`
+- instruments:
+  - `mcpgateway.search.requests`
+  - `mcpgateway.search.duration`
+  - `mcpgateway.search.vector.duration`
+  - `mcpgateway.search.graph.duration`
+  - `mcpgateway.index.builds`
+  - `mcpgateway.index.build.duration`
+
+Search telemetry includes configured strategy, ranking mode, whether vector and graph ranking were used, cache-hit state, normalization state, result counts, and focused graph counts. Build telemetry includes tool counts, vectorized counts, and graph readiness/counts.
 
 The old separate local tokenizer strategy is intentionally not exposed. Token-based search is provided by `ManagedCode.MarkdownLd.Kb` inside the Markdown-LD graph path.
 
@@ -629,7 +650,9 @@ Use these when you need design details rather than package onboarding:
 - [ADR-0002: Search ranking and query normalization](docs/ADR/ADR-0002-search-ranking-and-query-normalization.md)
 - [ADR-0003: Reusable chat-client and agent auto-discovery modules](docs/ADR/ADR-0003-reusable-chat-client-and-agent-tool-modules.md)
 - [ADR-0005: Markdown-LD graph search for tool retrieval](docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md)
+- [ADR-0006: Vector-first auto search and runtime telemetry](docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md)
 - [Feature spec: Search query normalization and ranking](docs/Features/SearchQueryNormalizationAndRanking.md)
+- [Feature spec: Auto vector-first search and performance](docs/Features/AutoVectorFirstSearchAndPerformance.md)
 
 ## Local Development
 

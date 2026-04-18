@@ -1,6 +1,6 @@
 # ADR-0002: Search Ranking And Query Normalization
 
-Status: Updated by ADR-0005<br>
+Status: Updated by ADR-0005 and ADR-0006<br>
 Date: 2026-04-15<br>
 Superseded parts: the former standalone tokenizer strategy and lexical fallback are removed.
 
@@ -22,7 +22,7 @@ Search modes:
 
 - `Graph` / `MarkdownLd`: default deterministic local graph retrieval using `ManagedCode.MarkdownLd.Kb`
 - `Embeddings`: vector ranking first, Markdown-LD graph fallback when vector query generation fails or returns an unusable vector
-- `Auto`: graph-first policy mode that keeps graph canonical and performs semantic vector rescue/merge only when graph confidence is low or graph search is unavailable
+- `Auto`: vector-first policy mode that keeps semantic ranking as the primary result set and uses Markdown-LD graph expansion only after vector ranking succeeds
 
 ## Diagram
 
@@ -35,11 +35,12 @@ flowchart LR
     Raw --> Strategy
     Strategy -->|Graph / MarkdownLd| Graph["Markdown-LD focused graph search"]
     Strategy -->|Embeddings| Vector["Embedding search"]
-    Strategy -->|Auto| Policy["Graph-first policy"]
+    Strategy -->|Auto| Policy["Vector-first policy"]
     Vector -->|Failure / unusable vector| Graph
-    Policy --> Graph
-    Graph -->|Low confidence / unavailable| Vector
+    Policy -->|Vector unavailable / unusable| Graph
+    Policy -->|Vector available| AutoGraph["Bounded graph expansion"]
     Graph --> Result["Search result + diagnostics"]
+    AutoGraph --> Result
     Vector --> Result
 ```
 
@@ -91,7 +92,9 @@ Positive:
 - optional English normalization improves multilingual/noisy inputs without making the package depend on an AI client
 - graph-focused search can return primary matches plus related and next-step expansion matches
 - callers receive a more trustworthy confidence signal for multilingual and typo-heavy graph queries
-- `Auto` can rescue low-confidence graph results with semantic vector matches without changing the default `Graph` mode
+- `Auto` can keep multilingual or noisy retrieval semantically anchored without changing the default `Graph` mode
+- bounded graph supplementation still exposes related and next-step matches after vector ranking
+- built-in telemetry makes search/build behavior observable through first-party .NET diagnostics
 - vector ranking stays available for hosts that explicitly configure it
 
 Trade-offs:
@@ -116,7 +119,8 @@ Mitigations:
 - If English normalization is enabled but no keyed `IChatClient` is registered, search MUST continue with the original query.
 - `McpGatewaySearchMatch.Score` MUST remain a calibrated confidence value, not a raw graph-library rank.
 - Clearly weak graph matches MUST NOT surface with `Score = 1` only because they were the best relative graph hit.
-- `Auto` MUST run graph search first when graph search is available and MUST use vector ranking only as a low-confidence semantic rescue or when graph search is unavailable.
+- `Auto` MUST run vector ranking first when query vectors are available and usable.
+- `Auto` MUST preserve vector primary ordering and MUST use graph search only as bounded supplementation or fallback.
 - Search-quality improvements MUST prefer mathematical or graph-ranking changes over hardcoded phrase exceptions.
 
 ## Rollout And Rollback
@@ -152,6 +156,6 @@ Rollback:
 ## Stakeholder Notes
 
 - Product: the package has one recommended free default and an explicit paid/host-provided embedding option.
-- Dev: search quality work should continue through graph construction, statistical scoring, and evaluation data, not manual phrase hacks.
+- Dev: search quality work should continue through graph construction, semantic scoring, statistical calibration, and evaluation data, not manual phrase hacks.
 - QA: typo, multilingual, weak-intent, graph expansion, and file-backed graph scenarios are required test coverage.
 - DevOps: hosts can run fully local graph search or add keyed chat/embedding services when needed.

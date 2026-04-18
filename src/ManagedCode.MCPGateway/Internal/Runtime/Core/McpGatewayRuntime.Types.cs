@@ -32,9 +32,10 @@ internal sealed partial class McpGatewayRuntime
     private sealed record ToolCatalogSnapshot(
         IReadOnlyList<ToolCatalogEntry> Entries,
         bool HasVectors,
-        ToolGraphSearchIndex? GraphIndex)
+        ToolGraphSearchIndex? GraphIndex,
+        int Version)
     {
-        public static ToolCatalogSnapshot Empty { get; } = new([], false, null);
+        public static ToolCatalogSnapshot Empty { get; } = new([], false, null, -1);
     }
 
     private sealed record ToolGraphSearchIndex(
@@ -71,15 +72,45 @@ internal sealed partial class McpGatewayRuntime
         string? FlattenedContext)
     {
         private const string SearchInputSegmentSeparator = " | ";
+        private const string SearchInputNormalizedQueryLabel = "english query: ";
 
-        public string EffectiveQuery
+        public string VectorQuery
+            => BuildEffectiveQuery(
+                BuildVectorBaseQuery(OriginalQuery, NormalizedQuery),
+                ContextSummary,
+                FlattenedContext);
+
+        public string GraphQuery
             => BuildEffectiveQuery(
                 NormalizedQuery ?? OriginalQuery,
                 ContextSummary,
                 FlattenedContext);
 
         public string BoostQuery
-            => NormalizedQuery ?? OriginalQuery ?? EffectiveQuery;
+            => NormalizedQuery ?? OriginalQuery ?? VectorQuery;
+
+        public bool HasTerms
+            => !string.IsNullOrWhiteSpace(VectorQuery) || !string.IsNullOrWhiteSpace(GraphQuery);
+
+        private static string? BuildVectorBaseQuery(string? originalQuery, string? normalizedQuery)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedQuery) ||
+                string.Equals(originalQuery, normalizedQuery, StringComparison.OrdinalIgnoreCase))
+            {
+                return originalQuery;
+            }
+
+            if (string.IsNullOrWhiteSpace(originalQuery))
+            {
+                return normalizedQuery;
+            }
+
+            return string.Concat(
+                originalQuery,
+                SearchInputSegmentSeparator,
+                SearchInputNormalizedQueryLabel,
+                normalizedQuery);
+        }
 
         private static string BuildEffectiveQuery(
             string? query,

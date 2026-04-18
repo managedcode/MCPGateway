@@ -30,7 +30,7 @@ Key points:
 - `McpGatewaySearchStrategy.Graph` is the default search strategy.
 - `McpGatewaySearchStrategy.MarkdownLd` is an alias for graph search.
 - `McpGatewaySearchStrategy.Embeddings` opts into vector ranking and falls back to Markdown-LD graph ranking if vector search cannot complete.
-- `McpGatewaySearchStrategy.Auto` remains a policy mode, but it is not the default and is not a third retrieval engine. It runs graph first and merges semantic vector results only when graph confidence is low or graph search is unavailable.
+- `McpGatewaySearchStrategy.Auto` remains a policy mode, but it is not the default and is not a third retrieval engine. It runs vector ranking first when vectors are available, then uses the graph for bounded related/next-step expansion or graph fallback.
 - The separate local `Tokenizer` strategy is removed. Token-based search now comes from `ManagedCode.MarkdownLd.Kb` inside the graph path.
 - The graph index is built from the same immutable catalog snapshot as vector search.
 - Every tool descriptor can become a Markdown-LD source document with title, description, tags, source identity, required arguments, input schema text, graph groups, related-tool hints, and next-step hints.
@@ -138,7 +138,7 @@ Trade-offs:
 Mitigations:
 
 - keep `McpGatewaySearchStrategy.Embeddings` available for hosts that want vector ranking
-- keep `McpGatewaySearchStrategy.Auto` available as a graph-first hybrid policy mode for hosts that explicitly want semantic rescue
+- keep `McpGatewaySearchStrategy.Auto` available as a vector-first hybrid policy mode for hosts that explicitly want semantic primary ranking plus graph expansion
 - keep graph implementation internal so future graph API changes do not leak into the public contract
 - provide `McpGatewayMarkdownLdGraphFile` so tests and hosts can generate valid file-backed graph sources through the package flow
 
@@ -148,7 +148,7 @@ Mitigations:
 - Forced `Graph` search MUST not require an embedding generator.
 - Forced `Graph` search MUST build or load the Markdown-LD graph during explicit index build, lazy first use, or optional startup warmup.
 - `Embeddings` search MUST fall back to Markdown-LD graph ranking when vector query generation fails or returns an unusable vector.
-- `Auto` search MUST keep graph as the canonical first-pass ranking path and MUST only merge vector results when graph confidence is low or graph search is unavailable.
+- `Auto` search MUST keep graph as the default fallback/expansion path, but MUST NOT replace vector-first primary ordering when vectors are available and usable.
 - `Auto` MUST NOT be documented as the default retrieval strategy.
 - The package MUST NOT expose a separate local `Tokenizer` strategy.
 - Graph search MUST return `McpGatewaySearchMatch` instances and MUST NOT add a separate invocation path.
@@ -183,7 +183,7 @@ Primary scenarios:
 - file-backed graph mode uses a generated bundle file
 - file-backed graph mode uses a generated directory of Markdown-LD documents
 - vector query failure falls through to graph ranking
-- `Auto` graph-first search can merge semantic vector rescue results when graph confidence is low
+- `Auto` vector-first search can supplement semantic primary results with bounded graph expansion and can still fall back to graph when vector ranking is unavailable
 - default graph mode does not call the embedding generator
 - chat-client and agent auto-discovery expose graph-ranked discovered tools when no embeddings are registered
 

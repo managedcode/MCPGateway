@@ -157,6 +157,7 @@ If no new rule is detected -> do not update the file.
 - Markdown-LD graph search must support both startup-generated graphs and filesystem-provided graph files; tests for file-backed graph mode must generate the graph fixture through the package flow rather than relying on a hand-authored static artifact.
 - If a user adds or corrects a persistent workflow rule, update `AGENTS.md` first and only then continue with the task.
 - When a search-quality fix is requested as a concrete architectural change, finish the intended runtime behavior in the same task instead of stopping at a partial scoring-only step, because partial search fixes leave the real retrieval defect unresolved.
+- When the user asks for a shipped feature set, implement the runtime behavior end-to-end with production-ready code and tests instead of leaving placeholder, mocked, or temporary execution paths, because partial delivery is explicitly rejected in this repository.
 
 ### Repository Layout
 
@@ -239,6 +240,8 @@ If no new rule is detected -> do not update the file.
 - Avoid open-ended `while (true)` loops in runtime code when a real termination condition exists; use an explicit condition such as cancellation or lifecycle state so concurrency code stays auditable.
 - Avoid transient collection + `string.Join` assembly in hot runtime string paths; build the final string directly when only a few optional segments exist, because these extra allocations have already been called out as wasteful in this repository.
 - Prefer readable imperative conditionals over long multi-line boolean expression bodies; if a predicate stops being obvious at a glance, split it into guard clauses or named locals instead of compressing it into one chained return expression.
+- Avoid local wrapper/helper functions that only forward a result after side-effect bookkeeping when a single explicit result variable keeps the API flow clearer, because hidden return paths make the public behavior harder to audit.
+- Keep MCP-facing and public API code paths direct; do not introduce local wrapper layers, proxy-style local helpers, or nested adapter functions when straightforward API-shaped control flow is enough, because extra wrapping obscures the real server behavior.
 - Prefer non-blocking coordination over coarse locking when practical; use concurrent collections, atomic state, and single-flight patterns instead of `lock`-heavy designs, because blocking synchronization has already proven to obscure concurrency behavior in this package.
 - Keep concurrency coordination intention-revealing: avoid opaque fields such as generic drain/task signals inside runtime services when a named helper or clearer lifecycle abstraction can express the behavior, because hidden synchronization state quickly turns registry/runtime code into unreadable infrastructure.
 - Prefer serializer-first JSON/schema handling; avoid ad-hoc manual special cases for `JsonElement`/`JsonNode`/schema objects when normal `System.Text.Json` serialization can represent them correctly.
@@ -254,6 +257,7 @@ If no new rule is detected -> do not update the file.
 - Use the correct contextual logger type for each service; internal collaborators must log with their own type category instead of reusing a parent facade logger, because wrong logger categories make diagnostics misleading.
 - Keep transport-specific logic inside the gateway and source registration abstractions, not scattered across the codebase.
 - Keep the package dependency surface small and justified.
+- Use the shipped NuGet dependency for `ManagedCode.MarkdownLd.Kb` in this repository; do not switch the gateway project to a local `ProjectReference`, because this package is expected to build against the published package surface.
 - Prefer direct generic DI registrations such as `services.TryAddSingleton<IService, Implementation>()` over lambda alias registrations when wiring package services, because the lambda style has already been called out as unreadable and error-prone in this repository.
 - Keep runtime services DI-native from their public/internal constructors; types such as `McpGatewayRegistry` must be creatable through `IOptions<McpGatewayOptions>` and other DI-managed dependencies rather than ad-hoc state-only constructors, because the package design requires services to live fully inside the container.
 - When emitting package identity to external protocols such as MCP client info, never hardcode a fake version string; use the actual assembly/build version so runtime metadata stays aligned with the package being shipped.
@@ -261,6 +265,8 @@ If no new rule is detected -> do not update the file.
 - Never clamp weak multilingual/noisy search matches to perfect confidence through boost stacking or score saturation, because this produces obviously wrong `Score = 1` results and makes relevance debugging impossible.
 - Do not keep a separate local tokenizer search path when `ManagedCode.MarkdownLd.Kb` already provides token-based graph search; route tokenizer-backed retrieval through Markdown-LD so the package does not carry duplicate ranking implementations.
 - Prefer framework-provided in-memory caching primitives such as `IMemoryCache` over custom process-local storage implementations when they cover the lifecycle and lookup needs, because self-rolled memory stores age poorly and make scaling/concurrency behavior harder to trust.
+- Cache reusable search, graph, embedding, and normalization artifacts instead of recreating expensive objects on every request; prefer `IMemoryCache` for process-local reuse and keep extensibility behind interfaces so hosts can swap in durable or distributed implementations.
+- Keep caching dependencies explicit and optional; do not make the core gateway path require `IMemoryCache` when a pluggable or no-op cache boundary can preserve a smaller dependency surface, because the user does not want avoidable cache dependencies forced into the base package.
 - Never keep legacy compatibility shims, obsolete paths, or lingering documentation references to removed implementations when a replacement is accepted, because this repository should converge on the current design instead of carrying dead historical baggage.
 - Never leave `ManagedCode`-prefixed DI/setup extension method names such as `AddManagedCodeMcpGateway(...)` in the public API once concise `McpGateway` naming is available, because these branded leftovers make the package surface inconsistent and read like stale legacy.
 
@@ -304,6 +310,10 @@ If no new rule is detected -> do not update the file.
 - Framework-provided caching primitives over self-rolled in-memory stores when the package only needs process-local cache semantics
 - Removing replaced code paths completely instead of keeping legacy mentions or compatibility leftovers
 - Concise `McpGateway` public registration/init API names without leftover `ManagedCode` branding
+- Straight-line public API control flow over local wrapper helpers that only add bookkeeping around returns
+- Clean MCP API-shaped flows without extra local wrapper layers
+- NuGet package dependencies over local project references for `ManagedCode.MarkdownLd.Kb`
+- Production-ready feature implementations with real runtime behavior and test coverage instead of temporary or placeholder execution paths
 
 ### Dislikes
 

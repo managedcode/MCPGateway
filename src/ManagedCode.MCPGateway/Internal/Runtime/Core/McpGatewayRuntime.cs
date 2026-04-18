@@ -39,9 +39,9 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string SourceLoadFailedMessageTemplate = "Failed to load tools from source '{0}': {1}";
     private const string DuplicateToolIdMessageTemplate = "Skipped duplicate tool id '{0}'.";
     private const string GraphBuildFailedMessageTemplate = "Building the Markdown-LD tool graph failed: {0}";
-    private const string GraphFallbackMessage = "Vector search is unavailable. Markdown-LD graph ranking was used.";
+    private const string GraphFallbackMessage = "Vector search was unavailable or unusable. Markdown-LD graph ranking was used.";
     private const string LowConfidenceResultsMessage = "Graph ranking confidence was low for this query.";
-    private const string HybridVectorMergeMessage = "Graph confidence was low, so semantic vector ranking was merged into the final results.";
+    private const string HybridVectorMergeMessage = "Vector-first ranking was supplemented with Markdown-LD graph expansion.";
     private const string GraphUnavailableMessage = "Markdown-LD graph ranking is unavailable.";
     private const string GraphSearchFailedMessageTemplate = "Markdown-LD graph ranking failed: {0}";
     private const string EmbeddingCountMismatchMessageTemplate = "Embedding generation returned {0} vectors for {1} tools.";
@@ -165,10 +165,11 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const int GraphMinimumFuzzyTermLength = 4;
     private const double ToolNameSignalWeight = 0.05d;
     private const double MinimumGraphMatchConfidence = 0.35d;
-    private const double HybridVectorOnlyCandidateDamping = 0.85d;
     private const double GraphConfidenceEvidenceWeight = 2d;
     private const double GraphContainsTermSimilarity = 0.92d;
     private const double GraphMinimumFuzzySimilarity = 0.55d;
+    private const int AutoSupplementCandidateMultiplier = 4;
+    private const int AutoSupplementMinimumCandidateWindow = 8;
 
     private static readonly char[] TokenSeparators =
     [
@@ -288,8 +289,10 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
+    private readonly McpGatewaySearchRuntimeCache _searchRuntimeCache;
     private RuntimeState _state = RuntimeState.Empty;
     private BuildOperation? _buildOperation;
+    private string? _embeddingGeneratorFingerprint;
 
     internal McpGatewayRuntime(
         IServiceProvider serviceProvider,
@@ -315,6 +318,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         _defaultSearchLimit = Math.Max(1, resolvedOptions.DefaultSearchLimit);
         _maxSearchResults = Math.Max(1, resolvedOptions.MaxSearchResults);
         _maxDescriptorLength = Math.Max(256, resolvedOptions.MaxDescriptorLength);
+        _searchRuntimeCache = serviceProvider.GetRequiredService<McpGatewaySearchRuntimeCache>();
     }
 
     public IReadOnlyList<AITool> CreateMetaTools(

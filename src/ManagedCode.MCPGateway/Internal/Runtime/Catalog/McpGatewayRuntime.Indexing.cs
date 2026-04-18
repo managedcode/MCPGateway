@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -83,6 +84,8 @@ internal sealed partial class McpGatewayRuntime
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
 
+        using var activity = McpGatewayTelemetry.StartBuildIndexActivity(_searchStrategy);
+        var stopwatch = Stopwatch.StartNew();
         var registrySnapshot = _catalogSource.CreateSnapshot();
         var diagnostics = new List<McpGatewayDiagnostic>();
         var entries = new List<ToolCatalogEntry>();
@@ -139,7 +142,7 @@ internal sealed partial class McpGatewayRuntime
             await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
             await using var embeddingStoreLease = ResolveToolEmbeddingStore();
             var embeddingGenerator = embeddingGeneratorLease.Generator;
-            var embeddingGeneratorFingerprint = ResolveEmbeddingGeneratorFingerprint(embeddingGenerator);
+            var embeddingGeneratorFingerprint = GetOrCreateEmbeddingGeneratorFingerprint(embeddingGenerator);
             var embeddingStore = embeddingStoreLease.Store;
             var storeCandidates = entries
                 .Select((entry, index) => new ToolEmbeddingCandidate(
@@ -286,7 +289,8 @@ internal sealed partial class McpGatewayRuntime
                 .ThenBy(static item => item.Descriptor.SourceId, StringComparer.OrdinalIgnoreCase)
                 .ToList(),
             isVectorSearchEnabled,
-            graphIndex);
+            graphIndex,
+            registrySnapshot.Version);
 
         TryUpdateState(snapshot, registrySnapshot.Version);
 
@@ -297,7 +301,7 @@ internal sealed partial class McpGatewayRuntime
             graphIndex?.NodeCount ?? 0,
             graphIndex?.EdgeCount ?? 0);
 
-        return new McpGatewayIndexBuildResult(
+        var buildResult = new McpGatewayIndexBuildResult(
             snapshot.Entries.Count,
             vectorizedToolCount,
             snapshot.HasVectors,
@@ -307,6 +311,12 @@ internal sealed partial class McpGatewayRuntime
             GraphNodeCount = graphIndex?.NodeCount ?? 0,
             GraphEdgeCount = graphIndex?.EdgeCount ?? 0
         };
+        McpGatewayTelemetry.RecordIndexBuild(
+            activity,
+            _searchStrategy,
+            buildResult,
+            stopwatch.Elapsed.TotalMilliseconds);
+        return buildResult;
     }
 
     private void TryUpdateState(ToolCatalogSnapshot snapshot, int snapshotVersion)

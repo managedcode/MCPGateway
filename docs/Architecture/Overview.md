@@ -24,7 +24,7 @@ Out of scope:
 - `IMcpGatewayRegistry` for catalog mutation
 - `McpGatewayToolSet` for reusable meta-tools
 
-`McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default Markdown-LD graph search, graph-first `Auto` hybrid rescue, or opt-in vector-first search, optionally rewrites queries through a keyed `IChatClient`, calibrates user-facing search confidence before returning matches, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
+`McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default Markdown-LD graph search, vector-first `Auto` search with bounded Markdown-LD supplementation, or explicit embedding-first search, optionally rewrites queries through a keyed `IChatClient`, emits built-in .NET telemetry for build/search operations, calibrates user-facing search confidence before returning matches, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
 
 The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` meta-tools and discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with two meta-tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
 
@@ -111,6 +111,8 @@ flowchart LR
     Registry --> OperationGate["McpGatewayOperationGate"]
     RegistrationCollection --> SourceRegistrations["McpGatewayToolSourceRegistration*"]
     RuntimeSearch --> Json["McpGatewayJsonSerializer"]
+    RuntimeSearch --> RuntimeCache["McpGatewaySearchRuntimeCache"]
+    RuntimeCache --> MemoryCache["IMemoryCache"]
     RuntimeGraph --> MarkdownLd["ManagedCode.MarkdownLd.Kb"]
     Warmup["McpGatewayIndexWarmupService"] --> McpGateway
     InMemoryStore["McpGatewayInMemoryToolEmbeddingStore"] --> MemoryCache["IMemoryCache"]
@@ -130,7 +132,9 @@ flowchart LR
 - Internal catalog module: [`src/ManagedCode.MCPGateway/Internal/Catalog/`](../../src/ManagedCode.MCPGateway/Internal/Catalog/) owns mutable tool-source registration state and read-only snapshots for indexing.
 - Internal catalog sources: [`src/ManagedCode.MCPGateway/Internal/Catalog/Sources/`](../../src/ManagedCode.MCPGateway/Internal/Catalog/Sources/) owns transport-specific source registrations and MCP client creation.
 - Internal runtime module: [`src/ManagedCode.MCPGateway/Internal/Runtime/`](../../src/ManagedCode.MCPGateway/Internal/Runtime/) owns orchestration and is split by core, catalog, search, graph, invocation, and embeddings concerns.
+- Internal search cache module: [`src/ManagedCode.MCPGateway/Internal/Caching/`](../../src/ManagedCode.MCPGateway/Internal/Caching/) owns the typed `IMemoryCache` integration for normalized-query reuse, query-embedding reuse, and repeated search-result reuse.
 - Internal graph search module: [`src/ManagedCode.MCPGateway/Internal/Runtime/Graph/`](../../src/ManagedCode.MCPGateway/Internal/Runtime/Graph/) builds generated Markdown-LD tool documents or loads file-system Markdown-LD sources, then ranks focused graph token-distance matches back to gateway tool entries.
+- Internal telemetry module: [`src/ManagedCode.MCPGateway/Internal/Telemetry/`](../../src/ManagedCode.MCPGateway/Internal/Telemetry/) emits first-party .NET `ActivitySource` and `Meter` signals for search and index operations.
 - Internal serialization: [`src/ManagedCode.MCPGateway/Internal/Serialization/`](../../src/ManagedCode.MCPGateway/Internal/Serialization/) contains the canonical JSON materialization path used by runtime features.
 - Warmup hooks: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceProviderExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceProviderExtensions.cs) and [`src/ManagedCode.MCPGateway/Internal/Warmup/McpGatewayIndexWarmupService.cs`](../../src/ManagedCode.MCPGateway/Internal/Warmup/McpGatewayIndexWarmupService.cs) provide optional eager index-building integration.
 - DI registration: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs) wires facade, registry, meta-tools, warmup support, and the optional `IMemoryCache`-backed embedding store into the container.
@@ -148,6 +152,7 @@ flowchart LR
 - The recommended staged host flow is: advertise only the two gateway meta-tools first, then project only the latest search matches as direct proxy tools, then replace that discovered set on the next search result.
 - `Models` should stay contract-first. Internal transport, registry, or lifecycle helpers do not belong there.
 - Embedding support must stay optional and isolated behind `IMcpGatewayToolEmbeddingStore` and embedding-generator abstractions.
+- Process-local runtime search caching may use `IMemoryCache` through internal typed services, but durable or cross-instance vector reuse must stay behind `IMcpGatewayToolEmbeddingStore`.
 - The built-in process-local embedding store may depend on `IMemoryCache`, but cross-instance persistence and cache replication must stay behind host-provided `IMcpGatewayToolEmbeddingStore` implementations.
 - Markdown-LD graph search is the default internal retrieval strategy. It may depend on `ManagedCode.MarkdownLd.Kb`, but it must still return the same public `McpGatewaySearchMatch` contracts, calibrate user-facing confidence at the gateway layer, and must not create a separate invocation surface.
 - Markdown-LD graph sources may be generated from the live catalog at index build time or loaded from a file-system path configured through `McpGatewayOptions`. File-backed mode must still map graph documents back to the current catalog before returning matches.
@@ -160,6 +165,7 @@ flowchart LR
 - [`docs/ADR/ADR-0003-reusable-chat-client-and-agent-tool-modules.md`](../ADR/ADR-0003-reusable-chat-client-and-agent-tool-modules.md): documents why chat-client and agent integrations stay generic around reusable `AITool` modules instead of adding a hard Agent Framework dependency to the core package.
 - [`docs/ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md`](../ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md): documents why the built-in process-local embedding cache uses `IMemoryCache` and why durable/distributed caching remains a host responsibility.
 - [`docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md`](../ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md): documents the default Markdown-LD graph retrieval path, file-system graph sources, and opt-in vector fallback behavior.
+- [`docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md`](../ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md): documents vector-first `Auto`, bounded graph supplementation, runtime telemetry, and performance-smoke coverage.
 
 ## Related Docs
 
@@ -169,7 +175,9 @@ flowchart LR
 - [`docs/ADR/ADR-0003-reusable-chat-client-and-agent-tool-modules.md`](../ADR/ADR-0003-reusable-chat-client-and-agent-tool-modules.md)
 - [`docs/ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md`](../ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md)
 - [`docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md`](../ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md)
+- [`docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md`](../ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md)
 - [`docs/Features/SearchQueryNormalizationAndRanking.md`](../Features/SearchQueryNormalizationAndRanking.md)
+- [`docs/Features/AutoVectorFirstSearchAndPerformance.md`](../Features/AutoVectorFirstSearchAndPerformance.md)
 - [`AGENTS.md`](../../AGENTS.md)
 - [`src/ManagedCode.MCPGateway/AGENTS.md`](../../src/ManagedCode.MCPGateway/AGENTS.md)
 - [`tests/ManagedCode.MCPGateway.Tests/AGENTS.md`](../../tests/ManagedCode.MCPGateway.Tests/AGENTS.md)

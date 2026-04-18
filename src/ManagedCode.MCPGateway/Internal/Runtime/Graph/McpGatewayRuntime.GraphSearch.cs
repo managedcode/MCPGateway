@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using ManagedCode.MarkdownLd.Kb.Pipeline;
 using Microsoft.Extensions.Logging;
@@ -12,34 +13,75 @@ internal sealed partial class McpGatewayRuntime
         int limit,
         IList<McpGatewayDiagnostic> diagnostics,
         bool addGraphFallbackDiagnostic,
+        bool addUnavailableDiagnostic,
+        bool addFailureDiagnostics,
         CancellationToken cancellationToken)
     {
-        if (snapshot.GraphIndex?.CanSearch == true)
+        var graphRanked = await TryRankWithGraphAsync(
+            snapshot,
+            searchInput,
+            limit,
+            diagnostics,
+            addUnavailableDiagnostic,
+            addFailureDiagnostics,
+            cancellationToken);
+        if (graphRanked is not null)
         {
-            try
+            if (addGraphFallbackDiagnostic)
             {
-                var graphRanked = await RankWithGraphAsync(snapshot, searchInput, limit, cancellationToken);
-                if (addGraphFallbackDiagnostic)
-                {
-                    diagnostics.Add(new McpGatewayDiagnostic(GraphFallbackDiagnosticCode, GraphFallbackMessage));
-                }
-
-                return graphRanked;
+                diagnostics.Add(new McpGatewayDiagnostic(GraphFallbackDiagnosticCode, GraphFallbackMessage));
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+
+            return graphRanked;
+        }
+
+        return new RankedSearch([], SearchModeGraph);
+    }
+
+    private async Task<RankedSearch?> TryRankWithGraphAsync(
+        ToolCatalogSnapshot snapshot,
+        SearchInput searchInput,
+        int limit,
+        IList<McpGatewayDiagnostic> diagnostics,
+        bool addUnavailableDiagnostic,
+        bool addFailureDiagnostics,
+        CancellationToken cancellationToken)
+    {
+        if (snapshot.GraphIndex?.CanSearch != true)
+        {
+            if (addUnavailableDiagnostic)
+            {
+                diagnostics.Add(new McpGatewayDiagnostic(GraphUnavailableDiagnosticCode, GraphUnavailableMessage));
+            }
+
+            return null;
+        }
+
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var rankedSearch = await RankWithGraphAsync(snapshot, searchInput, limit, cancellationToken);
+            return rankedSearch with
+            {
+                Metrics = new RankedSearchMetrics(
+                    UsedVectorSearch: rankedSearch.Metrics?.UsedVectorSearch ?? false,
+                    UsedGraphSearch: true,
+                    VectorDurationMilliseconds: rankedSearch.Metrics?.VectorDurationMilliseconds,
+                    GraphDurationMilliseconds: stopwatch.Elapsed.TotalMilliseconds)
+            };
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            if (addFailureDiagnostics)
             {
                 diagnostics.Add(new McpGatewayDiagnostic(
                     GraphSearchFailedDiagnosticCode,
                     string.Format(CultureInfo.InvariantCulture, GraphSearchFailedMessageFormat, ex.GetBaseException().Message)));
-                _logger.LogWarning(ex, GatewayGraphSearchFailedLogMessage);
             }
-        }
-        else
-        {
-            diagnostics.Add(new McpGatewayDiagnostic(GraphUnavailableDiagnosticCode, GraphUnavailableMessage));
-        }
 
-        return new RankedSearch([], SearchModeGraph);
+            _logger.LogWarning(ex, GatewayGraphSearchFailedLogMessage);
+            return null;
+        }
     }
 
     private static async Task<RankedSearch> RankWithGraphAsync(
@@ -50,7 +92,7 @@ internal sealed partial class McpGatewayRuntime
     {
         var graphIndex = snapshot.GraphIndex ?? throw new InvalidOperationException(GraphUnavailableMessage);
         var focusedSearch = await graphIndex.Graph.SearchFocusedAsync(
-            searchInput.EffectiveQuery,
+            searchInput.GraphQuery,
             new KnowledgeGraphFocusedSearchOptions
             {
                 MaxPrimaryResults = limit,
@@ -127,5 +169,7 @@ internal sealed partial class McpGatewayRuntime
         public int FocusedGraphNodeCount { get; init; }
 
         public int FocusedGraphEdgeCount { get; init; }
+
+        public RankedSearchMetrics? Metrics { get; init; }
     }
 }

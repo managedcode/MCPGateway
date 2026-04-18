@@ -43,6 +43,7 @@ internal sealed partial class McpGatewayRuntime
             extractionMode: MarkdownKnowledgeExtractionMode.Tiktoken,
             tiktokenOptions: new TiktokenKnowledgeGraphOptions
             {
+                BuildAutoRelatedSegmentRelations = false,
                 MaxRelatedSegments = GraphMaxRelatedTokenSegments
             });
 

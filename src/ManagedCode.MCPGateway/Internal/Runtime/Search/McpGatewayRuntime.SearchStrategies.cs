@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -47,6 +48,8 @@ internal sealed partial class McpGatewayRuntime
             limit,
             diagnostics,
             addGraphFallbackDiagnostic: false,
+            addUnavailableDiagnostic: true,
+            addFailureDiagnostics: true,
             cancellationToken);
         AddLowConfidenceGraphDiagnostic(graphRanked, diagnostics);
         return graphRanked;
@@ -77,6 +80,8 @@ internal sealed partial class McpGatewayRuntime
             limit,
             diagnostics,
             addGraphFallbackDiagnostic: true,
+            addUnavailableDiagnostic: true,
+            addFailureDiagnostics: true,
             cancellationToken);
         AddLowConfidenceGraphDiagnostic(graphRanked, diagnostics);
         return graphRanked;
@@ -89,42 +94,6 @@ internal sealed partial class McpGatewayRuntime
         IList<McpGatewayDiagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
-        if (snapshot.GraphIndex?.CanSearch != true)
-        {
-            var vectorWithoutGraph = await TryRankWithVectorAsync(
-                snapshot,
-                searchInput,
-                diagnostics,
-                applyLexicalBoosts: false,
-                addFailureDiagnostics: true,
-                cancellationToken);
-            if (vectorWithoutGraph is not null)
-            {
-                return vectorWithoutGraph;
-            }
-
-            return await RankWithGraphOrEmptyAsync(
-                snapshot,
-                searchInput,
-                limit,
-                diagnostics,
-                addGraphFallbackDiagnostic: false,
-                cancellationToken);
-        }
-
-        var graphRanked = await RankWithGraphOrEmptyAsync(
-            snapshot,
-            searchInput,
-            limit,
-            diagnostics,
-            addGraphFallbackDiagnostic: false,
-            cancellationToken);
-        AddLowConfidenceGraphDiagnostic(graphRanked, diagnostics);
-        if (!IsLowConfidenceGraphResult(graphRanked) || !snapshot.HasVectors)
-        {
-            return graphRanked;
-        }
-
         var vectorRanked = await TryRankWithVectorAsync(
             snapshot,
             searchInput,
@@ -134,11 +103,54 @@ internal sealed partial class McpGatewayRuntime
             cancellationToken);
         if (vectorRanked is null)
         {
-            return graphRanked;
+            var graphFallback = await RankWithGraphOrEmptyAsync(
+                snapshot,
+                searchInput,
+                limit,
+                diagnostics,
+                addGraphFallbackDiagnostic: true,
+                addUnavailableDiagnostic: true,
+                addFailureDiagnostics: true,
+                cancellationToken);
+            AddLowConfidenceGraphDiagnostic(graphFallback, diagnostics);
+            return graphFallback;
         }
 
-        diagnostics.Add(new McpGatewayDiagnostic(HybridVectorMergeDiagnosticCode, HybridVectorMergeMessage));
-        return MergeHybridResults(graphRanked, vectorRanked, limit);
+        if (snapshot.GraphIndex?.CanSearch == true && IsUnusableVectorResult(vectorRanked))
+        {
+            var graphFallback = await RankWithGraphOrEmptyAsync(
+                snapshot,
+                searchInput,
+                limit,
+                diagnostics,
+                addGraphFallbackDiagnostic: true,
+                addUnavailableDiagnostic: true,
+                addFailureDiagnostics: true,
+                cancellationToken);
+            AddLowConfidenceGraphDiagnostic(graphFallback, diagnostics);
+            return graphFallback;
+        }
+
+        var graphRanked = await TryRankWithGraphAsync(
+            snapshot,
+            searchInput,
+            limit,
+            diagnostics,
+            addUnavailableDiagnostic: false,
+            addFailureDiagnostics: false,
+            cancellationToken);
+        if (graphRanked is null)
+        {
+            return vectorRanked;
+        }
+
+        var merged = MergeAutoResults(vectorRanked, graphRanked, limit);
+        if (string.Equals(merged.RankingMode, SearchModeHybrid, StringComparison.Ordinal))
+        {
+            diagnostics.Add(new McpGatewayDiagnostic(HybridVectorMergeDiagnosticCode, HybridVectorMergeMessage));
+        }
+
+        return merged;
     }
 
     private async Task<RankedSearch?> TryRankWithVectorAsync(
@@ -154,6 +166,7 @@ internal sealed partial class McpGatewayRuntime
             return null;
         }
 
+        var stopwatch = Stopwatch.StartNew();
         try
         {
             await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
@@ -162,9 +175,29 @@ internal sealed partial class McpGatewayRuntime
                 return null;
             }
 
-            var embedding = await generator.GenerateAsync(searchInput.EffectiveQuery, cancellationToken: cancellationToken);
-            var queryVector = embedding.Vector.ToArray();
-            var queryMagnitude = CalculateMagnitude(queryVector);
+            var embeddingGeneratorFingerprint = GetOrCreateEmbeddingGeneratorFingerprint(generator);
+            float[] queryVector;
+            double queryMagnitude;
+            if (_searchRuntimeCache.TryGetQueryEmbedding(
+                    searchInput.VectorQuery,
+                    embeddingGeneratorFingerprint,
+                    out var cachedQueryEmbedding))
+            {
+                queryVector = cachedQueryEmbedding.Vector;
+                queryMagnitude = cachedQueryEmbedding.Magnitude;
+            }
+            else
+            {
+                var embedding = await generator.GenerateAsync(searchInput.VectorQuery, cancellationToken: cancellationToken);
+                queryVector = embedding.Vector.ToArray();
+                queryMagnitude = CalculateMagnitude(queryVector);
+                _searchRuntimeCache.SetQueryEmbedding(
+                    searchInput.VectorQuery,
+                    embeddingGeneratorFingerprint,
+                    queryVector,
+                    queryMagnitude);
+            }
+
             if (queryMagnitude <= double.Epsilon)
             {
                 if (addFailureDiagnostics)
@@ -187,7 +220,13 @@ internal sealed partial class McpGatewayRuntime
                 .OrderByDescending(static item => item.Score)
                 .ThenBy(static item => item.Entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            return new RankedSearch(ranked, SearchModeVector);
+            return new RankedSearch(ranked, SearchModeVector)
+            {
+                Metrics = new RankedSearchMetrics(
+                    UsedVectorSearch: true,
+                    UsedGraphSearch: false,
+                    VectorDurationMilliseconds: stopwatch.Elapsed.TotalMilliseconds)
+            };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -216,86 +255,93 @@ internal sealed partial class McpGatewayRuntime
             : cosine;
     }
 
-    private static RankedSearch MergeHybridResults(
-        RankedSearch graphRanked,
+    private static bool IsUnusableVectorResult(RankedSearch rankedSearch)
+        => rankedSearch.Ranked.Count == 0 || rankedSearch.Ranked[0].Score <= double.Epsilon;
+
+    private static RankedSearch MergeAutoResults(
         RankedSearch vectorRanked,
+        RankedSearch graphRanked,
         int limit)
     {
-        var merged = new Dictionary<string, HybridCandidate>(StringComparer.OrdinalIgnoreCase);
+        var primaryToolIds = vectorRanked.Ranked
+            .Take(limit)
+            .Select(static item => item.Entry.Descriptor.ToolId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var candidateToolIds = vectorRanked.Ranked
+            .Take(CalculateAutoSupplementCandidateWindow(limit, vectorRanked.Ranked.Count))
+            .Select(static item => item.Entry.Descriptor.ToolId)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        var graphPrimary = graphRanked.Ranked.Take(limit).ToList();
-        for (var index = 0; index < graphPrimary.Count; index++)
+        foreach (var toolId in primaryToolIds)
         {
-            var item = graphPrimary[index];
-            merged[item.Entry.Descriptor.ToolId] = new HybridCandidate(
-                item.Entry,
-                item.Score,
-                null,
-                index,
-                int.MaxValue);
+            candidateToolIds.Add(toolId);
         }
 
-        var vectorPrimary = vectorRanked.Ranked.Take(limit).ToList();
-        for (var index = 0; index < vectorPrimary.Count; index++)
+        var related = CollectSupplementMatches(
+            [.. graphRanked.Ranked, .. graphRanked.Related],
+            candidateToolIds,
+            primaryToolIds);
+        var nextStepExcludedToolIds = new HashSet<string>(primaryToolIds, StringComparer.OrdinalIgnoreCase);
+        nextStepExcludedToolIds.UnionWith(related.Select(static item => item.Entry.Descriptor.ToolId));
+        var nextSteps = CollectSupplementMatches(
+            graphRanked.NextSteps,
+            candidateToolIds,
+            nextStepExcludedToolIds);
+        var metrics = CombineRankedSearchMetrics(vectorRanked.Metrics, graphRanked.Metrics);
+
+        if (related.Count == 0 && nextSteps.Count == 0)
         {
-            var item = vectorPrimary[index];
-            if (merged.TryGetValue(item.Entry.Descriptor.ToolId, out var existing))
+            return vectorRanked with
             {
-                merged[item.Entry.Descriptor.ToolId] = existing with
-                {
-                    VectorScore = item.Score,
-                    VectorRank = index
-                };
-                continue;
-            }
-
-            merged[item.Entry.Descriptor.ToolId] = new HybridCandidate(
-                item.Entry,
-                null,
-                item.Score,
-                int.MaxValue,
-                index);
+                FocusedGraphNodeCount = graphRanked.FocusedGraphNodeCount,
+                FocusedGraphEdgeCount = graphRanked.FocusedGraphEdgeCount,
+                Metrics = metrics
+            };
         }
 
-        var primary = merged.Values
-            .Select(static candidate => new ScoredToolEntry(candidate.Entry, candidate.GetMergedScore()))
-            .OrderByDescending(static item => item.Score)
-            .ThenBy(item =>
-                merged[item.Entry.Descriptor.ToolId].GraphRank,
-                Comparer<int>.Default)
-            .ThenBy(item =>
-                merged[item.Entry.Descriptor.ToolId].VectorRank,
-                Comparer<int>.Default)
-            .ThenBy(static item => item.Entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return new RankedSearch(primary, SearchModeHybrid)
+        return new RankedSearch(vectorRanked.Ranked, SearchModeHybrid)
         {
+            Related = related,
+            NextSteps = nextSteps,
             FocusedGraphNodeCount = graphRanked.FocusedGraphNodeCount,
-            FocusedGraphEdgeCount = graphRanked.FocusedGraphEdgeCount
+            FocusedGraphEdgeCount = graphRanked.FocusedGraphEdgeCount,
+            Metrics = metrics
         };
     }
 
-    private sealed record HybridCandidate(
-        ToolCatalogEntry Entry,
-        double? GraphScore,
-        double? VectorScore,
-        int GraphRank,
-        int VectorRank)
+    private static int CalculateAutoSupplementCandidateWindow(int limit, int rankedCount)
+        => Math.Min(
+            rankedCount,
+            Math.Max(limit * AutoSupplementCandidateMultiplier, AutoSupplementMinimumCandidateWindow));
+
+    private static IReadOnlyList<ScoredToolEntry> CollectSupplementMatches(
+        IEnumerable<ScoredToolEntry> graphMatches,
+        IReadOnlySet<string> candidateToolIds,
+        IReadOnlySet<string> excludedToolIds)
     {
-        public double GetMergedScore()
+        var matches = new List<ScoredToolEntry>();
+        var seenToolIds = new HashSet<string>(excludedToolIds, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var match in graphMatches)
         {
-            if (GraphScore is double graphScore && VectorScore is double vectorScore)
+            var toolId = match.Entry.Descriptor.ToolId;
+            if (!candidateToolIds.Contains(toolId) || !seenToolIds.Add(toolId))
             {
-                return Math.Max(graphScore, vectorScore);
+                continue;
             }
 
-            if (GraphScore is double graphOnlyScore)
-            {
-                return graphOnlyScore;
-            }
-
-            return (VectorScore ?? 0d) * HybridVectorOnlyCandidateDamping;
+            matches.Add(match);
         }
+
+        return matches;
     }
+
+    private static RankedSearchMetrics CombineRankedSearchMetrics(
+        RankedSearchMetrics? primaryMetrics,
+        RankedSearchMetrics? supplementalMetrics)
+        => new(
+            UsedVectorSearch: (primaryMetrics?.UsedVectorSearch ?? false) || (supplementalMetrics?.UsedVectorSearch ?? false),
+            UsedGraphSearch: (primaryMetrics?.UsedGraphSearch ?? false) || (supplementalMetrics?.UsedGraphSearch ?? false),
+            VectorDurationMilliseconds: primaryMetrics?.VectorDurationMilliseconds ?? supplementalMetrics?.VectorDurationMilliseconds,
+            GraphDurationMilliseconds: supplementalMetrics?.GraphDurationMilliseconds ?? primaryMetrics?.GraphDurationMilliseconds);
 }

@@ -6,13 +6,15 @@ namespace ManagedCode.MCPGateway;
 internal sealed partial class McpGatewayRuntime
 {
     private static SearchInput BuildSearchInput(
-        McpGatewaySearchRequest request,
-        string? normalizedQuery)
+        string? originalQuery,
+        string? normalizedQuery,
+        string? contextSummary,
+        string? flattenedContext)
         => new(
-            NormalizeSearchComponent(request.Query),
-            NormalizeSearchComponent(normalizedQuery),
-            NormalizeSearchComponent(request.ContextSummary),
-            NormalizeSearchComponent(FlattenContext(request.Context)));
+            originalQuery,
+            normalizedQuery,
+            contextSummary,
+            flattenedContext);
 
     private static string? NormalizeSearchComponent(string? value)
         => string.IsNullOrWhiteSpace(value)
