@@ -14,6 +14,10 @@ internal enum McpGatewaySourceRegistrationKind
     CustomMcpClient
 }
 
+internal sealed record McpGatewayLoadedTool(
+    AITool Tool,
+    McpGatewayToolSearchHints? SearchHints = null);
+
 internal abstract class McpGatewayToolSourceRegistration(string sourceId, string? displayName)
     : IAsyncDisposable
 {
@@ -23,7 +27,7 @@ internal abstract class McpGatewayToolSourceRegistration(string sourceId, string
 
     public abstract McpGatewaySourceRegistrationKind Kind { get; }
 
-    public abstract ValueTask<IReadOnlyList<AITool>> LoadToolsAsync(
+    public abstract ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken);
 
@@ -33,16 +37,17 @@ internal abstract class McpGatewayToolSourceRegistration(string sourceId, string
 internal sealed class McpGatewayLocalToolSourceRegistration(string sourceId, string? displayName)
     : McpGatewayToolSourceRegistration(sourceId, displayName)
 {
-    private readonly ConcurrentQueue<AITool> _tools = new();
+    private readonly ConcurrentQueue<McpGatewayLoadedTool> _tools = new();
 
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Local;
 
-    public void AddTool(AITool tool) => _tools.Enqueue(tool);
+    public void AddTool(AITool tool, McpGatewayToolSearchHints? searchHints = null)
+        => _tools.Enqueue(new McpGatewayLoadedTool(tool, searchHints));
 
-    public override ValueTask<IReadOnlyList<AITool>> LoadToolsAsync(
+    public override ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
-        => ValueTask.FromResult<IReadOnlyList<AITool>>(_tools.ToArray());
+        => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedTool>>(_tools.ToArray());
 }
 
 internal sealed class McpGatewayHttpToolSourceRegistration(
@@ -149,13 +154,16 @@ internal abstract class McpGatewayClientToolSourceRegistration(
     private ClientOperation? _clientOperation;
     private int _disposed;
 
-    public override async ValueTask<IReadOnlyList<AITool>> LoadToolsAsync(
+    public override async ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken)
     {
         var client = await GetClientAsync(loggerFactory, cancellationToken);
         var tools = await client.ListToolsAsync(new RequestOptions(), cancellationToken);
-        return tools.Cast<AITool>().ToList();
+        return tools
+            .Cast<AITool>()
+            .Select(static tool => new McpGatewayLoadedTool(tool))
+            .ToList();
     }
 
     protected abstract ValueTask<McpClient> CreateClientAsync(

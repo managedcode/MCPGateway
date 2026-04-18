@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using ManagedCode.MCPGateway.Abstractions;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -15,7 +16,8 @@ public sealed partial class McpGatewaySearchTests
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureAutoNotificationAndFamilyTools,
             embeddingGenerator,
-            searchQueryChatClient: chatClient);
+            searchQueryChatClient: chatClient,
+            useInMemorySearchCache: true);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         await gateway.BuildIndexAsync();
@@ -44,7 +46,8 @@ public sealed partial class McpGatewaySearchTests
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureAutoNotificationAndFamilyTools,
             embeddingGenerator,
-            searchQueryChatClient: chatClient);
+            searchQueryChatClient: chatClient,
+            useInMemorySearchCache: true);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         await gateway.BuildIndexAsync();
@@ -80,7 +83,8 @@ public sealed partial class McpGatewaySearchTests
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
             options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
-        });
+        },
+        useInMemorySearchCache: true);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         var registry = serviceProvider.GetRequiredService<IMcpGatewayRegistry>();
 
@@ -99,5 +103,55 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(secondBrowse.RankingMode).IsEqualTo("browse");
         await Assert.That(secondBrowse.Matches.Count).IsEqualTo(2);
         await Assert.That(secondBrowse.Matches.Any(static match => match.ToolId == "local:weather_search_forecast")).IsTrue();
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_SharedSearchCacheSeparatesNormalizedQueriesByChatClientFingerprint()
+    {
+        using var sharedSearchCache = new McpGatewayInMemorySearchCache();
+        var notificationChatClient = new TestChatClient(new TestChatClientOptions
+        {
+            Metadata = new ChatClientMetadata(
+                "ManagedCode.MCPGateway.Tests",
+                new Uri("https://example.test/chat/notifications"),
+                "rewriter-notifications"),
+            RewriteQuery = static _ => "notification inbox alerts unread activity"
+        });
+        var familyChatClient = new TestChatClient(new TestChatClientOptions
+        {
+            Metadata = new ChatClientMetadata(
+                "ManagedCode.MCPGateway.Tests",
+                new Uri("https://example.test/chat/family"),
+                "rewriter-family"),
+            RewriteQuery = static _ => "family tree parent relationship person"
+        });
+
+        await using var notificationProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigureAutoNotificationAndFamilyTools,
+            CreateNotificationAutoEmbeddingGenerator(),
+            searchQueryChatClient: notificationChatClient,
+            searchCache: sharedSearchCache);
+        await using var familyProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigureAutoNotificationAndFamilyTools,
+            CreateNotificationAutoEmbeddingGenerator(),
+            searchQueryChatClient: familyChatClient,
+            searchCache: sharedSearchCache);
+
+        var notificationGateway = notificationProvider.GetRequiredService<IMcpGateway>();
+        var familyGateway = familyProvider.GetRequiredService<IMcpGateway>();
+
+        await notificationGateway.BuildIndexAsync();
+        await familyGateway.BuildIndexAsync();
+
+        var originalQuery = "а що там взагалі знайти";
+        var notificationSearch = await notificationGateway.SearchAsync(originalQuery, maxResults: 1);
+        var familySearch = await familyGateway.SearchAsync(originalQuery, maxResults: 1);
+
+        await Assert.That(notificationSearch.Matches[0].ToolId).IsEqualTo("local:notification_activity_search");
+        await Assert.That(notificationChatClient.Calls.Count).IsEqualTo(1);
+        await Assert.That(familyChatClient.Calls.Count).IsEqualTo(1);
+        await Assert.That(familySearch.Matches[0].ToolId == "local:storied_person_add_father" ||
+                          familySearch.Matches[0].ToolId == "local:storied_person_add_mother" ||
+                          familySearch.Matches[0].ToolId == "local:storied_person_add_potential_parent").IsTrue();
     }
 }

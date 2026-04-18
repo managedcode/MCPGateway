@@ -11,7 +11,9 @@ internal static class GatewayTestServiceProviderFactory
         Action<McpGatewayOptions> configure,
         IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator = null,
         IMcpGatewayToolEmbeddingStore? embeddingStore = null,
-        IChatClient? searchQueryChatClient = null)
+        IChatClient? searchQueryChatClient = null,
+        IMcpGatewaySearchCache? searchCache = null,
+        bool useInMemorySearchCache = false)
     {
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
@@ -32,6 +34,16 @@ internal static class GatewayTestServiceProviderFactory
         }
 
         services.AddMcpGateway(configure);
+
+        if (searchCache is not null)
+        {
+            services.AddSingleton(searchCache);
+        }
+        else if (useInMemorySearchCache)
+        {
+            services.AddMcpGatewayInMemorySearchCache();
+        }
+
         return services.BuildServiceProvider();
     }
 }

@@ -36,6 +36,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string QueryNormalizationFailedDiagnosticCode = "query_normalization_failed";
     private const string VectorSearchFailedDiagnosticCode = "vector_search_failed";
     private const string MarkdownLdGraphPathMissingDiagnosticCode = "markdown_ld_graph_path_missing";
+    private const string MarkdownLdGraphDocumentFactoryMissingDiagnosticCode = "markdown_ld_graph_document_factory_missing";
     private const string SourceLoadFailedMessageTemplate = "Failed to load tools from source '{0}': {1}";
     private const string DuplicateToolIdMessageTemplate = "Skipped duplicate tool id '{0}'.";
     private const string GraphBuildFailedMessageTemplate = "Building the Markdown-LD tool graph failed: {0}";
@@ -54,6 +55,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string QueryNormalizationFailedMessageTemplate = "Search query normalization failed and the original query was used: {0}";
     private const string VectorSearchFailedMessageTemplate = "Vector ranking failed and Markdown-LD graph fallback was used: {0}";
     private const string MarkdownLdGraphPathMissingMessage = "Markdown-LD graph file mode requires MarkdownLdGraphPath to point to a graph bundle file, Markdown source file, or directory.";
+    private const string MarkdownLdGraphDocumentFactoryMissingMessage = "Markdown-LD custom document mode requires MarkdownLdGraphDocumentFactory to be configured.";
     private const string ToolNotInvokableMessageTemplate = "Tool '{0}' is not invokable.";
     private const string ToolIdOrToolNameRequiredMessage = "Either ToolId or ToolName is required.";
     private const string ToolIdNotFoundMessageTemplate = "Tool '{0}' was not found.";
@@ -75,9 +77,19 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string InputSchemaTypePropertyName = "type";
     private const string InputSchemaEnumPropertyName = "enum";
     private const string DisplayNamePropertyName = "DisplayName";
+    private const string SearchAliasesPropertyName = "SearchAliases";
+    private const string SearchAliasesCamelCasePropertyName = "searchAliases";
+    private const string SearchAliasesSnakeCasePropertyName = "search_aliases";
+    private const string SearchAliasesShortPropertyName = "aliases";
+    private const string SearchKeywordsPropertyName = "SearchKeywords";
+    private const string SearchKeywordsCamelCasePropertyName = "searchKeywords";
+    private const string SearchKeywordsSnakeCasePropertyName = "search_keywords";
+    private const string SearchKeywordsShortPropertyName = "keywords";
     private const string ToolNameLabel = "Tool name: ";
     private const string DisplayNameLabel = "Display name: ";
     private const string DescriptionLabel = "Description: ";
+    private const string SearchAliasesLabel = "Search aliases: ";
+    private const string SearchKeywordsLabel = "Search keywords: ";
     private const string RequiredArgumentsLabel = "Required arguments: ";
     private const string ParameterLabel = "Parameter ";
     private const string TypeLabel = "Type ";
@@ -108,6 +120,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string GraphTagSourcePrefix = "source:";
     private const string GraphTagKindPrefix = "kind:";
     private const string GraphTagArgumentPrefix = "argument:";
+    private const string GraphTagAliasPrefix = "alias:";
+    private const string GraphTagKeywordPrefix = "keyword:";
     private const string GraphToolIdLabel = "Tool id: ";
     private const string GraphSourceIdLabel = "Source id: ";
     private const string GraphSourceKindLabel = "Source kind: ";
@@ -151,8 +165,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string GraphGenericGatewayTerm = "gateway";
     private const string PluralSuffixIes = "ies";
     private const string PluralSuffixEs = "es";
-    private const string EmbeddingGeneratorFingerprintUnknownComponent = "unknown";
-    private const string EmbeddingGeneratorFingerprintComponentSeparator = "\n";
+    private const string FingerprintUnknownComponent = "unknown";
+    private const string FingerprintComponentSeparator = "\n";
     private const string SearchQueryNormalizationInstructions = "Rewrite the user search request as a concise English tool-search query. Preserve identifiers, emails, repository names, CVE references, order numbers, tracking numbers, SKUs, version strings, filenames, and product names exactly. Do not answer the request. Do not explain anything. Return only the rewritten English search query. If the request is already concise English, return it unchanged.";
     private const int GraphMaxRelatedTokenSegments = 6;
     private const int GraphMaxRelatedToolsPerDocument = 4;
@@ -284,15 +298,18 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private readonly IMcpGatewayCatalogSource _catalogSource;
     private readonly McpGatewaySearchStrategy _searchStrategy;
     private readonly McpGatewayMarkdownLdGraphSource _markdownLdGraphSource;
+    private readonly Func<IReadOnlyList<McpGatewayToolDescriptor>, CancellationToken, ValueTask<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>>?
+        _markdownLdGraphDocumentFactory;
     private readonly McpGatewaySearchQueryNormalization _searchQueryNormalization;
     private readonly string? _markdownLdGraphPath;
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
-    private readonly McpGatewaySearchRuntimeCache _searchRuntimeCache;
+    private readonly IMcpGatewaySearchCache _searchRuntimeCache;
     private RuntimeState _state = RuntimeState.Empty;
     private BuildOperation? _buildOperation;
     private string? _embeddingGeneratorFingerprint;
+    private string? _searchQueryChatClientFingerprint;
 
     internal McpGatewayRuntime(
         IServiceProvider serviceProvider,
@@ -313,12 +330,13 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         _catalogSource = ResolveCatalogSource(serviceProvider);
         _searchStrategy = resolvedOptions.SearchStrategy;
         _markdownLdGraphSource = resolvedOptions.MarkdownLdGraphSource;
+        _markdownLdGraphDocumentFactory = resolvedOptions.MarkdownLdGraphDocumentFactory;
         _searchQueryNormalization = resolvedOptions.SearchQueryNormalization;
         _markdownLdGraphPath = resolvedOptions.MarkdownLdGraphPath;
         _defaultSearchLimit = Math.Max(1, resolvedOptions.DefaultSearchLimit);
         _maxSearchResults = Math.Max(1, resolvedOptions.MaxSearchResults);
         _maxDescriptorLength = Math.Max(256, resolvedOptions.MaxDescriptorLength);
-        _searchRuntimeCache = serviceProvider.GetRequiredService<McpGatewaySearchRuntimeCache>();
+        _searchRuntimeCache = serviceProvider.GetRequiredService<IMcpGatewaySearchCache>();
     }
 
     public IReadOnlyList<AITool> CreateMetaTools(

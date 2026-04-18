@@ -143,12 +143,12 @@ internal sealed partial class McpGatewayRuntime
         var generatorTypeName = embeddingGenerator.GetType().FullName ?? embeddingGenerator.GetType().Name;
 
         return ComputeDocumentHash(string.Join(
-            EmbeddingGeneratorFingerprintComponentSeparator,
-            metadata?.ProviderName ?? EmbeddingGeneratorFingerprintUnknownComponent,
-            metadata?.ProviderUri?.AbsoluteUri ?? EmbeddingGeneratorFingerprintUnknownComponent,
-            metadata?.DefaultModelId ?? EmbeddingGeneratorFingerprintUnknownComponent,
-            metadata?.DefaultModelDimensions?.ToString(CultureInfo.InvariantCulture) ?? EmbeddingGeneratorFingerprintUnknownComponent,
-            generatorTypeName ?? EmbeddingGeneratorFingerprintUnknownComponent));
+            FingerprintComponentSeparator,
+            metadata?.ProviderName ?? FingerprintUnknownComponent,
+            metadata?.ProviderUri?.AbsoluteUri ?? FingerprintUnknownComponent,
+            metadata?.DefaultModelId ?? FingerprintUnknownComponent,
+            metadata?.DefaultModelDimensions?.ToString(CultureInfo.InvariantCulture) ?? FingerprintUnknownComponent,
+            generatorTypeName ?? FingerprintUnknownComponent));
     }
 
     private string? GetOrCreateEmbeddingGeneratorFingerprint(
@@ -167,5 +167,58 @@ internal sealed partial class McpGatewayRuntime
         }
 
         return Interlocked.CompareExchange(ref _embeddingGeneratorFingerprint, resolvedFingerprint, null) ?? resolvedFingerprint;
+    }
+
+    private static string? ResolveSearchQueryChatClientFingerprint(IChatClient? chatClient)
+    {
+        if (chatClient is null)
+        {
+            return null;
+        }
+
+        var metadata = chatClient.GetService(typeof(ChatClientMetadata)) as ChatClientMetadata;
+        var clientTypeName = chatClient.GetType().FullName ?? chatClient.GetType().Name;
+
+        return ComputeDocumentHash(string.Join(
+            FingerprintComponentSeparator,
+            metadata?.ProviderName ?? FingerprintUnknownComponent,
+            metadata?.ProviderUri?.AbsoluteUri ?? FingerprintUnknownComponent,
+            metadata?.DefaultModelId ?? FingerprintUnknownComponent,
+            clientTypeName ?? FingerprintUnknownComponent));
+    }
+
+    private string? GetOrCreateSearchQueryChatClientFingerprint(IChatClient? chatClient)
+    {
+        var cachedFingerprint = Volatile.Read(ref _searchQueryChatClientFingerprint);
+        if (cachedFingerprint is not null)
+        {
+            return cachedFingerprint;
+        }
+
+        var resolvedFingerprint = ResolveSearchQueryChatClientFingerprint(chatClient);
+        if (resolvedFingerprint is null)
+        {
+            return null;
+        }
+
+        return Interlocked.CompareExchange(ref _searchQueryChatClientFingerprint, resolvedFingerprint, null) ?? resolvedFingerprint;
+    }
+
+    private async Task<string?> ResolveSearchResultEmbeddingGeneratorFingerprintAsync(
+        ToolCatalogSnapshot snapshot,
+        SearchInput searchInput,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (!snapshot.HasVectors ||
+            !searchInput.HasTerms ||
+            _searchStrategy == McpGatewaySearchStrategy.Graph)
+        {
+            return null;
+        }
+
+        await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
+        return GetOrCreateEmbeddingGeneratorFingerprint(embeddingGeneratorLease.Generator);
     }
 }

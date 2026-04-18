@@ -267,6 +267,7 @@ If no new rule is detected -> do not update the file.
 - Prefer framework-provided in-memory caching primitives such as `IMemoryCache` over custom process-local storage implementations when they cover the lifecycle and lookup needs, because self-rolled memory stores age poorly and make scaling/concurrency behavior harder to trust.
 - Cache reusable search, graph, embedding, and normalization artifacts instead of recreating expensive objects on every request; prefer `IMemoryCache` for process-local reuse and keep extensibility behind interfaces so hosts can swap in durable or distributed implementations.
 - Keep caching dependencies explicit and optional; do not make the core gateway path require `IMemoryCache` when a pluggable or no-op cache boundary can preserve a smaller dependency surface, because the user does not want avoidable cache dependencies forced into the base package.
+- Keep index-building and warmup control explicit and customizable; expose understandable extension points so consumers can choose how and when the catalog or graph index is built instead of being forced into one hidden lifecycle.
 - Never keep legacy compatibility shims, obsolete paths, or lingering documentation references to removed implementations when a replacement is accepted, because this repository should converge on the current design instead of carrying dead historical baggage.
 - Never leave `ManagedCode`-prefixed DI/setup extension method names such as `AddManagedCodeMcpGateway(...)` in the public API once concise `McpGateway` naming is available, because these branded leftovers make the package surface inconsistent and read like stale legacy.
 
@@ -314,6 +315,7 @@ If no new rule is detected -> do not update the file.
 - Clean MCP API-shaped flows without extra local wrapper layers
 - NuGet package dependencies over local project references for `ManagedCode.MarkdownLd.Kb`
 - Production-ready feature implementations with real runtime behavior and test coverage instead of temporary or placeholder execution paths
+- Developer-controlled index lifecycle and explicit cache-strategy selection over hardwired hidden defaults
 
 ### Dislikes
 

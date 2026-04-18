@@ -67,6 +67,22 @@ internal sealed class TestChatClient(TestChatClientOptions? options = null) : IC
     public object? GetService(Type serviceType, object? serviceKey = null)
     {
         ArgumentNullException.ThrowIfNull(serviceType);
+
+        if (serviceKey is not null)
+        {
+            return null;
+        }
+
+        if (serviceType == typeof(ChatClientMetadata))
+        {
+            return _options.Metadata;
+        }
+
+        if (serviceType.IsInstanceOfType(this))
+        {
+            return this;
+        }
+
         return null;
     }
 
@@ -77,6 +93,8 @@ internal sealed class TestChatClient(TestChatClientOptions? options = null) : IC
 
 internal sealed class TestChatClientOptions
 {
+    public ChatClientMetadata? Metadata { get; init; }
+
     public Func<string, string>? RewriteQuery { get; init; }
 
     public Func<string, bool>? ThrowOnInput { get; init; }

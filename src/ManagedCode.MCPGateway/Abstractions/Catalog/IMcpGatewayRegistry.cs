@@ -7,7 +7,11 @@ public interface IMcpGatewayRegistry
 {
     void AddTool(string sourceId, AITool tool, string? displayName = null);
 
+    void AddTool(string sourceId, AITool tool, McpGatewayToolSearchHints searchHints, string? displayName = null);
+
     void AddTool(AITool tool, string sourceId = "local", string? displayName = null);
+
+    void AddTool(AITool tool, McpGatewayToolSearchHints searchHints, string sourceId = "local", string? displayName = null);
 
     void AddTools(string sourceId, IEnumerable<AITool> tools, string? displayName = null);
 

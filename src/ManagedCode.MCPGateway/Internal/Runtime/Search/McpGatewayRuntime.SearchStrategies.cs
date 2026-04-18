@@ -178,24 +178,25 @@ internal sealed partial class McpGatewayRuntime
             var embeddingGeneratorFingerprint = GetOrCreateEmbeddingGeneratorFingerprint(generator);
             float[] queryVector;
             double queryMagnitude;
-            if (_searchRuntimeCache.TryGetQueryEmbedding(
-                    searchInput.VectorQuery,
-                    embeddingGeneratorFingerprint,
-                    out var cachedQueryEmbedding))
+            var cachedQueryEmbedding = await _searchRuntimeCache.TryGetQueryEmbeddingAsync(
+                searchInput.VectorQuery,
+                embeddingGeneratorFingerprint,
+                cancellationToken);
+            if (cachedQueryEmbedding.found && cachedQueryEmbedding.embedding is not null)
             {
-                queryVector = cachedQueryEmbedding.Vector;
-                queryMagnitude = cachedQueryEmbedding.Magnitude;
+                queryVector = cachedQueryEmbedding.embedding.Vector;
+                queryMagnitude = cachedQueryEmbedding.embedding.Magnitude;
             }
             else
             {
                 var embedding = await generator.GenerateAsync(searchInput.VectorQuery, cancellationToken: cancellationToken);
                 queryVector = embedding.Vector.ToArray();
                 queryMagnitude = CalculateMagnitude(queryVector);
-                _searchRuntimeCache.SetQueryEmbedding(
+                await _searchRuntimeCache.SetQueryEmbeddingAsync(
                     searchInput.VectorQuery,
                     embeddingGeneratorFingerprint,
-                    queryVector,
-                    queryMagnitude);
+                    new McpGatewayQueryEmbedding(queryVector, queryMagnitude),
+                    cancellationToken);
             }
 
             if (queryMagnitude <= double.Epsilon)

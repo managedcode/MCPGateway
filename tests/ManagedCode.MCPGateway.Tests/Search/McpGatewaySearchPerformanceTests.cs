@@ -15,7 +15,8 @@ public sealed partial class McpGatewaySearchTests
         var embeddingGenerator = CreatePerformanceEmbeddingGenerator();
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigurePerformanceCatalog,
-            embeddingGenerator);
+            embeddingGenerator,
+            useInMemorySearchCache: true);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var stopwatch = Stopwatch.StartNew();
@@ -36,7 +37,8 @@ public sealed partial class McpGatewaySearchTests
         var embeddingGenerator = CreatePerformanceEmbeddingGenerator();
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigurePerformanceCatalog,
-            embeddingGenerator);
+            embeddingGenerator,
+            useInMemorySearchCache: true);
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         await gateway.BuildIndexAsync();

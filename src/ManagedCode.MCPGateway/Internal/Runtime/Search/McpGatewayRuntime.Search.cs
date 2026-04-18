@@ -45,20 +45,6 @@ internal sealed partial class McpGatewayRuntime
         {
             result = new McpGatewaySearchResult([], diagnostics, SearchModeEmpty);
         }
-        else if (_searchRuntimeCache.TryGetSearchResult(
-                     snapshot.Version,
-                     _searchStrategy,
-                     originalQuery,
-                     contextSummary,
-                     flattenedContext,
-                     limit,
-                     out var cachedSearchResult))
-        {
-            result = cachedSearchResult.Result;
-            rankedMetrics = cachedSearchResult.Metrics;
-            cacheHit = true;
-            queryNormalized = cachedSearchResult.QueryNormalized;
-        }
         else
         {
             var normalizedQuery = await NormalizeSearchQueryAsync(originalQuery, diagnostics, cancellationToken);
@@ -68,54 +54,82 @@ internal sealed partial class McpGatewayRuntime
                 NormalizeSearchComponent(normalizedQuery),
                 contextSummary,
                 flattenedContext);
-            if (!searchInput.HasTerms)
-            {
-                var browse = snapshot.Entries
-                    .Take(limit)
-                    .Select(static entry => ToSearchMatch(entry, 0d))
-                    .ToList();
-                result = new McpGatewaySearchResult(browse, diagnostics, SearchModeBrowse);
-            }
-            else
-            {
-                var rankedSearch = await RankWithConfiguredStrategyAsync(
-                    snapshot,
-                    searchInput,
-                    limit,
-                    diagnostics,
-                    cancellationToken);
+            var chatClientFingerprint = Volatile.Read(ref _searchQueryChatClientFingerprint);
+            var embeddingGeneratorFingerprint = await ResolveSearchResultEmbeddingGeneratorFingerprintAsync(
+                snapshot,
+                searchInput,
+                cancellationToken);
 
-                var matches = rankedSearch.Ranked
-                    .Take(limit)
-                    .Select(item => ToSearchMatch(item.Entry, item.Score))
-                    .ToList();
-                var relatedMatches = rankedSearch.Related
-                    .Select(item => ToSearchMatch(item.Entry, item.Score))
-                    .ToList();
-                var nextStepMatches = rankedSearch.NextSteps
-                    .Select(item => ToSearchMatch(item.Entry, item.Score))
-                    .ToList();
-
-                rankedMetrics = rankedSearch.Metrics;
-                result = new McpGatewaySearchResult(matches, diagnostics, rankedSearch.RankingMode)
-                {
-                    RelatedMatches = relatedMatches,
-                    NextStepMatches = nextStepMatches,
-                    FocusedGraphNodeCount = rankedSearch.FocusedGraphNodeCount,
-                    FocusedGraphEdgeCount = rankedSearch.FocusedGraphEdgeCount
-                };
-            }
-
-            _searchRuntimeCache.SetSearchResult(
+            var cachedSearchResult = await _searchRuntimeCache.TryGetSearchResultAsync(
                 snapshot.Version,
                 _searchStrategy,
+                _searchQueryNormalization,
                 originalQuery,
                 contextSummary,
                 flattenedContext,
                 limit,
-                result,
-                rankedMetrics,
-                queryNormalized);
+                chatClientFingerprint,
+                embeddingGeneratorFingerprint,
+                cancellationToken);
+            if (cachedSearchResult.found && cachedSearchResult.result is not null)
+            {
+                result = cachedSearchResult.result.Result;
+                cacheHit = true;
+                queryNormalized = cachedSearchResult.result.QueryNormalized;
+            }
+            else
+            {
+                if (!searchInput.HasTerms)
+                {
+                    var browse = snapshot.Entries
+                        .Take(limit)
+                        .Select(static entry => ToSearchMatch(entry, 0d))
+                        .ToList();
+                    result = new McpGatewaySearchResult(browse, diagnostics, SearchModeBrowse);
+                }
+                else
+                {
+                    var rankedSearch = await RankWithConfiguredStrategyAsync(
+                        snapshot,
+                        searchInput,
+                        limit,
+                        diagnostics,
+                        cancellationToken);
+
+                    var matches = rankedSearch.Ranked
+                        .Take(limit)
+                        .Select(item => ToSearchMatch(item.Entry, item.Score))
+                        .ToList();
+                    var relatedMatches = rankedSearch.Related
+                        .Select(item => ToSearchMatch(item.Entry, item.Score))
+                        .ToList();
+                    var nextStepMatches = rankedSearch.NextSteps
+                        .Select(item => ToSearchMatch(item.Entry, item.Score))
+                        .ToList();
+
+                    rankedMetrics = rankedSearch.Metrics;
+                    result = new McpGatewaySearchResult(matches, diagnostics, rankedSearch.RankingMode)
+                    {
+                        RelatedMatches = relatedMatches,
+                        NextStepMatches = nextStepMatches,
+                        FocusedGraphNodeCount = rankedSearch.FocusedGraphNodeCount,
+                        FocusedGraphEdgeCount = rankedSearch.FocusedGraphEdgeCount
+                    };
+                }
+
+                await _searchRuntimeCache.SetSearchResultAsync(
+                    snapshot.Version,
+                    _searchStrategy,
+                    _searchQueryNormalization,
+                    originalQuery,
+                    contextSummary,
+                    flattenedContext,
+                    limit,
+                    chatClientFingerprint,
+                    embeddingGeneratorFingerprint,
+                    new McpGatewaySearchCachedResult(result, queryNormalized),
+                    cancellationToken);
+            }
         }
 
         McpGatewayTelemetry.RecordSearch(

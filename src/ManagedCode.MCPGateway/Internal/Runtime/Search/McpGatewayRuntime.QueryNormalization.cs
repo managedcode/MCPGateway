@@ -23,19 +23,25 @@ internal sealed partial class McpGatewayRuntime
             return null;
         }
 
-        if (_searchRuntimeCache.TryGetNormalizedQuery(_searchQueryNormalization, trimmedQuery, out var cachedNormalizedQuery))
+        await using var chatClientLease = ResolveSearchQueryChatClient();
+        var chatClientFingerprint = chatClientLease.Fingerprint;
+        var cachedNormalizedQuery = await _searchRuntimeCache.TryGetNormalizedQueryAsync(
+            _searchQueryNormalization,
+            trimmedQuery,
+            chatClientFingerprint,
+            cancellationToken);
+        if (cachedNormalizedQuery.found)
         {
-            if (cachedNormalizedQuery is not null)
+            if (cachedNormalizedQuery.normalizedQuery is not null)
             {
                 diagnostics.Add(new McpGatewayDiagnostic(QueryNormalizedDiagnosticCode, QueryNormalizedMessage));
             }
 
-            return cachedNormalizedQuery;
+            return cachedNormalizedQuery.normalizedQuery;
         }
 
         try
         {
-            await using var chatClientLease = ResolveSearchQueryChatClient();
             if (chatClientLease.Client is not IChatClient chatClient)
             {
                 return null;
@@ -55,11 +61,21 @@ internal sealed partial class McpGatewayRuntime
             if (string.IsNullOrWhiteSpace(normalizedQuery) ||
                 string.Equals(normalizedQuery, trimmedQuery, StringComparison.OrdinalIgnoreCase))
             {
-                _searchRuntimeCache.SetNormalizedQuery(_searchQueryNormalization, trimmedQuery, null);
+                await _searchRuntimeCache.SetNormalizedQueryAsync(
+                    _searchQueryNormalization,
+                    trimmedQuery,
+                    chatClientFingerprint,
+                    null,
+                    cancellationToken);
                 return null;
             }
 
-            _searchRuntimeCache.SetNormalizedQuery(_searchQueryNormalization, trimmedQuery, normalizedQuery);
+            await _searchRuntimeCache.SetNormalizedQueryAsync(
+                _searchQueryNormalization,
+                trimmedQuery,
+                chatClientFingerprint,
+                normalizedQuery,
+                cancellationToken);
             diagnostics.Add(new McpGatewayDiagnostic(QueryNormalizedDiagnosticCode, QueryNormalizedMessage));
             return normalizedQuery;
         }
@@ -80,12 +96,13 @@ internal sealed partial class McpGatewayRuntime
     {
         if (_serviceProvider.GetService(typeof(IServiceScopeFactory)) is not IServiceScopeFactory scopeFactory)
         {
-            return new ChatClientLease(ResolveSearchQueryChatClient(_serviceProvider));
+            var rootChatClient = ResolveSearchQueryChatClient(_serviceProvider);
+            return new ChatClientLease(rootChatClient, GetOrCreateSearchQueryChatClientFingerprint(rootChatClient));
         }
 
         var scope = scopeFactory.CreateAsyncScope();
-        var chatClient = ResolveSearchQueryChatClient(scope.ServiceProvider);
-        return new ChatClientLease(chatClient, scope);
+        var scopedChatClient = ResolveSearchQueryChatClient(scope.ServiceProvider);
+        return new ChatClientLease(scopedChatClient, GetOrCreateSearchQueryChatClientFingerprint(scopedChatClient), scope);
     }
 
     private static IChatClient? ResolveSearchQueryChatClient(IServiceProvider serviceProvider)

@@ -192,10 +192,13 @@ internal sealed partial class McpGatewayRuntime
 
     private sealed class ChatClientLease(
         IChatClient? client,
+        string? fingerprint,
         AsyncServiceScope? scope = null)
         : IAsyncDisposable
     {
         public IChatClient? Client { get; } = client;
+
+        public string? Fingerprint { get; } = fingerprint;
 
         public ValueTask DisposeAsync() => scope?.DisposeAsync() ?? ValueTask.CompletedTask;
     }

@@ -10,6 +10,8 @@
 
 Recent changes also made index construction cancellation-aware and single-flight, so startup warmup, shutdown, and concurrent callers do not keep issuing duplicate MCP loads or continue rebuilding after a canceled operation should stop.
 
+Hosts also need explicit control over index timing and graph-input authoring without replacing the whole runtime. That means the lifecycle must stay visible through manual build and warmup entry points, while graph source customization stays an explicit option rather than hidden runtime behavior.
+
 The repository needs an explicit record for these boundaries so the public package surface, internal runtime structure, and README examples stay aligned.
 
 ## Decision
@@ -79,6 +81,7 @@ Positive:
 
 - public DI wiring is explicit: `IMcpGateway` for runtime work, `IMcpGatewayRegistry` for catalog mutation, `McpGatewayToolSet` for meta-tools
 - hosts get lazy behavior by default and optional eager warmup through `InitializeMcpGatewayAsync()` or `AddMcpGatewayIndexWarmup()`
+- hosts can control graph input authoring through `McpGatewayOptions.UseMarkdownLdGraphDocuments(...)` without taking over runtime orchestration
 - cancellation now propagates into source loading, embedding generation, and embedding-store I/O during index builds
 - runtime rebuilds after registry mutations remain automatic without forcing every host into startup code
 
@@ -101,6 +104,7 @@ Mitigations:
 - `AddMcpGateway(...)` MUST register `IMcpGateway`, `IMcpGatewayRegistry`, and `McpGatewayToolSet`.
 - Index builds MUST be lazy by default and MUST rebuild automatically after registry mutations invalidate the snapshot.
 - Hosted warmup MUST stay optional and MUST use the same runtime/index path as normal gateway operations.
+- Graph-input customization MUST stay explicit in options and MUST still flow through the same runtime build path as generated/file-backed graph sources.
 - Cancellation of `BuildIndexAsync(...)` MUST propagate into underlying source loading and embedding work.
 
 ## Rollout And Rollback

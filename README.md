@@ -126,6 +126,39 @@ var tools = await gateway.ListToolsAsync();
 
 Registry updates automatically invalidate the catalog. The next list, search, or invoke rebuilds the index.
 
+## Optional Search Hints
+
+If a tool should be discoverable through multilingual aliases, domain jargon, or stable capability keywords, register explicit search hints:
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.AddTool(
+        AIFunctionFactory.Create(
+            static () => "ok",
+            new AIFunctionFactoryOptions
+            {
+                Name = "notification_activity_search",
+                Description = "List notification inbox alerts, unread activity, mentions, and message updates."
+            }),
+        new McpGatewayToolSearchHints(
+            Aliases:
+            [
+                "сповіщення",
+                "нотифікації",
+                "уведомления"
+            ],
+            Keywords:
+            [
+                "alerts",
+                "inbox",
+                "mentions"
+            ]));
+});
+```
+
+These hints flow into the tool descriptor, Markdown-LD graph documents, vector documents, and lexical boosts. They are the recommended way to improve multilingual and product-specific discovery without adding hardcoded ranking exceptions.
+
 ## Register MCP Sources
 
 `ManagedCode.MCPGateway` supports:
@@ -441,11 +474,35 @@ services.AddMcpGateway(options =>
 
 If the keyed chat client is missing or normalization fails, search continues normally.
 
-`AddMcpGateway(...)` also wires an internal process-local runtime cache backed by the application's shared `IMemoryCache`. The gateway reuses normalized queries, query embeddings, and exact repeated search results inside the current process, but it does not wrap `IChatClient` or `IEmbeddingGenerator` with custom proxy layers. Durable or cross-instance reuse still belongs behind `IMcpGatewayToolEmbeddingStore`.
+## Optional Runtime Search Cache
+
+`AddMcpGateway(...)` uses a no-op `IMcpGatewaySearchCache` by default, so the core gateway path does not force `IMemoryCache` into every host.
+
+If you want process-local reuse for normalized queries, query embeddings, and exact repeated search results, opt in explicitly:
+
+```csharp
+services.AddMcpGatewayInMemorySearchCache();
+services.AddMcpGateway(options =>
+{
+    options.SearchStrategy = McpGatewaySearchStrategy.Auto;
+
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
+```
+
+If the host needs a different cache technology or policy, register your own `IMcpGatewaySearchCache`. The gateway runtime stays on that abstraction and does not wrap `IChatClient` or `IEmbeddingGenerator` with proxy layers.
 
 ## Optional Tool Embedding Stores
 
-For process-local caching, use the built-in `IMemoryCache`-backed store:
+For process-local embedding reuse, use the built-in `IMemoryCache`-backed store:
 
 ```csharp
 services.AddKeyedSingleton<IEmbeddingGenerator<string, Embedding<float>>, MyEmbeddingGenerator>(
@@ -568,6 +625,42 @@ runtimeServices.AddMcpGateway(options =>
 - a single Markdown-LD source file supported by `ManagedCode.MarkdownLd.Kb`
 
 The bundle is a portable set of Markdown-LD source documents, not a serialized RDF store. The runtime still builds the in-memory `ManagedCode.MarkdownLd.Kb` graph from those documents so focused graph search, related matches, and next-step matches behave the same way as generated startup mode.
+
+If you want full control over the graph input without taking over the runtime search pipeline, provide the Markdown-LD documents directly:
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.SearchStrategy = McpGatewaySearchStrategy.Graph;
+    options.UseMarkdownLdGraphDocuments(descriptors =>
+    {
+        var documents = McpGatewayMarkdownLdGraphFile.CreateDocuments(descriptors).ToList();
+        var githubIndex = documents.FindIndex(document =>
+            document.Path.Contains("github_search_repositories", StringComparison.Ordinal));
+
+        documents[githubIndex] = documents[githubIndex] with
+        {
+            Content = string.Concat(
+                documents[githubIndex].Content,
+                "\n\nrelease approvals merge trains")
+        };
+
+        return (IReadOnlyList<McpGatewayMarkdownLdGraphDocument>)documents;
+    });
+
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
+```
+
+This is the explicit extension point when a host wants to source graph documents from metadata, files, a database, or its own authoring pipeline while still letting `ManagedCode.MCPGateway` own the actual graph build and search flow.
 
 ## Search Modes
 

@@ -23,6 +23,10 @@ internal sealed partial class McpGatewayRuntime
                     " ",
                     entry.Descriptor.Description,
                     " ",
+                    string.Join(" ", entry.Descriptor.SearchAliases),
+                    " ",
+                    string.Join(" ", entry.Descriptor.SearchKeywords),
+                    " ",
                     string.Join(" ", entry.Descriptor.RequiredArguments)))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (descriptorTerms.Count == 0)

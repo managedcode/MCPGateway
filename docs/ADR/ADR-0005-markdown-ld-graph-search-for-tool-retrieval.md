@@ -17,7 +17,7 @@ Constraints:
 - keep local tools and MCP tools in one catalog
 - keep embeddings optional and opt-in
 - use the tokenizer behavior inside `ManagedCode.MarkdownLd.Kb` instead of carrying a separate local tokenizer strategy
-- support graph creation during startup/index build and graph loading from a file-system path
+- support graph creation during startup/index build, graph loading from a file-system path, and host-supplied Markdown-LD documents
 - do not introduce Microsoft Agent Framework into the core package
 - avoid a separate hosted graph service or durable graph store
 
@@ -34,7 +34,9 @@ Key points:
 - The separate local `Tokenizer` strategy is removed. Token-based search now comes from `ManagedCode.MarkdownLd.Kb` inside the graph path.
 - The graph index is built from the same immutable catalog snapshot as vector search.
 - Every tool descriptor can become a Markdown-LD source document with title, description, tags, source identity, required arguments, input schema text, graph groups, related-tool hints, and next-step hints.
+- Tool descriptors may also carry explicit search aliases and keywords so hosts can enrich multilingual or domain-specific discovery without changing the runtime ranking code per phrase.
 - File-system graph mode can load a gateway graph bundle JSON file, a directory of Markdown-LD source documents, or a single Markdown-LD source file.
+- Custom-document graph mode can build the same Markdown-LD source documents through `McpGatewayOptions.UseMarkdownLdGraphDocuments(...)`, so hosts can control the graph input pipeline without replacing the runtime graph build/search flow.
 - The gateway graph bundle is a portable set of Markdown-LD source documents, not a serialized RDF store. The runtime still builds the in-memory `ManagedCode.MarkdownLd.Kb` graph from those documents.
 - Graph ranking maps focused primary, related, and next-step document hits back to normal `McpGatewaySearchMatch` results; invocation still uses the existing `ToolId` contract.
 - `McpGatewayIndexBuildResult` exposes graph readiness through `IsGraphSearchEnabled`, `GraphNodeCount`, and `GraphEdgeCount`.
@@ -47,8 +49,10 @@ flowchart LR
     SourceChoice -->|GeneratedToolGraph| Descriptor["Tool descriptors"]
     Descriptor --> Markdown["Generated Markdown-LD documents"]
     SourceChoice -->|FileSystem| FileDocs["Bundle file, directory, or source file"]
+    SourceChoice -->|CustomDocuments| CustomDocs["Host-supplied Markdown-LD documents"]
     Markdown --> Graph["ManagedCode.MarkdownLd.Kb graph"]
     FileDocs --> Graph
+    CustomDocs --> Graph
     Graph --> Focused["Focused token-distance search"]
     Focused --> Expansion["Primary + related + next-step matches"]
     Expansion --> MatchMap["Document id to ToolId map"]
@@ -125,6 +129,8 @@ Positive:
 - hosts without embeddings get deterministic graph-backed retrieval by default
 - local `AITool` and MCP descriptors share the same graph construction path
 - file-backed mode lets hosts generate graph source documents separately and load them at runtime
+- custom-document mode lets hosts keep index input authoring under their own control without forking the gateway runtime
+- explicit search hints give hosts a lightweight metadata layer similar to tool overrides/annotations in larger MCP proxies, but without adding a database-backed middleware system to the library
 - the graph index is available during lazy build or eager warmup
 - public search results keep the existing match contract while adding graph ranking metadata and focused expansion results
 
@@ -153,6 +159,7 @@ Mitigations:
 - The package MUST NOT expose a separate local `Tokenizer` strategy.
 - Graph search MUST return `McpGatewaySearchMatch` instances and MUST NOT add a separate invocation path.
 - File-backed graph tests MUST generate their graph fixture through `McpGatewayMarkdownLdGraphFile` or generated Markdown-LD documents instead of relying on a hand-authored static artifact.
+- Custom-document graph mode MUST keep document-to-tool mapping stable by using the current catalog descriptors and matching tool identities.
 - Graph build failures MUST be diagnostic-only and MUST NOT make list/search/invoke unusable.
 
 ## Rollout And Rollback
@@ -161,7 +168,7 @@ Rollout:
 
 1. Add `ManagedCode.MarkdownLd.Kb` to centralized package management.
 2. Convert catalog tool descriptors into Markdown-LD source documents during index build.
-3. Add file-system graph source options to `McpGatewayOptions`.
+3. Add file-system and host-supplied graph source options to `McpGatewayOptions`.
 4. Add graph ranking as the default search path and vector ranking as an opt-in strategy.
 5. Remove the old local tokenizer strategy and tests.
 6. Add tests for generated graph mode, file-backed graph mode, local tool ranking, MCP tool ranking, focused related/next-step expansion, vector fallback to graph, and auto-discovery graph projection.
@@ -182,6 +189,7 @@ Primary scenarios:
 - generated graph mode builds during explicit index initialization
 - file-backed graph mode uses a generated bundle file
 - file-backed graph mode uses a generated directory of Markdown-LD documents
+- custom-document graph mode uses host-provided Markdown-LD documents
 - vector query failure falls through to graph ranking
 - `Auto` vector-first search can supplement semantic primary results with bounded graph expansion and can still fall back to graph when vector ranking is unavailable
 - default graph mode does not call the embedding generator

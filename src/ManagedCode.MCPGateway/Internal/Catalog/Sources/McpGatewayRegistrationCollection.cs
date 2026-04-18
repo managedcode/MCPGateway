@@ -16,10 +16,24 @@ internal sealed class McpGatewayRegistrationCollection(IEnumerable<McpGatewayToo
     public void AddTool(string sourceId, AITool tool, string? displayName = null)
         => AddTool(tool, sourceId, displayName);
 
+    public void AddTool(string sourceId, AITool tool, McpGatewayToolSearchHints searchHints, string? displayName = null)
+        => AddTool(tool, searchHints, sourceId, displayName);
+
     public void AddTool(AITool tool, string sourceId = McpGatewayDefaults.DefaultSourceId, string? displayName = null)
     {
         ArgumentNullException.ThrowIfNull(tool);
         GetOrAddLocalRegistration(sourceId, displayName).AddTool(tool);
+    }
+
+    public void AddTool(
+        AITool tool,
+        McpGatewayToolSearchHints searchHints,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null)
+    {
+        ArgumentNullException.ThrowIfNull(tool);
+        ArgumentNullException.ThrowIfNull(searchHints);
+        GetOrAddLocalRegistration(sourceId, displayName).AddTool(tool, searchHints);
     }
 
     public void AddTools(string sourceId, IEnumerable<AITool> tools, string? displayName = null)

@@ -29,9 +29,14 @@ internal sealed partial class McpGatewayRuntime
         IList<McpGatewayDiagnostic> diagnostics,
         CancellationToken cancellationToken)
     {
-        var documents = _markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.FileSystem
-            ? await LoadFileSystemMarkdownLdGraphDocumentsAsync(diagnostics, cancellationToken).ConfigureAwait(false)
-            : CreateGeneratedMarkdownSourceDocuments(entries);
+        var documents = _markdownLdGraphSource switch
+        {
+            McpGatewayMarkdownLdGraphSource.FileSystem => await LoadFileSystemMarkdownLdGraphDocumentsAsync(diagnostics, cancellationToken)
+                .ConfigureAwait(false),
+            McpGatewayMarkdownLdGraphSource.CustomDocuments => await LoadCustomMarkdownLdGraphDocumentsAsync(entries, diagnostics, cancellationToken)
+                .ConfigureAwait(false),
+            _ => CreateGeneratedMarkdownSourceDocuments(entries)
+        };
 
         if (documents.Count == 0)
         {
@@ -43,7 +48,6 @@ internal sealed partial class McpGatewayRuntime
             extractionMode: MarkdownKnowledgeExtractionMode.Tiktoken,
             tiktokenOptions: new TiktokenKnowledgeGraphOptions
             {
-                BuildAutoRelatedSegmentRelations = false,
                 MaxRelatedSegments = GraphMaxRelatedTokenSegments
             });
 
@@ -54,6 +58,26 @@ internal sealed partial class McpGatewayRuntime
             CreateEntriesByGraphNodeId(entries, result.Documents),
             snapshot.Nodes.Count,
             snapshot.Edges.Count);
+    }
+
+    private async Task<IReadOnlyList<MarkdownSourceDocument>> LoadCustomMarkdownLdGraphDocumentsAsync(
+        IReadOnlyList<ToolCatalogEntry> entries,
+        IList<McpGatewayDiagnostic> diagnostics,
+        CancellationToken cancellationToken)
+    {
+        if (_markdownLdGraphDocumentFactory is null)
+        {
+            diagnostics.Add(new McpGatewayDiagnostic(
+                MarkdownLdGraphDocumentFactoryMissingDiagnosticCode,
+                MarkdownLdGraphDocumentFactoryMissingMessage));
+            return [];
+        }
+
+        var descriptors = entries
+            .Select(static entry => entry.Descriptor)
+            .ToArray();
+        var documents = await _markdownLdGraphDocumentFactory(descriptors, cancellationToken).ConfigureAwait(false);
+        return McpGatewayMarkdownLdGraphFile.ToMarkdownSourceDocuments(documents);
     }
 
     private async Task<IReadOnlyList<MarkdownSourceDocument>> LoadFileSystemMarkdownLdGraphDocumentsAsync(
@@ -359,6 +383,16 @@ internal sealed partial class McpGatewayRuntime
             tags.Add(string.Concat(GraphTagArgumentPrefix, requiredArgument));
         }
 
+        foreach (var alias in descriptor.SearchAliases)
+        {
+            tags.Add(string.Concat(GraphTagAliasPrefix, alias));
+        }
+
+        foreach (var keyword in descriptor.SearchKeywords)
+        {
+            tags.Add(string.Concat(GraphTagKeywordPrefix, keyword));
+        }
+
         return tags;
     }
 
@@ -381,6 +415,8 @@ internal sealed partial class McpGatewayRuntime
         var terms = new List<string>();
         AddGraphCapabilityTerms(terms, descriptor.ToolName, maxTerms: 3);
         AddGraphCapabilityTerms(terms, descriptor.DisplayName, maxTerms: 2);
+        AddGraphCapabilityTerms(terms, string.Join(' ', descriptor.SearchAliases), maxTerms: 3);
+        AddGraphCapabilityTerms(terms, string.Join(' ', descriptor.SearchKeywords), maxTerms: 3);
 
         if (terms.Count == 0)
         {

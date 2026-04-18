@@ -111,8 +111,10 @@ flowchart LR
     Registry --> OperationGate["McpGatewayOperationGate"]
     RegistrationCollection --> SourceRegistrations["McpGatewayToolSourceRegistration*"]
     RuntimeSearch --> Json["McpGatewayJsonSerializer"]
-    RuntimeSearch --> RuntimeCache["McpGatewaySearchRuntimeCache"]
-    RuntimeCache --> MemoryCache["IMemoryCache"]
+    RuntimeSearch --> SearchCache["IMcpGatewaySearchCache"]
+    SearchCache --> NoOpCache["McpGatewayNoOpSearchCache"]
+    SearchCache --> InMemorySearchCache["McpGatewayInMemorySearchCache"]
+    InMemorySearchCache --> MemoryCache["IMemoryCache"]
     RuntimeGraph --> MarkdownLd["ManagedCode.MarkdownLd.Kb"]
     Warmup["McpGatewayIndexWarmupService"] --> McpGateway
     InMemoryStore["McpGatewayInMemoryToolEmbeddingStore"] --> MemoryCache["IMemoryCache"]
@@ -123,7 +125,8 @@ flowchart LR
 - Public facade: [`src/ManagedCode.MCPGateway/McpGateway.cs`](../../src/ManagedCode.MCPGateway/McpGateway.cs) exposes the package runtime API and delegates work to the internal runtime.
 - Public abstractions: [`src/ManagedCode.MCPGateway/Abstractions/`](../../src/ManagedCode.MCPGateway/Abstractions/) defines the stable interfaces consumers resolve from DI.
 - Public configuration: [`src/ManagedCode.MCPGateway/Configuration/`](../../src/ManagedCode.MCPGateway/Configuration/) contains options and service keys that shape host integration.
-- Public models: [`src/ManagedCode.MCPGateway/Models/`](../../src/ManagedCode.MCPGateway/Models/) contains request/result contracts and enums grouped by search, invocation, catalog, and embeddings behavior.
+- Public models: [`src/ManagedCode.MCPGateway/Models/`](../../src/ManagedCode.MCPGateway/Models/) contains request/result contracts and enums grouped by search, invocation, catalog, and embeddings behavior, including explicit tool search hints for alias/keyword enrichment.
+- Public caching: [`src/ManagedCode.MCPGateway/Caching/`](../../src/ManagedCode.MCPGateway/Caching/) provides the built-in `IMemoryCache`-backed runtime search cache that hosts can opt into explicitly.
 - Public embeddings: [`src/ManagedCode.MCPGateway/Embeddings/`](../../src/ManagedCode.MCPGateway/Embeddings/) provides optional embedding-store implementations, including the built-in `IMemoryCache`-backed process-local store.
 - Public meta-tools: [`src/ManagedCode.MCPGateway/McpGatewayToolSet.cs`](../../src/ManagedCode.MCPGateway/McpGatewayToolSet.cs) exposes the gateway as reusable `AITool` instances for model-driven search and invoke flows.
 - Public chat-options bridge: [`src/ManagedCode.MCPGateway/Registration/McpGatewayChatOptionsExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayChatOptionsExtensions.cs) attaches the gateway meta-tools to `ChatOptions` without replacing existing tools.
@@ -132,12 +135,12 @@ flowchart LR
 - Internal catalog module: [`src/ManagedCode.MCPGateway/Internal/Catalog/`](../../src/ManagedCode.MCPGateway/Internal/Catalog/) owns mutable tool-source registration state and read-only snapshots for indexing.
 - Internal catalog sources: [`src/ManagedCode.MCPGateway/Internal/Catalog/Sources/`](../../src/ManagedCode.MCPGateway/Internal/Catalog/Sources/) owns transport-specific source registrations and MCP client creation.
 - Internal runtime module: [`src/ManagedCode.MCPGateway/Internal/Runtime/`](../../src/ManagedCode.MCPGateway/Internal/Runtime/) owns orchestration and is split by core, catalog, search, graph, invocation, and embeddings concerns.
-- Internal search cache module: [`src/ManagedCode.MCPGateway/Internal/Caching/`](../../src/ManagedCode.MCPGateway/Internal/Caching/) owns the typed `IMemoryCache` integration for normalized-query reuse, query-embedding reuse, and repeated search-result reuse.
-- Internal graph search module: [`src/ManagedCode.MCPGateway/Internal/Runtime/Graph/`](../../src/ManagedCode.MCPGateway/Internal/Runtime/Graph/) builds generated Markdown-LD tool documents or loads file-system Markdown-LD sources, then ranks focused graph token-distance matches back to gateway tool entries.
+- Internal cache fallbacks: [`src/ManagedCode.MCPGateway/Internal/Caching/`](../../src/ManagedCode.MCPGateway/Internal/Caching/) owns the default no-op search-cache implementation used when the host does not opt into process-local runtime caching.
+- Internal graph search module: [`src/ManagedCode.MCPGateway/Internal/Runtime/Graph/`](../../src/ManagedCode.MCPGateway/Internal/Runtime/Graph/) builds generated Markdown-LD tool documents, loads file-system Markdown-LD sources, or consumes host-supplied Markdown-LD documents, then ranks focused graph token-distance matches back to gateway tool entries.
 - Internal telemetry module: [`src/ManagedCode.MCPGateway/Internal/Telemetry/`](../../src/ManagedCode.MCPGateway/Internal/Telemetry/) emits first-party .NET `ActivitySource` and `Meter` signals for search and index operations.
 - Internal serialization: [`src/ManagedCode.MCPGateway/Internal/Serialization/`](../../src/ManagedCode.MCPGateway/Internal/Serialization/) contains the canonical JSON materialization path used by runtime features.
 - Warmup hooks: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceProviderExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceProviderExtensions.cs) and [`src/ManagedCode.MCPGateway/Internal/Warmup/McpGatewayIndexWarmupService.cs`](../../src/ManagedCode.MCPGateway/Internal/Warmup/McpGatewayIndexWarmupService.cs) provide optional eager index-building integration.
-- DI registration: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs) wires facade, registry, meta-tools, warmup support, and the optional `IMemoryCache`-backed embedding store into the container.
+- DI registration: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs) wires facade, registry, meta-tools, warmup support, the default no-op runtime search cache, and the optional `IMemoryCache`-backed cache/store implementations into the container.
 
 ## Dependency Rules
 
@@ -152,10 +155,11 @@ flowchart LR
 - The recommended staged host flow is: advertise only the two gateway meta-tools first, then project only the latest search matches as direct proxy tools, then replace that discovered set on the next search result.
 - `Models` should stay contract-first. Internal transport, registry, or lifecycle helpers do not belong there.
 - Embedding support must stay optional and isolated behind `IMcpGatewayToolEmbeddingStore` and embedding-generator abstractions.
-- Process-local runtime search caching may use `IMemoryCache` through internal typed services, but durable or cross-instance vector reuse must stay behind `IMcpGatewayToolEmbeddingStore`.
+- Process-local runtime search caching must stay behind `IMcpGatewaySearchCache`, with a no-op default and an explicit opt-in `IMemoryCache` implementation for hosts that want local reuse.
 - The built-in process-local embedding store may depend on `IMemoryCache`, but cross-instance persistence and cache replication must stay behind host-provided `IMcpGatewayToolEmbeddingStore` implementations.
 - Markdown-LD graph search is the default internal retrieval strategy. It may depend on `ManagedCode.MarkdownLd.Kb`, but it must still return the same public `McpGatewaySearchMatch` contracts, calibrate user-facing confidence at the gateway layer, and must not create a separate invocation surface.
-- Markdown-LD graph sources may be generated from the live catalog at index build time or loaded from a file-system path configured through `McpGatewayOptions`. File-backed mode must still map graph documents back to the current catalog before returning matches.
+- Markdown-LD graph sources may be generated from the live catalog at index build time, loaded from a file-system path, or provided through a host-supplied document factory configured in `McpGatewayOptions`. All modes must still map graph documents back to the current catalog before returning matches.
+- Tool metadata used for search enrichment must stay explicit and developer-controlled through registration hints or tool annotations; multilingual improvement should come from metadata plus scoring, not from one-off hardcoded phrase rules in runtime code.
 - Warmup remains optional. The package must work correctly with lazy indexing and must not require manual initialization for every host.
 
 ## Key Decisions (ADRs)

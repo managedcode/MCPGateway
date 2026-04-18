@@ -90,7 +90,7 @@ flowchart LR
   - generated or file-backed Markdown-LD graph
 - Writes:
   - no new persistent state beyond the existing optional embedding store
-  - process-local cache entries for normalized queries, query embeddings, and repeated search results
+  - optional process-local cache entries through `IMcpGatewaySearchCache` for normalized queries, query embeddings, and repeated search results
   - telemetry through `ActivitySource` and `Meter`
 - Side effects:
   - one optional query-normalization chat request per unique query until the process-local cache entry expires

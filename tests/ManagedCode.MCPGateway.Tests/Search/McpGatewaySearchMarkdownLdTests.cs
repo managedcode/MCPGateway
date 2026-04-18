@@ -2,12 +2,25 @@ using System.Collections;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ManagedCode.MCPGateway.Abstractions;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ManagedCode.MCPGateway.Tests;
 
 public sealed partial class McpGatewaySearchTests
 {
+    private static readonly string[] ReleaseWorkflowAliases =
+    [
+        "релізи",
+        "деплої"
+    ];
+
+    private static readonly string[] ReleaseWorkflowKeywords =
+    [
+        "approvals",
+        "merge trains"
+    ];
+
     [TUnit.Core.Test]
     public async Task SearchAsync_UsesContextDictionaryForMarkdownLdGraphSearch()
     {
@@ -56,6 +69,129 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.Matches.Count).IsEqualTo(5);
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_GraphStrategyUsesRegisteredSearchAliasesForMultilingualQuery()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool(
+                TestFunctionFactory.CreateFunction(
+                    SearchWeather,
+                    "notification_activity_search",
+                    "List notification inbox alerts, unread activity, mentions, and message updates for the current user."),
+                new McpGatewayToolSearchHints(
+                    Aliases:
+                    [
+                        "сповіщення",
+                        "нотифікації",
+                        "уведомления"
+                    ],
+                    Keywords:
+                    [
+                        "inbox",
+                        "alerts"
+                    ]));
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        await gateway.BuildIndexAsync();
+        var searchResult = await gateway.SearchAsync("знайти сповіщення", maxResults: 1);
+
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:notification_activity_search");
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_GraphStrategyUsesFunctionAdditionalPropertiesSearchHints()
+    {
+        var tool = AIFunctionFactory.Create(
+            SearchGitHub,
+            new AIFunctionFactoryOptions
+            {
+                Name = "release_workflow_lookup",
+                Description = "Lookup release workflow status and deployment approvals.",
+                AdditionalProperties = new Dictionary<string, object?>
+                {
+                    ["searchAliases"] = ReleaseWorkflowAliases,
+                    ["searchKeywords"] = ReleaseWorkflowKeywords
+                }
+            });
+
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool("local", tool);
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        await gateway.BuildIndexAsync();
+        var searchResult = await gateway.SearchAsync("релізи merge trains", maxResults: 1);
+
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:release_workflow_lookup");
+    }
+
+    [TUnit.Core.Test]
+    public async Task ListToolsAsync_ReturnsRegisteredSearchHints()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool(
+                TestFunctionFactory.CreateFunction(
+                    SearchWeather,
+                    "notification_activity_search",
+                    "List notification inbox alerts, unread activity, mentions, and message updates for the current user."),
+                new McpGatewayToolSearchHints(
+                    Aliases:
+                    [
+                        "сповіщення"
+                    ],
+                    Keywords:
+                    [
+                        "alerts",
+                        "notifications"
+                    ]));
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var descriptors = await gateway.ListToolsAsync();
+        var descriptor = descriptors.Single();
+
+        await Assert.That(descriptor.SearchAliases.Count).IsEqualTo(1);
+        await Assert.That(descriptor.SearchAliases[0]).IsEqualTo("сповіщення");
+        await Assert.That(descriptor.SearchKeywords.Count).IsEqualTo(2);
+        await Assert.That(descriptor.SearchKeywords.Contains("alerts")).IsTrue();
+        await Assert.That(descriptor.SearchKeywords.Contains("notifications")).IsTrue();
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_UsesCustomMarkdownLdGraphDocumentsWhenConfigured()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            ConfigureSearchTools(options);
+            options.UseMarkdownLdGraphDocuments(descriptors =>
+            {
+                var documents = McpGatewayMarkdownLdGraphFile.CreateDocuments(descriptors).ToList();
+                var githubDocumentIndex = documents.FindIndex(static document =>
+                    document.Path.Contains("github_search_issues", StringComparison.Ordinal));
+                documents[githubDocumentIndex] = documents[githubDocumentIndex] with
+                {
+                    Content = string.Concat(
+                        documents[githubDocumentIndex].Content,
+                        "\n\nmerge trains deployment approvals release gates")
+                };
+                return (IReadOnlyList<McpGatewayMarkdownLdGraphDocument>)documents;
+            });
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        await gateway.BuildIndexAsync();
+        var searchResult = await gateway.SearchAsync("merge trains approvals", maxResults: 1);
+
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
     }
 
     [TUnit.Core.Test]

@@ -19,12 +19,20 @@ public static class McpGatewayServiceCollectionExtensions
             services.Configure(configure);
         }
 
-        services.AddMemoryCache();
-        services.TryAddSingleton<McpGatewaySearchRuntimeCache>();
+        services.TryAddSingleton<IMcpGatewaySearchCache, McpGatewayNoOpSearchCache>();
         services.TryAddSingleton<IMcpGateway, McpGateway>();
         services.TryAddSingleton<IMcpGatewayRegistry, McpGatewayRegistry>();
         services.TryAddSingleton<McpGatewayToolSet>();
 
+        return services;
+    }
+
+    public static IServiceCollection AddMcpGatewayInMemorySearchCache(this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        services.AddMemoryCache();
+        services.Replace(ServiceDescriptor.Singleton<IMcpGatewaySearchCache, McpGatewayInMemorySearchCache>());
         return services;
     }
 

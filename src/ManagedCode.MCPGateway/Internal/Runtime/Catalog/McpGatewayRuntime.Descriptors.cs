@@ -9,8 +9,9 @@ internal sealed partial class McpGatewayRuntime
 {
     private static McpGatewayToolDescriptor? BuildDescriptor(
         McpGatewayToolSourceRegistration registration,
-        AITool tool)
+        McpGatewayLoadedTool loadedTool)
     {
+        var tool = loadedTool.Tool;
         if (string.IsNullOrWhiteSpace(tool.Name))
         {
             return null;
@@ -26,6 +27,7 @@ internal sealed partial class McpGatewayRuntime
         };
 
         var inputSchema = ResolveInputSchema(tool);
+        var searchHints = ResolveSearchHints(tool, loadedTool.SearchHints);
 
         return new McpGatewayToolDescriptor(
             ToolId: $"{registration.SourceId}:{toolName}",
@@ -35,7 +37,11 @@ internal sealed partial class McpGatewayRuntime
             DisplayName: ResolveDisplayName(tool),
             Description: tool.Description ?? string.Empty,
             RequiredArguments: inputSchema.RequiredArguments,
-            InputSchemaJson: inputSchema.Json);
+            InputSchemaJson: inputSchema.Json)
+        {
+            SearchAliases = searchHints.Aliases ?? [],
+            SearchKeywords = searchHints.Keywords ?? []
+        };
     }
 
     private string BuildDescriptorDocument(McpGatewayToolDescriptor descriptor)
@@ -59,6 +65,18 @@ internal sealed partial class McpGatewayRuntime
         {
             builder.Append(DescriptionLabel);
             builder.AppendLine(descriptor.Description);
+        }
+
+        if (descriptor.SearchAliases.Count > 0)
+        {
+            builder.Append(SearchAliasesLabel);
+            builder.AppendLine(string.Join(", ", descriptor.SearchAliases));
+        }
+
+        if (descriptor.SearchKeywords.Count > 0)
+        {
+            builder.Append(SearchKeywordsLabel);
+            builder.AppendLine(string.Join(", ", descriptor.SearchKeywords));
         }
 
         if (descriptor.RequiredArguments.Count > 0)
@@ -165,6 +183,116 @@ internal sealed partial class McpGatewayRuntime
         }
 
         return null;
+    }
+
+    private static McpGatewayToolSearchHints ResolveSearchHints(
+        AITool tool,
+        McpGatewayToolSearchHints? registeredHints)
+    {
+        var aliases = new List<string>();
+        var keywords = new List<string>();
+        var seenAliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var seenKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddSearchHintValues(aliases, seenAliases, registeredHints?.Aliases);
+        AddSearchHintValues(keywords, seenKeywords, registeredHints?.Keywords);
+
+        if (tool is McpClientTool mcpTool)
+        {
+            AddSerializedSearchHints(aliases, seenAliases, keywords, seenKeywords, mcpTool.ProtocolTool?.Annotations);
+        }
+
+        var function = tool as AIFunction ?? tool.GetService<AIFunction>();
+        if (function?.AdditionalProperties is { Count: > 0 })
+        {
+            AddSerializedSearchHints(aliases, seenAliases, keywords, seenKeywords, function.AdditionalProperties);
+        }
+
+        return new McpGatewayToolSearchHints(aliases, keywords);
+    }
+
+    private static void AddSerializedSearchHints(
+        ICollection<string> aliases,
+        ISet<string> seenAliases,
+        ICollection<string> keywords,
+        ISet<string> seenKeywords,
+        object? value)
+    {
+        if (McpGatewayJsonSerializer.TrySerializeToElement(value) is not JsonElement element ||
+            element.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        AddSearchHintValues(aliases, seenAliases, ReadSearchHintValues(
+            element,
+            SearchAliasesPropertyName,
+            SearchAliasesCamelCasePropertyName,
+            SearchAliasesSnakeCasePropertyName,
+            SearchAliasesShortPropertyName));
+        AddSearchHintValues(keywords, seenKeywords, ReadSearchHintValues(
+            element,
+            SearchKeywordsPropertyName,
+            SearchKeywordsCamelCasePropertyName,
+            SearchKeywordsSnakeCasePropertyName,
+            SearchKeywordsShortPropertyName));
+    }
+
+    private static IReadOnlyList<string> ReadSearchHintValues(
+        JsonElement element,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            if (!element.TryGetProperty(propertyName, out var property))
+            {
+                continue;
+            }
+
+            return ReadSearchHintValues(property);
+        }
+
+        return [];
+    }
+
+    private static IReadOnlyList<string> ReadSearchHintValues(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => [element.GetString() ?? string.Empty],
+            JsonValueKind.Array => element.EnumerateArray()
+                .Where(static item => item.ValueKind == JsonValueKind.String)
+                .Select(static item => item.GetString() ?? string.Empty)
+                .ToArray(),
+            _ => []
+        };
+    }
+
+    private static void AddSearchHintValues(
+        ICollection<string> target,
+        ISet<string> seenValues,
+        IEnumerable<string>? values)
+    {
+        if (values is null)
+        {
+            return;
+        }
+
+        foreach (var value in values)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            var normalized = value.Trim();
+            if (!seenValues.Add(normalized))
+            {
+                continue;
+            }
+
+            target.Add(normalized);
+        }
     }
 
     private static SerializedSchema ResolveInputSchema(AITool tool)

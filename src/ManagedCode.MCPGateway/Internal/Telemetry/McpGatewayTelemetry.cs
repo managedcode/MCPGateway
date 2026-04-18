@@ -150,12 +150,15 @@ internal static class McpGatewayTelemetry
         bool cacheHit,
         bool queryNormalized)
     {
+        var usedVectorSearch = rankedMetrics?.UsedVectorSearch ?? UsesVectorSearch(result.RankingMode);
+        var usedGraphSearch = rankedMetrics?.UsedGraphSearch ?? UsesGraphSearch(result.RankingMode);
+
         return new TagList
         {
             { ConfiguredStrategyTagName, configuredStrategy.ToString() },
             { RankingModeTagName, result.RankingMode },
-            { UsedVectorTagName, rankedMetrics?.UsedVectorSearch ?? false },
-            { UsedGraphTagName, rankedMetrics?.UsedGraphSearch ?? false },
+            { UsedVectorTagName, usedVectorSearch },
+            { UsedGraphTagName, usedGraphSearch },
             { CacheHitTagName, cacheHit },
             { QueryNormalizedTagName, queryNormalized },
             { ResultCountTagName, result.Matches.Count },
@@ -165,6 +168,14 @@ internal static class McpGatewayTelemetry
             { FocusedGraphEdgeCountTagName, result.FocusedGraphEdgeCount }
         };
     }
+
+    private static bool UsesVectorSearch(string rankingMode)
+        => string.Equals(rankingMode, "vector", StringComparison.Ordinal) ||
+            string.Equals(rankingMode, "hybrid", StringComparison.Ordinal);
+
+    private static bool UsesGraphSearch(string rankingMode)
+        => string.Equals(rankingMode, "graph", StringComparison.Ordinal) ||
+            string.Equals(rankingMode, "hybrid", StringComparison.Ordinal);
 
     private static void ApplyTags(Activity activity, TagList tags)
     {

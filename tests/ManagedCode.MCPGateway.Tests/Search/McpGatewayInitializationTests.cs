@@ -60,6 +60,37 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(cache).IsNotNull();
         await Assert.That(store).IsTypeOf<McpGatewayInMemoryToolEmbeddingStore>();
     }
+
+    [TUnit.Core.Test]
+    public async Task AddMcpGateway_DoesNotRegisterMemoryCacheByDefault()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddMcpGateway(static options => options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query.")));
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var searchCache = serviceProvider.GetRequiredService<IMcpGatewaySearchCache>();
+        var memoryCache = serviceProvider.GetService<IMemoryCache>();
+
+        await Assert.That(searchCache).IsTypeOf<McpGatewayNoOpSearchCache>();
+        await Assert.That(memoryCache).IsNull();
+    }
+
+    [TUnit.Core.Test]
+    public async Task AddMcpGatewayInMemorySearchCache_RegistersSharedCacheBackedSearchCache()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddMcpGateway(static options => options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query.")));
+        services.AddMcpGatewayInMemorySearchCache();
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var cache = serviceProvider.GetRequiredService<IMemoryCache>();
+        var searchCache = serviceProvider.GetRequiredService<IMcpGatewaySearchCache>();
+
+        await Assert.That(cache).IsNotNull();
+        await Assert.That(searchCache).IsTypeOf<McpGatewayInMemorySearchCache>();
+    }
 }
 
 internal sealed class WarmupProbeGateway : IMcpGateway

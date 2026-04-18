@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Globalization;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 
 namespace ManagedCode.MCPGateway;
@@ -93,7 +92,7 @@ internal sealed partial class McpGatewayRuntime
 
         foreach (var registration in registrySnapshot.Registrations)
         {
-            IReadOnlyList<AITool> tools;
+            IReadOnlyList<McpGatewayLoadedTool> tools;
             try
             {
                 tools = await registration.LoadToolsAsync(_loggerFactory, cancellationToken);
@@ -111,9 +110,9 @@ internal sealed partial class McpGatewayRuntime
                 continue;
             }
 
-            foreach (var tool in tools)
+            foreach (var loadedTool in tools)
             {
-                var descriptor = BuildDescriptor(registration, tool);
+                var descriptor = BuildDescriptor(registration, loadedTool);
                 if (descriptor is null)
                 {
                     continue;
@@ -129,7 +128,7 @@ internal sealed partial class McpGatewayRuntime
 
                 entries.Add(new ToolCatalogEntry(
                     descriptor,
-                    tool,
+                    loadedTool.Tool,
                     BuildDescriptorDocument(descriptor)));
             }
         }
