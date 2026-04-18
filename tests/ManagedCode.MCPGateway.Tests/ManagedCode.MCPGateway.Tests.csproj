@@ -1,5 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
@@ -29,5 +28,4 @@
     <Using Include="TUnit.Core" />
     <Using Include="TUnit.Core.HookType" Static="True" />
   </ItemGroup>
-
 </Project>

@@ -4,20 +4,27 @@ internal sealed partial class McpGatewayRuntime
 {
     private static void AddLowConfidenceGraphDiagnostic(
         RankedSearch rankedSearch,
-        IList<McpGatewayDiagnostic> diagnostics)
+        IList<McpGatewayDiagnostic> diagnostics
+    )
     {
         if (!IsLowConfidenceGraphResult(rankedSearch, includeEmpty: false))
         {
             return;
         }
 
-        diagnostics.Add(new McpGatewayDiagnostic(LowConfidenceResultsDiagnosticCode, LowConfidenceResultsMessage));
+        diagnostics.Add(
+            new McpGatewayDiagnostic(
+                LowConfidenceResultsDiagnosticCode,
+                LowConfidenceResultsMessage
+            )
+        );
     }
 
     private static double CalibrateGraphConfidence(
         ToolCatalogEntry entry,
         string confidenceQuery,
-        double rawScore)
+        double rawScore
+    )
     {
         var clampedRawScore = Math.Clamp(rawScore, 0d, 1d);
         if (clampedRawScore <= double.Epsilon)
@@ -27,12 +34,17 @@ internal sealed partial class McpGatewayRuntime
 
         var evidence = CalculateDescriptorQueryEvidence(confidenceQuery, entry);
         return Math.Clamp(
-            (clampedRawScore + (GraphConfidenceEvidenceWeight * evidence)) / (1d + GraphConfidenceEvidenceWeight),
+            (clampedRawScore + (GraphConfidenceEvidenceWeight * evidence))
+                / (1d + GraphConfidenceEvidenceWeight),
             0d,
-            1d);
+            1d
+        );
     }
 
-    private static double CalculateDescriptorQueryEvidence(string confidenceQuery, ToolCatalogEntry entry)
+    private static double CalculateDescriptorQueryEvidence(
+        string confidenceQuery,
+        ToolCatalogEntry entry
+    )
     {
         var queryTerms = BuildOrderedGraphTerms(confidenceQuery)
             .Take(GraphConfidenceMaxQueryTerms)
@@ -57,14 +69,13 @@ internal sealed partial class McpGatewayRuntime
             supportedWeight += weight * CalculateBestTermSimilarity(queryTerm, descriptorTerms);
         }
 
-        return totalWeight <= double.Epsilon
-            ? 1d
-            : supportedWeight / totalWeight;
+        return totalWeight <= double.Epsilon ? 1d : supportedWeight / totalWeight;
     }
 
     private static double CalculateBestTermSimilarity(
         string queryTerm,
-        IReadOnlyList<string> descriptorTerms)
+        IReadOnlyList<string> descriptorTerms
+    )
     {
         var best = 0d;
         foreach (var descriptorTerm in descriptorTerms)
@@ -91,21 +102,24 @@ internal sealed partial class McpGatewayRuntime
             return 1d;
         }
 
-        if (queryTerm.Length < GraphMinimumFuzzyTermLength || descriptorTerm.Length < GraphMinimumFuzzyTermLength)
+        if (
+            queryTerm.Length < GraphMinimumFuzzyTermLength
+            || descriptorTerm.Length < GraphMinimumFuzzyTermLength
+        )
         {
             return 0d;
         }
 
-        if (descriptorTerm.Contains(queryTerm, StringComparison.OrdinalIgnoreCase) ||
-            queryTerm.Contains(descriptorTerm, StringComparison.OrdinalIgnoreCase))
+        if (
+            descriptorTerm.Contains(queryTerm, StringComparison.OrdinalIgnoreCase)
+            || queryTerm.Contains(descriptorTerm, StringComparison.OrdinalIgnoreCase)
+        )
         {
             return GraphContainsTermSimilarity;
         }
 
         var similarity = CalculateDiceCoefficient(queryTerm, descriptorTerm);
-        return similarity >= GraphMinimumFuzzySimilarity
-            ? similarity
-            : 0d;
+        return similarity >= GraphMinimumFuzzySimilarity ? similarity : 0d;
     }
 
     private static double CalculateDiceCoefficient(string left, string right)
@@ -150,7 +164,10 @@ internal sealed partial class McpGatewayRuntime
         return bigrams;
     }
 
-    private static bool IsLowConfidenceGraphResult(RankedSearch rankedSearch, bool includeEmpty = true)
+    private static bool IsLowConfidenceGraphResult(
+        RankedSearch rankedSearch,
+        bool includeEmpty = true
+    )
     {
         if (!string.Equals(rankedSearch.RankingMode, SearchModeGraph, StringComparison.Ordinal))
         {

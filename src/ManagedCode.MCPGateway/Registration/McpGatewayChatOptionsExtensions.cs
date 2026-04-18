@@ -9,12 +9,17 @@ public static class McpGatewayChatOptionsExtensions
         this ChatOptions options,
         McpGatewayToolSet toolSet,
         string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
-        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName)
+        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
+    )
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(toolSet);
 
-        options.Tools = toolSet.AddTools(options.Tools ?? new List<AITool>(), searchToolName, invokeToolName);
+        options.Tools = toolSet.AddTools(
+            options.Tools ?? new List<AITool>(),
+            searchToolName,
+            invokeToolName
+        );
         return options;
     }
 
@@ -22,7 +27,8 @@ public static class McpGatewayChatOptionsExtensions
         this ChatOptions options,
         IServiceProvider serviceProvider,
         string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
-        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName)
+        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
+    )
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(serviceProvider);
@@ -30,6 +36,7 @@ public static class McpGatewayChatOptionsExtensions
         return options.AddMcpGatewayTools(
             serviceProvider.GetRequiredService<McpGatewayToolSet>(),
             searchToolName,
-            invokeToolName);
+            invokeToolName
+        );
     }
 }

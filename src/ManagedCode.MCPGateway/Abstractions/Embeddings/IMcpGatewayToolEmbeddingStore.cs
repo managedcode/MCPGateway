@@ -4,9 +4,11 @@ public interface IMcpGatewayToolEmbeddingStore
 {
     Task<IReadOnlyList<McpGatewayToolEmbedding>> GetAsync(
         IReadOnlyList<McpGatewayToolEmbeddingLookup> lookups,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     Task UpsertAsync(
         IReadOnlyList<McpGatewayToolEmbedding> embeddings,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

@@ -17,8 +17,10 @@ internal static class McpGatewayJsonSerializer
                 null => null,
                 JsonElement element => NormalizeElement(element),
                 JsonDocument document => NormalizeElement(document.RootElement),
-                JsonNode node => node is null ? null : NormalizeElement(JsonSerializer.SerializeToElement(node, Options)),
-                _ => NormalizeElement(JsonSerializer.SerializeToElement(value, Options))
+                JsonNode node => node is null
+                    ? null
+                    : NormalizeElement(JsonSerializer.SerializeToElement(node, Options)),
+                _ => NormalizeElement(JsonSerializer.SerializeToElement(value, Options)),
             };
         }
         catch (JsonException)
@@ -41,7 +43,7 @@ internal static class McpGatewayJsonSerializer
                 JsonNode node => node.DeepClone(),
                 JsonElement element => SerializeElementToNode(element),
                 JsonDocument document => SerializeElementToNode(document.RootElement),
-                _ => JsonSerializer.SerializeToNode(value, Options)
+                _ => JsonSerializer.SerializeToNode(value, Options),
             };
         }
         catch (JsonException)
@@ -61,13 +63,11 @@ internal static class McpGatewayJsonSerializer
         return options;
     }
 
-    private static JsonElement? NormalizeElement(JsonElement element)
-        => element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
-            ? null
-            : element.Clone();
+    private static JsonElement? NormalizeElement(JsonElement element) =>
+        element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined ? null : element.Clone();
 
-    private static JsonNode? SerializeElementToNode(JsonElement element)
-        => element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
+    private static JsonNode? SerializeElementToNode(JsonElement element) =>
+        element.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined
             ? null
             : JsonSerializer.SerializeToNode(element, Options);
 }

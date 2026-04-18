@@ -5,5 +5,5 @@ public enum McpGatewaySourceKind
     Local,
     HttpMcp,
     StdioMcp,
-    CustomMcpClient
+    CustomMcpClient,
 }

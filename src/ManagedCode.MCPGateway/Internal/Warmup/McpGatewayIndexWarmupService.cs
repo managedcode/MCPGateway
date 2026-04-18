@@ -6,9 +6,11 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayIndexWarmupService(
     IMcpGateway gateway,
-    ILogger<McpGatewayIndexWarmupService> logger) : IHostedService
+    ILogger<McpGatewayIndexWarmupService> logger
+) : IHostedService
 {
-    private const string WarmupFailedLogMessage = "ManagedCode.MCPGateway background index warmup failed.";
+    private const string WarmupFailedLogMessage =
+        "ManagedCode.MCPGateway background index warmup failed.";
     private Task? _warmupTask;
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -28,9 +30,7 @@ internal sealed class McpGatewayIndexWarmupService(
         {
             await _warmupTask.WaitAsync(cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
     private async Task WarmAsync(CancellationToken cancellationToken)
@@ -39,9 +39,7 @@ internal sealed class McpGatewayIndexWarmupService(
         {
             await gateway.BuildIndexAsync(cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception ex)
         {
             logger.LogWarning(ex, WarmupFailedLogMessage);

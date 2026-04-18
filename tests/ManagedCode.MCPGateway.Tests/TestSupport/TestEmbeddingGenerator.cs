@@ -27,47 +27,46 @@ internal sealed class TestEmbeddingGenerator(TestEmbeddingGeneratorOptions? opti
         "page",
         "profile",
         "repository",
-        "repositories"
+        "repositories",
     ];
 
     private readonly TestEmbeddingGeneratorOptions _options = options ?? new();
     private readonly EmbeddingGeneratorMetadata _metadata =
         (options ?? new()).Metadata
-        ?? new("ManagedCode.MCPGateway.Tests", new Uri("https://example.test"), "test-embedding", Vocabulary.Length);
+        ?? new(
+            "ManagedCode.MCPGateway.Tests",
+            new Uri("https://example.test"),
+            "test-embedding",
+            Vocabulary.Length
+        );
 
     public List<IReadOnlyList<string>> Calls { get; } = [];
 
     public Task<GeneratedEmbeddings<Embedding<float>>> GenerateAsync(
         IEnumerable<string> values,
         EmbeddingGenerationOptions? options = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var inputList = values.ToList();
         Calls.Add(inputList);
 
-        if (_options.ThrowOnInput is not null &&
-            inputList.Any(_options.ThrowOnInput))
+        if (_options.ThrowOnInput is not null && inputList.Any(_options.ThrowOnInput))
         {
             throw new InvalidOperationException("Embedding generation failed for a test input.");
         }
 
-        var embeddings = inputList
-            .Select(CreateEmbedding)
-            .ToList();
+        var embeddings = inputList.Select(CreateEmbedding).ToList();
 
-        if (_options.ReturnMismatchedBatchCount &&
-            inputList.Count > 1 &&
-            embeddings.Count > 0)
+        if (_options.ReturnMismatchedBatchCount && inputList.Count > 1 && embeddings.Count > 0)
         {
             embeddings.RemoveAt(embeddings.Count - 1);
         }
 
-        GeneratedEmbeddings<Embedding<float>> result =
-        [
-            .. embeddings
-        ];
+        GeneratedEmbeddings<Embedding<float>> result = [.. embeddings];
+        result.Usage = CreateUsage(inputList);
 
         return Task.FromResult(result);
     }
@@ -89,8 +88,17 @@ internal sealed class TestEmbeddingGenerator(TestEmbeddingGeneratorOptions? opti
         return serviceType.IsInstanceOfType(this) ? this : null;
     }
 
-    public void Dispose()
+    public void Dispose() { }
+
+    private UsageDetails CreateUsage(IReadOnlyList<string> inputList)
     {
+        if (_options.CreateUsage is not null)
+        {
+            return _options.CreateUsage(inputList);
+        }
+
+        var tokenCount = inputList.Sum(CountTokens);
+        return new UsageDetails { InputTokenCount = tokenCount, TotalTokenCount = tokenCount };
     }
 
     private Embedding<float> CreateEmbedding(string value)
@@ -118,6 +126,14 @@ internal sealed class TestEmbeddingGenerator(TestEmbeddingGeneratorOptions? opti
 
         return new Embedding<float>(vector);
     }
+
+    private static long CountTokens(string value) =>
+        value
+            .Split(
+                [' ', '\t', '\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            )
+            .LongLength;
 }
 
 internal sealed class TestEmbeddingGeneratorOptions
@@ -129,6 +145,8 @@ internal sealed class TestEmbeddingGeneratorOptions
     public Func<string, bool>? ReturnZeroVectorOnInput { get; init; }
 
     public Func<string, float[]>? CreateVector { get; init; }
+
+    public Func<IReadOnlyList<string>, UsageDetails>? CreateUsage { get; init; }
 
     public bool ReturnMismatchedBatchCount { get; init; }
 }

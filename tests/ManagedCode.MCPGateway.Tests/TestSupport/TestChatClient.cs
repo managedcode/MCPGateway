@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-
 using Microsoft.Extensions.AI;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -16,12 +15,15 @@ internal sealed class TestChatClient(TestChatClientOptions? options = null) : IC
     public Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var messageList = messages as IReadOnlyList<ChatMessage> ?? messages.ToList();
-        var query = messageList.LastOrDefault(static message => message.Role == ChatRole.User)?.Text ?? string.Empty;
+        var query =
+            messageList.LastOrDefault(static message => message.Role == ChatRole.User)?.Text
+            ?? string.Empty;
         Calls.Add(query);
 
         if (_options.ThrowOnInput?.Invoke(query) == true)
@@ -43,7 +45,8 @@ internal sealed class TestChatClient(TestChatClientOptions? options = null) : IC
         if (_options.Scenarios.Count > 0)
         {
             throw new InvalidOperationException(
-                $"No test chat scenario matched invocation #{invocation.InvocationIndex} for '{query}'.");
+                $"No test chat scenario matched invocation #{invocation.InvocationIndex} for '{query}'."
+            );
         }
 
         var rewrittenQuery = _options.RewriteQuery?.Invoke(query) ?? query;
@@ -53,7 +56,9 @@ internal sealed class TestChatClient(TestChatClientOptions? options = null) : IC
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+            CancellationToken cancellationToken = default
+    )
     {
         var response = await GetResponseAsync(messages, options, cancellationToken);
 
@@ -86,9 +91,7 @@ internal sealed class TestChatClient(TestChatClientOptions? options = null) : IC
         return null;
     }
 
-    public void Dispose()
-    {
-    }
+    public void Dispose() { }
 }
 
 internal sealed class TestChatClientOptions
@@ -104,17 +107,22 @@ internal sealed class TestChatClientOptions
 
 internal sealed class TestChatClientInvocation
 {
-    private readonly Dictionary<string, string> _functionNamesByCallId = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _functionNamesByCallId = new(
+        StringComparer.OrdinalIgnoreCase
+    );
 
     public TestChatClientInvocation(
         IReadOnlyList<ChatMessage> messages,
         ChatOptions? options,
-        int invocationIndex)
+        int invocationIndex
+    )
     {
         InvocationIndex = invocationIndex;
         Messages = messages;
         Options = options;
-        UserText = messages.LastOrDefault(static message => message.Role == ChatRole.User)?.Text ?? string.Empty;
+        UserText =
+            messages.LastOrDefault(static message => message.Role == ChatRole.User)?.Text
+            ?? string.Empty;
         ToolNames = options?.Tools?.Select(static tool => tool.Name).ToArray() ?? [];
         FunctionCalls = ExtractFunctionCalls(messages);
         FunctionResults = ExtractFunctionResults(messages);
@@ -141,8 +149,14 @@ internal sealed class TestChatClientInvocation
         for (var index = FunctionResults.Count - 1; index >= 0; index--)
         {
             var result = FunctionResults[index];
-            if (_functionNamesByCallId.TryGetValue(result.CallId, out var matchedFunctionName)
-                && string.Equals(matchedFunctionName, functionName, StringComparison.OrdinalIgnoreCase))
+            if (
+                _functionNamesByCallId.TryGetValue(result.CallId, out var matchedFunctionName)
+                && string.Equals(
+                    matchedFunctionName,
+                    functionName,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
             {
                 return result;
             }
@@ -159,8 +173,14 @@ internal sealed class TestChatClientInvocation
         for (var index = 0; index < FunctionResults.Count; index++)
         {
             var result = FunctionResults[index];
-            if (_functionNamesByCallId.TryGetValue(result.CallId, out var matchedFunctionName) &&
-                string.Equals(matchedFunctionName, functionName, StringComparison.OrdinalIgnoreCase))
+            if (
+                _functionNamesByCallId.TryGetValue(result.CallId, out var matchedFunctionName)
+                && string.Equals(
+                    matchedFunctionName,
+                    functionName,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
             {
                 count++;
             }
@@ -191,11 +211,16 @@ internal sealed class TestChatClientInvocation
         return functionResult.Result switch
         {
             JsonElement jsonElement => jsonElement,
-            _ => JsonSerializer.SerializeToElement(functionResult.Result, TestChatClientScenario.JsonOptions)
+            _ => JsonSerializer.SerializeToElement(
+                functionResult.Result,
+                TestChatClientScenario.JsonOptions
+            ),
         };
     }
 
-    private static IReadOnlyList<FunctionCallContent> ExtractFunctionCalls(IReadOnlyList<ChatMessage> messages)
+    private static IReadOnlyList<FunctionCallContent> ExtractFunctionCalls(
+        IReadOnlyList<ChatMessage> messages
+    )
     {
         var functionCalls = new List<FunctionCallContent>();
 
@@ -213,7 +238,9 @@ internal sealed class TestChatClientInvocation
         return functionCalls;
     }
 
-    private IReadOnlyList<FunctionResultContent> ExtractFunctionResults(IReadOnlyList<ChatMessage> messages)
+    private IReadOnlyList<FunctionResultContent> ExtractFunctionResults(
+        IReadOnlyList<ChatMessage> messages
+    )
     {
         var functionResults = new List<FunctionResultContent>();
 
@@ -240,7 +267,8 @@ internal sealed class TestChatClientInvocation
 internal sealed class TestChatClientScenario(
     string name,
     Func<TestChatClientInvocation, bool> when,
-    Func<TestChatClientInvocation, ChatResponse> respond)
+    Func<TestChatClientInvocation, ChatResponse> respond
+)
 {
     internal static readonly JsonSerializerOptions JsonOptions = CreateJsonOptions();
 
@@ -250,14 +278,13 @@ internal sealed class TestChatClientScenario(
 
     public Func<TestChatClientInvocation, ChatResponse> Respond { get; } = respond;
 
-    public static ChatResponse Text(string text)
-        => new(new ChatMessage(ChatRole.Assistant, text));
+    public static ChatResponse Text(string text) => new(new ChatMessage(ChatRole.Assistant, text));
 
     public static ChatResponse FunctionCall(
         string callId,
         string functionName,
-        IReadOnlyDictionary<string, object?>? arguments = null)
-        => FunctionCalls(new TestChatFunctionCall(callId, functionName, arguments));
+        IReadOnlyDictionary<string, object?>? arguments = null
+    ) => FunctionCalls(new TestChatFunctionCall(callId, functionName, arguments));
 
     public static ChatResponse FunctionCalls(params TestChatFunctionCall[] functionCalls)
     {
@@ -266,7 +293,13 @@ internal sealed class TestChatClientScenario(
         var contents = new List<AIContent>(functionCalls.Length);
         foreach (var functionCall in functionCalls)
         {
-            contents.Add(new FunctionCallContent(functionCall.CallId, functionCall.FunctionName, functionCall.ToArgumentsDictionary()));
+            contents.Add(
+                new FunctionCallContent(
+                    functionCall.CallId,
+                    functionCall.FunctionName,
+                    functionCall.ToArgumentsDictionary()
+                )
+            );
         }
 
         return new ChatResponse(new ChatMessage(ChatRole.Assistant, contents));
@@ -287,7 +320,10 @@ internal sealed class TestChatClientScenario(
         return result switch
         {
             JsonElement jsonElement => jsonElement.Deserialize<T>(JsonOptions)!,
-            _ => JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(result, JsonOptions), JsonOptions)!
+            _ => JsonSerializer.Deserialize<T>(
+                JsonSerializer.Serialize(result, JsonOptions),
+                JsonOptions
+            )!,
         };
     }
 
@@ -302,7 +338,8 @@ internal sealed class TestChatClientScenario(
 internal sealed record TestChatFunctionCall(
     string CallId,
     string FunctionName,
-    IReadOnlyDictionary<string, object?>? Arguments = null)
+    IReadOnlyDictionary<string, object?>? Arguments = null
+)
 {
     public Dictionary<string, object?> ToArgumentsDictionary()
     {

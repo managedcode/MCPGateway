@@ -10,35 +10,41 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
     public const string DiscoveredToolIdPropertyName = "ManagedCode.MCPGateway.ToolId";
     public const string DiscoveredToolSourceIdPropertyName = "ManagedCode.MCPGateway.SourceId";
     public const string DiscoveredToolKindPropertyName = "ManagedCode.MCPGateway.Kind";
-    public const string SearchToolDescription = "Search the gateway catalog and return the best matching tools for a user task.";
-    public const string InvokeToolDescription = "Invoke a gateway tool by tool id. Search first when the correct tool is unknown.";
+    public const string SearchToolDescription =
+        "Search the gateway catalog and return the best matching tools for a user task.";
+    public const string InvokeToolDescription =
+        "Invoke a gateway tool by tool id. Search first when the correct tool is unknown.";
     private const string DiscoveredToolKindValue = "gateway_discovered_tool";
     private const string DiscoveredToolNameSeparator = "_";
     private const string DiscoveredToolDescriptionPrefix = "Direct proxy for gateway tool ";
     private const string DiscoveredToolIdLabel = " (";
     private const string DiscoveredToolDescriptionSeparator = "). ";
     private const string DiscoveredToolRequiredArgumentsLabel = "Required arguments: ";
-    private const string DiscoveredToolArgumentsHint = "Pass named inputs via 'arguments' and use 'query' for free-text tool inputs when supported.";
+    private const string DiscoveredToolArgumentsHint =
+        "Pass named inputs via 'arguments' and use 'query' for free-text tool inputs when supported.";
 
     public IReadOnlyList<AITool> CreateTools(
         string searchToolName = DefaultSearchToolName,
-        string invokeToolName = DefaultInvokeToolName)
+        string invokeToolName = DefaultInvokeToolName
+    )
     {
         var searchTool = AIFunctionFactory.Create(
             SearchAsync,
             new AIFunctionFactoryOptions
             {
                 Name = searchToolName,
-                Description = SearchToolDescription
-            });
+                Description = SearchToolDescription,
+            }
+        );
 
         var invokeTool = AIFunctionFactory.Create(
             InvokeAsync,
             new AIFunctionFactoryOptions
             {
                 Name = invokeToolName,
-                Description = InvokeToolDescription
-            });
+                Description = InvokeToolDescription,
+            }
+        );
 
         return [searchTool, invokeTool];
     }
@@ -46,7 +52,8 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
     public IList<AITool> AddTools(
         IList<AITool> tools,
         string searchToolName = DefaultSearchToolName,
-        string invokeToolName = DefaultInvokeToolName)
+        string invokeToolName = DefaultInvokeToolName
+    )
     {
         ArgumentNullException.ThrowIfNull(tools);
 
@@ -72,7 +79,8 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
     public IReadOnlyList<AITool> CreateDiscoveredTools(
         IEnumerable<McpGatewaySearchMatch> matches,
         IReadOnlyCollection<string>? reservedToolNames = null,
-        int? maxTools = null)
+        int? maxTools = null
+    )
     {
         ArgumentNullException.ThrowIfNull(matches);
 
@@ -115,14 +123,17 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
         int? maxResults = null,
         Dictionary<string, object?>? context = null,
         string? contextSummary = null,
-        CancellationToken cancellationToken = default)
-        => gateway.SearchAsync(
+        CancellationToken cancellationToken = default
+    ) =>
+        gateway.SearchAsync(
             new McpGatewaySearchRequest(
                 Query: query,
                 MaxResults: maxResults,
                 Context: context,
-                ContextSummary: contextSummary),
-            cancellationToken);
+                ContextSummary: contextSummary
+            ),
+            cancellationToken
+        );
 
     public Task<McpGatewayInvokeResult> InvokeAsync(
         string toolId,
@@ -130,37 +141,49 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
         string? query = null,
         Dictionary<string, object?>? context = null,
         string? contextSummary = null,
-        CancellationToken cancellationToken = default)
-        => gateway.InvokeAsync(
+        CancellationToken cancellationToken = default
+    ) =>
+        gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
                 ToolId: toolId,
                 Arguments: arguments,
                 Query: query,
                 Context: context,
-                ContextSummary: contextSummary),
-            cancellationToken);
+                ContextSummary: contextSummary
+            ),
+            cancellationToken
+        );
 
-    private AITool CreateDiscoveredTool(
-        McpGatewaySearchMatch match,
-        string functionName)
+    private AITool CreateDiscoveredTool(McpGatewaySearchMatch match, string functionName)
     {
         Task<McpGatewayInvokeResult> InvokeDiscoveredToolAsync(
             Dictionary<string, object?>? arguments = null,
             string? query = null,
             Dictionary<string, object?>? context = null,
             string? contextSummary = null,
-            CancellationToken cancellationToken = default)
-            => gateway.InvokeAsync(
+            CancellationToken cancellationToken = default
+        ) =>
+            gateway.InvokeAsync(
                 new McpGatewayInvokeRequest(
                     ToolId: match.ToolId,
                     Arguments: arguments,
                     Query: query,
                     Context: context,
-                    ContextSummary: contextSummary),
-                cancellationToken);
+                    ContextSummary: contextSummary
+                ),
+                cancellationToken
+            );
 
         return AIFunctionFactory.Create(
-            (Func<Dictionary<string, object?>?, string?, Dictionary<string, object?>?, string?, CancellationToken, Task<McpGatewayInvokeResult>>)InvokeDiscoveredToolAsync,
+            (Func<
+                Dictionary<string, object?>?,
+                string?,
+                Dictionary<string, object?>?,
+                string?,
+                CancellationToken,
+                Task<McpGatewayInvokeResult>
+            >)
+                InvokeDiscoveredToolAsync,
             new AIFunctionFactoryOptions
             {
                 Name = functionName,
@@ -169,14 +192,16 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
                 {
                     [DiscoveredToolIdPropertyName] = match.ToolId,
                     [DiscoveredToolSourceIdPropertyName] = match.SourceId,
-                    [DiscoveredToolKindPropertyName] = DiscoveredToolKindValue
-                }
-            });
+                    [DiscoveredToolKindPropertyName] = DiscoveredToolKindValue,
+                },
+            }
+        );
     }
 
     private static string BuildDiscoveredToolDescription(McpGatewaySearchMatch match)
     {
-        var description = $"{DiscoveredToolDescriptionPrefix}{match.ToolName}{DiscoveredToolIdLabel}{match.ToolId}{DiscoveredToolDescriptionSeparator}{match.Description}";
+        var description =
+            $"{DiscoveredToolDescriptionPrefix}{match.ToolName}{DiscoveredToolIdLabel}{match.ToolId}{DiscoveredToolDescriptionSeparator}{match.Description}";
         if (match.RequiredArguments.Count == 0)
         {
             return $"{description} {DiscoveredToolArgumentsHint}";
@@ -208,7 +233,8 @@ public sealed class McpGatewayToolSet(IMcpGateway gateway)
 
     private static string CreateDiscoveredToolName(
         McpGatewaySearchMatch match,
-        ISet<string> reservedNames)
+        ISet<string> reservedNames
+    )
     {
         ArgumentNullException.ThrowIfNull(match);
         ArgumentNullException.ThrowIfNull(reservedNames);

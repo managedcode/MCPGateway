@@ -8,11 +8,11 @@ public sealed class McpGatewayAutoDiscoveryOptions
 
     public string InvokeToolName { get; set; } = McpGatewayToolSet.DefaultInvokeToolName;
 
-    internal McpGatewayAutoDiscoveryOptions Clone()
-        => new()
+    internal McpGatewayAutoDiscoveryOptions Clone() =>
+        new()
         {
             MaxDiscoveredTools = MaxDiscoveredTools,
             SearchToolName = SearchToolName,
-            InvokeToolName = InvokeToolName
+            InvokeToolName = InvokeToolName,
         };
 }

@@ -3,7 +3,9 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace ManagedCode.MCPGateway;
 
-public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbeddingStore, IDisposable
+public sealed class McpGatewayInMemoryToolEmbeddingStore
+    : IMcpGatewayToolEmbeddingStore,
+        IDisposable
 {
     private const long CacheEntrySize = 1;
     private readonly IMemoryCache _cache;
@@ -23,7 +25,8 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbedd
 
     public Task<IReadOnlyList<McpGatewayToolEmbedding>> GetAsync(
         IReadOnlyList<McpGatewayToolEmbeddingLookup> lookups,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -41,7 +44,8 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbedd
 
     public Task UpsertAsync(
         IReadOnlyList<McpGatewayToolEmbedding> embeddings,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -59,7 +63,8 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbedd
 
     private bool TryGetEmbedding(
         McpGatewayToolEmbeddingLookup lookup,
-        out McpGatewayToolEmbedding embedding)
+        out McpGatewayToolEmbedding embedding
+    )
     {
         if (lookup.EmbeddingGeneratorFingerprint is not null)
         {
@@ -69,10 +74,10 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbedd
         return _cache.TryGetValue(FallbackCacheKey.FromLookup(lookup), out embedding!);
     }
 
-    private static McpGatewayToolEmbedding Clone(McpGatewayToolEmbedding embedding)
-        => embedding with
+    private static McpGatewayToolEmbedding Clone(McpGatewayToolEmbedding embedding) =>
+        embedding with
         {
-            Vector = [.. embedding.Vector]
+            Vector = [.. embedding.Vector],
         };
 
     private static string NormalizeToolId(string toolId) => toolId.ToUpperInvariant();
@@ -87,33 +92,30 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore : IMcpGatewayToolEmbedd
     private readonly record struct ExactCacheKey(
         string NormalizedToolId,
         string DocumentHash,
-        string? EmbeddingGeneratorFingerprint)
+        string? EmbeddingGeneratorFingerprint
+    )
     {
-        public static ExactCacheKey FromLookup(McpGatewayToolEmbeddingLookup lookup)
-            => new(
+        public static ExactCacheKey FromLookup(McpGatewayToolEmbeddingLookup lookup) =>
+            new(
                 NormalizeToolId(lookup.ToolId),
                 lookup.DocumentHash,
-                lookup.EmbeddingGeneratorFingerprint);
+                lookup.EmbeddingGeneratorFingerprint
+            );
 
-        public static ExactCacheKey FromEmbedding(McpGatewayToolEmbedding embedding)
-            => new(
+        public static ExactCacheKey FromEmbedding(McpGatewayToolEmbedding embedding) =>
+            new(
                 NormalizeToolId(embedding.ToolId),
                 embedding.DocumentHash,
-                embedding.EmbeddingGeneratorFingerprint);
+                embedding.EmbeddingGeneratorFingerprint
+            );
     }
 
-    private readonly record struct FallbackCacheKey(
-        string NormalizedToolId,
-        string DocumentHash)
+    private readonly record struct FallbackCacheKey(string NormalizedToolId, string DocumentHash)
     {
-        public static FallbackCacheKey FromLookup(McpGatewayToolEmbeddingLookup lookup)
-            => new(
-                NormalizeToolId(lookup.ToolId),
-                lookup.DocumentHash);
+        public static FallbackCacheKey FromLookup(McpGatewayToolEmbeddingLookup lookup) =>
+            new(NormalizeToolId(lookup.ToolId), lookup.DocumentHash);
 
-        public static FallbackCacheKey FromEmbedding(McpGatewayToolEmbedding embedding)
-            => new(
-                NormalizeToolId(embedding.ToolId),
-                embedding.DocumentHash);
+        public static FallbackCacheKey FromEmbedding(McpGatewayToolEmbedding embedding) =>
+            new(NormalizeToolId(embedding.ToolId), embedding.DocumentHash);
     }
 }

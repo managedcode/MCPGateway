@@ -11,7 +11,9 @@ public sealed partial class McpGatewaySearchTests
     [TUnit.Core.Test]
     public async Task InitializeMcpGatewayAsync_BuildsIndexThroughServiceProviderExtension()
     {
-        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureSearchTools);
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigureSearchTools
+        );
 
         var buildResult = await serviceProvider.InitializeMcpGatewayAsync();
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
@@ -66,7 +68,16 @@ public sealed partial class McpGatewaySearchTests
     {
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
-        services.AddMcpGateway(static options => options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query.")));
+        services.AddMcpGateway(static options =>
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHub,
+                    "github_search_issues",
+                    "Search GitHub issues and pull requests by user query."
+                )
+            )
+        );
 
         await using var serviceProvider = services.BuildServiceProvider();
         var searchCache = serviceProvider.GetRequiredService<IMcpGatewaySearchCache>();
@@ -81,7 +92,16 @@ public sealed partial class McpGatewaySearchTests
     {
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
-        services.AddMcpGateway(static options => options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query.")));
+        services.AddMcpGateway(static options =>
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHub,
+                    "github_search_issues",
+                    "Search GitHub issues and pull requests by user query."
+                )
+            )
+        );
         services.AddMcpGatewayInMemorySearchCache();
 
         await using var serviceProvider = services.BuildServiceProvider();
@@ -95,15 +115,18 @@ public sealed partial class McpGatewaySearchTests
 
 internal sealed class WarmupProbeGateway : IMcpGateway
 {
-    private readonly TaskCompletionSource<object?> _buildStarted =
-        new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource<object?> _buildStarted = new(
+        TaskCreationOptions.RunContinuationsAsynchronously
+    );
     private int _buildIndexCallCount;
 
     public int BuildIndexCallCount => Volatile.Read(ref _buildIndexCallCount);
 
     public Task BuildStarted => _buildStarted.Task;
 
-    public Task<McpGatewayIndexBuildResult> BuildIndexAsync(CancellationToken cancellationToken = default)
+    public Task<McpGatewayIndexBuildResult> BuildIndexAsync(
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _buildIndexCallCount);
@@ -111,29 +134,33 @@ internal sealed class WarmupProbeGateway : IMcpGateway
         return Task.FromResult(new McpGatewayIndexBuildResult(0, 0, false, []));
     }
 
-    public Task<IReadOnlyList<McpGatewayToolDescriptor>> ListToolsAsync(CancellationToken cancellationToken = default)
-        => Task.FromResult<IReadOnlyList<McpGatewayToolDescriptor>>([]);
+    public Task<IReadOnlyList<McpGatewayToolDescriptor>> ListToolsAsync(
+        CancellationToken cancellationToken = default
+    ) => Task.FromResult<IReadOnlyList<McpGatewayToolDescriptor>>([]);
 
     public Task<McpGatewaySearchResult> SearchAsync(
         string? query,
         int? maxResults = null,
-        CancellationToken cancellationToken = default)
-        => Task.FromResult(new McpGatewaySearchResult([], [], string.Empty));
+        CancellationToken cancellationToken = default
+    ) => Task.FromResult(new McpGatewaySearchResult([], [], string.Empty));
 
     public Task<McpGatewaySearchResult> SearchAsync(
         McpGatewaySearchRequest request,
-        CancellationToken cancellationToken = default)
-        => Task.FromResult(new McpGatewaySearchResult([], [], string.Empty));
+        CancellationToken cancellationToken = default
+    ) => Task.FromResult(new McpGatewaySearchResult([], [], string.Empty));
 
     public Task<McpGatewayInvokeResult> InvokeAsync(
         McpGatewayInvokeRequest request,
-        CancellationToken cancellationToken = default)
-        => Task.FromResult(new McpGatewayInvokeResult(false, string.Empty, string.Empty, string.Empty, null));
+        CancellationToken cancellationToken = default
+    ) =>
+        Task.FromResult(
+            new McpGatewayInvokeResult(false, string.Empty, string.Empty, string.Empty, null)
+        );
 
     public IReadOnlyList<Microsoft.Extensions.AI.AITool> CreateMetaTools(
         string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
-        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName)
-        => [];
+        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
+    ) => [];
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

@@ -6,7 +6,9 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
-    public async Task<McpGatewayIndexBuildResult> BuildIndexAsync(CancellationToken cancellationToken = default)
+    public async Task<McpGatewayIndexBuildResult> BuildIndexAsync(
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -17,7 +19,9 @@ internal sealed partial class McpGatewayRuntime
 
             if (existingBuild is null)
             {
-                var buildSource = new TaskCompletionSource<McpGatewayIndexBuildResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var buildSource = new TaskCompletionSource<McpGatewayIndexBuildResult>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
                 var createdBuild = new BuildOperation(buildSource.Task, cancellationToken);
                 if (Interlocked.CompareExchange(ref _buildOperation, createdBuild, null) is null)
                 {
@@ -58,13 +62,15 @@ internal sealed partial class McpGatewayRuntime
 
     private async Task RunBuildIndexAsync(
         TaskCompletionSource<McpGatewayIndexBuildResult> buildSource,
-        BuildOperation buildOperation)
+        BuildOperation buildOperation
+    )
     {
         try
         {
             buildSource.SetResult(await BuildIndexCoreAsync(buildOperation.CancellationToken));
         }
-        catch (OperationCanceledException) when (buildOperation.CancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (buildOperation.CancellationToken.IsCancellationRequested)
         {
             buildSource.SetCanceled(buildOperation.CancellationToken);
         }
@@ -78,7 +84,9 @@ internal sealed partial class McpGatewayRuntime
         }
     }
 
-    private async Task<McpGatewayIndexBuildResult> BuildIndexCoreAsync(CancellationToken cancellationToken)
+    private async Task<McpGatewayIndexBuildResult> BuildIndexCoreAsync(
+        CancellationToken cancellationToken
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
         ThrowIfDisposed();
@@ -99,13 +107,17 @@ internal sealed partial class McpGatewayRuntime
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                diagnostics.Add(new McpGatewayDiagnostic(
-                    SourceLoadFailedDiagnosticCode,
-                    string.Format(
-                        CultureInfo.InvariantCulture,
-                        SourceLoadFailedMessageFormat,
-                        registration.SourceId,
-                        ex.GetBaseException().Message)));
+                diagnostics.Add(
+                    new McpGatewayDiagnostic(
+                        SourceLoadFailedDiagnosticCode,
+                        string.Format(
+                            CultureInfo.InvariantCulture,
+                            SourceLoadFailedMessageFormat,
+                            registration.SourceId,
+                            ex.GetBaseException().Message
+                        )
+                    )
+                );
                 _logger.LogWarning(ex, FailedToLoadGatewaySourceLogMessage, registration.SourceId);
                 continue;
             }
@@ -120,38 +132,60 @@ internal sealed partial class McpGatewayRuntime
 
                 if (!seenToolIds.Add(descriptor.ToolId))
                 {
-                    diagnostics.Add(new McpGatewayDiagnostic(
-                        DuplicateToolIdDiagnosticCode,
-                        string.Format(CultureInfo.InvariantCulture, DuplicateToolIdMessageFormat, descriptor.ToolId)));
+                    diagnostics.Add(
+                        new McpGatewayDiagnostic(
+                            DuplicateToolIdDiagnosticCode,
+                            string.Format(
+                                CultureInfo.InvariantCulture,
+                                DuplicateToolIdMessageFormat,
+                                descriptor.ToolId
+                            )
+                        )
+                    );
                     continue;
                 }
 
-                entries.Add(new ToolCatalogEntry(
-                    descriptor,
-                    loadedTool.Tool,
-                    BuildDescriptorDocument(descriptor)));
+                entries.Add(
+                    new ToolCatalogEntry(
+                        descriptor,
+                        loadedTool.Tool,
+                        BuildDescriptorDocument(descriptor)
+                    )
+                );
             }
         }
 
         var vectorizedToolCount = 0;
         var isVectorSearchEnabled = false;
-        if (entries.Count > 0 &&
-            _searchStrategy is McpGatewaySearchStrategy.Auto or McpGatewaySearchStrategy.Embeddings)
+        var vectorTokenUsage = VectorTokenUsage.Zero;
+        if (
+            entries.Count > 0
+            && _searchStrategy
+                is McpGatewaySearchStrategy.Auto
+                    or McpGatewaySearchStrategy.Embeddings
+        )
         {
             await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
             await using var embeddingStoreLease = ResolveToolEmbeddingStore();
             var embeddingGenerator = embeddingGeneratorLease.Generator;
-            var embeddingGeneratorFingerprint = GetOrCreateEmbeddingGeneratorFingerprint(embeddingGenerator);
+            var embeddingGeneratorFingerprint = GetOrCreateEmbeddingGeneratorFingerprint(
+                embeddingGenerator
+            );
             var embeddingStore = embeddingStoreLease.Store;
             var storeCandidates = entries
-                .Select((entry, index) => new ToolEmbeddingCandidate(
-                    index,
-                    new McpGatewayToolEmbeddingLookup(
-                        entry.Descriptor.ToolId,
-                        ComputeDocumentHash(entry.Document),
-                        embeddingGeneratorFingerprint),
-                    entry.Descriptor.SourceId,
-                    entry.Descriptor.ToolName))
+                .Select(
+                    (entry, index) =>
+                        new ToolEmbeddingCandidate(
+                            index,
+                            new McpGatewayToolEmbeddingLookup(
+                                entry.Descriptor.ToolId,
+                                ComputeDocumentHash(entry.Document),
+                                embeddingGeneratorFingerprint
+                            ),
+                            entry.Descriptor.SourceId,
+                            entry.Descriptor.ToolName
+                        )
+                )
                 .ToList();
 
             if (embeddingStore is not null)
@@ -160,23 +194,37 @@ internal sealed partial class McpGatewayRuntime
                 {
                     var storedEmbeddings = await embeddingStore.GetAsync(
                         storeCandidates.Select(static candidate => candidate.Lookup).ToList(),
-                        cancellationToken);
+                        cancellationToken
+                    );
 
                     foreach (var candidate in storeCandidates)
                     {
                         var storedEmbedding = storedEmbeddings.LastOrDefault(embedding =>
-                            MatchesStoredEmbedding(candidate.Lookup, embedding));
+                            MatchesStoredEmbedding(candidate.Lookup, embedding)
+                        );
                         if (storedEmbedding is not null)
                         {
-                            ApplyEmbedding(entries, candidate.Index, storedEmbedding.Vector, ref vectorizedToolCount);
+                            ApplyEmbedding(
+                                entries,
+                                candidate.Index,
+                                storedEmbedding.Vector,
+                                ref vectorizedToolCount
+                            );
                         }
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    diagnostics.Add(new McpGatewayDiagnostic(
-                        EmbeddingStoreLoadFailedDiagnosticCode,
-                        string.Format(CultureInfo.InvariantCulture, EmbeddingStoreLoadFailedMessageFormat, ex.GetBaseException().Message)));
+                    diagnostics.Add(
+                        new McpGatewayDiagnostic(
+                            EmbeddingStoreLoadFailedDiagnosticCode,
+                            string.Format(
+                                CultureInfo.InvariantCulture,
+                                EmbeddingStoreLoadFailedMessageFormat,
+                                ex.GetBaseException().Message
+                            )
+                        )
+                    );
                     _logger.LogWarning(ex, EmbeddingStoreLoadFailedLogMessage);
                 }
             }
@@ -187,9 +235,12 @@ internal sealed partial class McpGatewayRuntime
 
             if (embeddingGenerator is null && vectorizedToolCount > 0)
             {
-                diagnostics.Add(new McpGatewayDiagnostic(
-                    EmbeddingGeneratorMissingDiagnosticCode,
-                    EmbeddingGeneratorMissingMessage));
+                diagnostics.Add(
+                    new McpGatewayDiagnostic(
+                        EmbeddingGeneratorMissingDiagnosticCode,
+                        EmbeddingGeneratorMissingMessage
+                    )
+                );
             }
 
             if (missingCandidates.Count > 0)
@@ -198,26 +249,46 @@ internal sealed partial class McpGatewayRuntime
                 {
                     if (embeddingGenerator is not null)
                     {
-                        var embeddings = (await embeddingGenerator.GenerateAsync(
-                                missingCandidates.Select(candidate => entries[candidate.Index].Document),
-                                cancellationToken: cancellationToken))
+                        var embeddingDocuments = missingCandidates
+                            .Select(candidate => entries[candidate.Index].Document)
                             .ToList();
+                        var generatedEmbeddingsBatch = await embeddingGenerator.GenerateAsync(
+                            embeddingDocuments,
+                            cancellationToken: cancellationToken
+                        );
+                        vectorTokenUsage = ExtractVectorTokenUsage(
+                            generatedEmbeddingsBatch.Usage,
+                            embeddingDocuments
+                        );
+                        var embeddings = generatedEmbeddingsBatch.ToList();
                         if (embeddings.Count == missingCandidates.Count)
                         {
-                            var generatedEmbeddings = new List<McpGatewayToolEmbedding>(missingCandidates.Count);
+                            var generatedEmbeddings = new List<McpGatewayToolEmbedding>(
+                                missingCandidates.Count
+                            );
                             for (var index = 0; index < missingCandidates.Count; index++)
                             {
                                 var candidate = missingCandidates[index];
                                 var vector = embeddings[index].Vector.ToArray();
-                                if (ApplyEmbedding(entries, candidate.Index, vector, ref vectorizedToolCount))
+                                if (
+                                    ApplyEmbedding(
+                                        entries,
+                                        candidate.Index,
+                                        vector,
+                                        ref vectorizedToolCount
+                                    )
+                                )
                                 {
-                                    generatedEmbeddings.Add(new McpGatewayToolEmbedding(
-                                        candidate.Lookup.ToolId,
-                                        candidate.SourceId,
-                                        candidate.ToolName,
-                                        candidate.Lookup.DocumentHash,
-                                        candidate.Lookup.EmbeddingGeneratorFingerprint,
-                                        vector));
+                                    generatedEmbeddings.Add(
+                                        new McpGatewayToolEmbedding(
+                                            candidate.Lookup.ToolId,
+                                            candidate.SourceId,
+                                            candidate.ToolName,
+                                            candidate.Lookup.DocumentHash,
+                                            candidate.Lookup.EmbeddingGeneratorFingerprint,
+                                            vector
+                                        )
+                                    );
                                 }
                             }
 
@@ -225,40 +296,64 @@ internal sealed partial class McpGatewayRuntime
                             {
                                 try
                                 {
-                                    await embeddingStore.UpsertAsync(generatedEmbeddings, cancellationToken);
+                                    await embeddingStore.UpsertAsync(
+                                        generatedEmbeddings,
+                                        cancellationToken
+                                    );
                                 }
                                 catch (Exception ex) when (ex is not OperationCanceledException)
                                 {
-                                    diagnostics.Add(new McpGatewayDiagnostic(
-                                        EmbeddingStoreSaveFailedDiagnosticCode,
-                                        string.Format(CultureInfo.InvariantCulture, EmbeddingStoreSaveFailedMessageFormat, ex.GetBaseException().Message)));
+                                    diagnostics.Add(
+                                        new McpGatewayDiagnostic(
+                                            EmbeddingStoreSaveFailedDiagnosticCode,
+                                            string.Format(
+                                                CultureInfo.InvariantCulture,
+                                                EmbeddingStoreSaveFailedMessageFormat,
+                                                ex.GetBaseException().Message
+                                            )
+                                        )
+                                    );
                                     _logger.LogWarning(ex, EmbeddingStoreSaveFailedLogMessage);
                                 }
                             }
                         }
                         else
                         {
-                            diagnostics.Add(new McpGatewayDiagnostic(
-                                EmbeddingCountMismatchDiagnosticCode,
-                                string.Format(
-                                    CultureInfo.InvariantCulture,
-                                    EmbeddingCountMismatchMessageFormat,
-                                    embeddings.Count,
-                                    missingCandidates.Count)));
+                            diagnostics.Add(
+                                new McpGatewayDiagnostic(
+                                    EmbeddingCountMismatchDiagnosticCode,
+                                    string.Format(
+                                        CultureInfo.InvariantCulture,
+                                        EmbeddingCountMismatchMessageFormat,
+                                        embeddings.Count,
+                                        missingCandidates.Count
+                                    )
+                                )
+                            );
                         }
                     }
                     else
                     {
-                        diagnostics.Add(new McpGatewayDiagnostic(
-                            EmbeddingGeneratorMissingDiagnosticCode,
-                            EmbeddingGeneratorMissingMessage));
+                        diagnostics.Add(
+                            new McpGatewayDiagnostic(
+                                EmbeddingGeneratorMissingDiagnosticCode,
+                                EmbeddingGeneratorMissingMessage
+                            )
+                        );
                     }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    diagnostics.Add(new McpGatewayDiagnostic(
-                        EmbeddingFailedDiagnosticCode,
-                        string.Format(CultureInfo.InvariantCulture, EmbeddingFailedMessageFormat, ex.GetBaseException().Message)));
+                    diagnostics.Add(
+                        new McpGatewayDiagnostic(
+                            EmbeddingFailedDiagnosticCode,
+                            string.Format(
+                                CultureInfo.InvariantCulture,
+                                EmbeddingFailedMessageFormat,
+                                ex.GetBaseException().Message
+                            )
+                        )
+                    );
                     _logger.LogWarning(ex, EmbeddingGenerationFailedLogMessage);
                 }
             }
@@ -271,13 +366,24 @@ internal sealed partial class McpGatewayRuntime
         {
             try
             {
-                graphIndex = await BuildToolGraphSearchIndexAsync(entries, diagnostics, cancellationToken);
+                graphIndex = await BuildToolGraphSearchIndexAsync(
+                    entries,
+                    diagnostics,
+                    cancellationToken
+                );
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                diagnostics.Add(new McpGatewayDiagnostic(
-                    GraphBuildFailedDiagnosticCode,
-                    string.Format(CultureInfo.InvariantCulture, GraphBuildFailedMessageFormat, ex.GetBaseException().Message)));
+                diagnostics.Add(
+                    new McpGatewayDiagnostic(
+                        GraphBuildFailedDiagnosticCode,
+                        string.Format(
+                            CultureInfo.InvariantCulture,
+                            GraphBuildFailedMessageFormat,
+                            ex.GetBaseException().Message
+                        )
+                    )
+                );
                 _logger.LogWarning(ex, GatewayGraphBuildFailedLogMessage);
             }
         }
@@ -289,7 +395,8 @@ internal sealed partial class McpGatewayRuntime
                 .ToList(),
             isVectorSearchEnabled,
             graphIndex,
-            registrySnapshot.Version);
+            registrySnapshot.Version
+        );
 
         TryUpdateState(snapshot, registrySnapshot.Version);
 
@@ -298,23 +405,27 @@ internal sealed partial class McpGatewayRuntime
             snapshot.Entries.Count,
             vectorizedToolCount,
             graphIndex?.NodeCount ?? 0,
-            graphIndex?.EdgeCount ?? 0);
+            graphIndex?.EdgeCount ?? 0
+        );
 
         var buildResult = new McpGatewayIndexBuildResult(
             snapshot.Entries.Count,
             vectorizedToolCount,
             snapshot.HasVectors,
-            diagnostics)
+            diagnostics
+        )
         {
             IsGraphSearchEnabled = graphIndex?.CanSearch ?? false,
             GraphNodeCount = graphIndex?.NodeCount ?? 0,
-            GraphEdgeCount = graphIndex?.EdgeCount ?? 0
+            GraphEdgeCount = graphIndex?.EdgeCount ?? 0,
         };
         McpGatewayTelemetry.RecordIndexBuild(
             activity,
             _searchStrategy,
             buildResult,
-            stopwatch.Elapsed.TotalMilliseconds);
+            vectorTokenUsage,
+            stopwatch.Elapsed.TotalMilliseconds
+        );
         return buildResult;
     }
 
@@ -326,9 +437,11 @@ internal sealed partial class McpGatewayRuntime
             var updatedState = state with
             {
                 Snapshot = snapshot,
-                SnapshotVersion = snapshotVersion
+                SnapshotVersion = snapshotVersion,
             };
-            if (ReferenceEquals(Interlocked.CompareExchange(ref _state, updatedState, state), state))
+            if (
+                ReferenceEquals(Interlocked.CompareExchange(ref _state, updatedState, state), state)
+            )
             {
                 return;
             }
@@ -343,12 +456,13 @@ internal sealed partial class McpGatewayRuntime
         {
             await buildOperation.Task;
         }
-        catch (OperationCanceledException) when (buildOperation.CancellationToken.IsCancellationRequested)
-        {
-        }
+        catch (OperationCanceledException)
+            when (buildOperation.CancellationToken.IsCancellationRequested)
+        { }
     }
 
     private sealed record BuildOperation(
         Task<McpGatewayIndexBuildResult> Task,
-        CancellationToken CancellationToken);
+        CancellationToken CancellationToken
+    );
 }

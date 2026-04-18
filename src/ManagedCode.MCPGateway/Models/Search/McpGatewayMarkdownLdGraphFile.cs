@@ -6,32 +6,39 @@ namespace ManagedCode.MCPGateway;
 public sealed record McpGatewayMarkdownLdGraphDocument(
     string Path,
     string Content,
-    string? CanonicalUri = null);
+    string? CanonicalUri = null
+);
 
 public static class McpGatewayMarkdownLdGraphFile
 {
     public const int CurrentVersion = 1;
 
     private const string EmptyDocumentPathMessage = "Markdown-LD graph document path is required.";
-    private const string EmptyDocumentContentMessage = "Markdown-LD graph document content is required.";
+    private const string EmptyDocumentContentMessage =
+        "Markdown-LD graph document content is required.";
     private const string InvalidGraphFileMessage = "Markdown-LD graph file is invalid.";
-    private const string InvalidDocumentCanonicalUriMessage = "Markdown-LD graph document canonical URI is invalid.";
-    private const string UnsupportedGraphFileVersionMessage = "Markdown-LD graph file version is not supported.";
+    private const string InvalidDocumentCanonicalUriMessage =
+        "Markdown-LD graph document canonical URI is invalid.";
+    private const string UnsupportedGraphFileVersionMessage =
+        "Markdown-LD graph file version is not supported.";
 
     public static IReadOnlyList<McpGatewayMarkdownLdGraphDocument> CreateDocuments(
         IEnumerable<McpGatewayToolDescriptor> descriptors,
-        int maxDescriptorLength = 4096)
+        int maxDescriptorLength = 4096
+    )
     {
         ArgumentNullException.ThrowIfNull(descriptors);
         return McpGatewayRuntime.CreateMarkdownLdGraphFileDocuments(
             descriptors.ToArray(),
-            Math.Max(256, maxDescriptorLength));
+            Math.Max(256, maxDescriptorLength)
+        );
     }
 
     public static async Task WriteAsync(
         string filePath,
         IEnumerable<McpGatewayMarkdownLdGraphDocument> documents,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
         ArgumentNullException.ThrowIfNull(documents);
@@ -50,7 +57,8 @@ public static class McpGatewayMarkdownLdGraphFile
 
     public static async Task<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>> ReadAsync(
         string filePath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(filePath);
 
@@ -62,8 +70,9 @@ public static class McpGatewayMarkdownLdGraphFile
     {
         try
         {
-            var bundle = JsonSerializer.Deserialize<Bundle>(json, McpGatewayJsonSerializer.Options)
-                         ?? throw new InvalidDataException(InvalidGraphFileMessage);
+            var bundle =
+                JsonSerializer.Deserialize<Bundle>(json, McpGatewayJsonSerializer.Options)
+                ?? throw new InvalidDataException(InvalidGraphFileMessage);
             if (bundle.Version != CurrentVersion)
             {
                 throw new InvalidDataException(UnsupportedGraphFileVersionMessage);
@@ -78,18 +87,21 @@ public static class McpGatewayMarkdownLdGraphFile
     }
 
     internal static IReadOnlyList<MarkdownSourceDocument> ToMarkdownSourceDocuments(
-        IEnumerable<McpGatewayMarkdownLdGraphDocument> documents)
+        IEnumerable<McpGatewayMarkdownLdGraphDocument> documents
+    )
     {
         return ValidateDocuments(documents.ToArray())
             .Select(static document => new MarkdownSourceDocument(
                 document.Path,
                 document.Content,
-                TryCreateUri(document.CanonicalUri)))
+                TryCreateUri(document.CanonicalUri)
+            ))
             .ToArray();
     }
 
     private static IReadOnlyList<McpGatewayMarkdownLdGraphDocument> ValidateDocuments(
-        IReadOnlyList<McpGatewayMarkdownLdGraphDocument> documents)
+        IReadOnlyList<McpGatewayMarkdownLdGraphDocument> documents
+    )
     {
         var normalized = new List<McpGatewayMarkdownLdGraphDocument>(documents.Count);
         foreach (var document in documents)
@@ -104,14 +116,16 @@ public static class McpGatewayMarkdownLdGraphFile
                 throw new InvalidDataException(EmptyDocumentContentMessage);
             }
 
-            normalized.Add(document with
-            {
-                Path = document.Path.Replace('\\', '/').TrimStart('/'),
-                Content = document.Content,
-                CanonicalUri = string.IsNullOrWhiteSpace(document.CanonicalUri)
-                    ? null
-                    : document.CanonicalUri.Trim()
-            });
+            normalized.Add(
+                document with
+                {
+                    Path = document.Path.Replace('\\', '/').TrimStart('/'),
+                    Content = document.Content,
+                    CanonicalUri = string.IsNullOrWhiteSpace(document.CanonicalUri)
+                        ? null
+                        : document.CanonicalUri.Trim(),
+                }
+            );
         }
 
         return normalized;
@@ -131,5 +145,6 @@ public static class McpGatewayMarkdownLdGraphFile
 
     private sealed record Bundle(
         int Version,
-        IReadOnlyList<McpGatewayMarkdownLdGraphDocument> Documents);
+        IReadOnlyList<McpGatewayMarkdownLdGraphDocument> Documents
+    );
 }

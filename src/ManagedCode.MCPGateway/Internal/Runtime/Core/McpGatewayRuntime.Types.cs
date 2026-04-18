@@ -7,9 +7,14 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
-    private sealed record InvocationResolution(bool IsSuccess, ToolCatalogEntry? Entry, string? Error)
+    private sealed record InvocationResolution(
+        bool IsSuccess,
+        ToolCatalogEntry? Entry,
+        string? Error
+    )
     {
-        public static InvocationResolution Success(ToolCatalogEntry entry) => new(true, entry, null);
+        public static InvocationResolution Success(ToolCatalogEntry entry) =>
+            new(true, entry, null);
 
         public static InvocationResolution Fail(string error) => new(false, null, error);
     }
@@ -18,7 +23,8 @@ internal sealed partial class McpGatewayRuntime
         int Index,
         McpGatewayToolEmbeddingLookup Lookup,
         string SourceId,
-        string ToolName);
+        string ToolName
+    );
 
     private sealed record ScoredToolEntry(ToolCatalogEntry Entry, double Score);
 
@@ -27,13 +33,15 @@ internal sealed partial class McpGatewayRuntime
         AITool Tool,
         string Document,
         float[]? Vector = null,
-        double Magnitude = 0d);
+        double Magnitude = 0d
+    );
 
     private sealed record ToolCatalogSnapshot(
         IReadOnlyList<ToolCatalogEntry> Entries,
         bool HasVectors,
         ToolGraphSearchIndex? GraphIndex,
-        int Version)
+        int Version
+    )
     {
         public static ToolCatalogSnapshot Empty { get; } = new([], false, null, -1);
     }
@@ -42,7 +50,8 @@ internal sealed partial class McpGatewayRuntime
         KnowledgeGraph Graph,
         IReadOnlyDictionary<string, ToolCatalogEntry> EntriesByNodeId,
         int NodeCount,
-        int EdgeCount)
+        int EdgeCount
+    )
     {
         public bool CanSearch => Graph.CanSearchByTokenDistance && EntriesByNodeId.Count > 0;
     }
@@ -53,12 +62,14 @@ internal sealed partial class McpGatewayRuntime
         Uri DocumentUri,
         string SourcePath,
         IReadOnlySet<string> Groups,
-        string Operation);
+        string Operation
+    );
 
     private sealed record RuntimeState(
         ToolCatalogSnapshot Snapshot,
         int SnapshotVersion,
-        bool IsDisposed)
+        bool IsDisposed
+    )
     {
         public static RuntimeState Empty { get; } = new(ToolCatalogSnapshot.Empty, -1, false);
 
@@ -69,33 +80,33 @@ internal sealed partial class McpGatewayRuntime
         string? OriginalQuery,
         string? NormalizedQuery,
         string? ContextSummary,
-        string? FlattenedContext)
+        string? FlattenedContext
+    )
     {
         private const string SearchInputSegmentSeparator = " | ";
         private const string SearchInputNormalizedQueryLabel = "english query: ";
 
-        public string VectorQuery
-            => BuildEffectiveQuery(
+        public string VectorQuery =>
+            BuildEffectiveQuery(
                 BuildVectorBaseQuery(OriginalQuery, NormalizedQuery),
                 ContextSummary,
-                FlattenedContext);
+                FlattenedContext
+            );
 
-        public string GraphQuery
-            => BuildEffectiveQuery(
-                NormalizedQuery ?? OriginalQuery,
-                ContextSummary,
-                FlattenedContext);
+        public string GraphQuery =>
+            BuildEffectiveQuery(NormalizedQuery ?? OriginalQuery, ContextSummary, FlattenedContext);
 
-        public string BoostQuery
-            => NormalizedQuery ?? OriginalQuery ?? VectorQuery;
+        public string BoostQuery => NormalizedQuery ?? OriginalQuery ?? VectorQuery;
 
-        public bool HasTerms
-            => !string.IsNullOrWhiteSpace(VectorQuery) || !string.IsNullOrWhiteSpace(GraphQuery);
+        public bool HasTerms =>
+            !string.IsNullOrWhiteSpace(VectorQuery) || !string.IsNullOrWhiteSpace(GraphQuery);
 
         private static string? BuildVectorBaseQuery(string? originalQuery, string? normalizedQuery)
         {
-            if (string.IsNullOrWhiteSpace(normalizedQuery) ||
-                string.Equals(originalQuery, normalizedQuery, StringComparison.OrdinalIgnoreCase))
+            if (
+                string.IsNullOrWhiteSpace(normalizedQuery)
+                || string.Equals(originalQuery, normalizedQuery, StringComparison.OrdinalIgnoreCase)
+            )
             {
                 return originalQuery;
             }
@@ -109,13 +120,15 @@ internal sealed partial class McpGatewayRuntime
                 originalQuery,
                 SearchInputSegmentSeparator,
                 SearchInputNormalizedQueryLabel,
-                normalizedQuery);
+                normalizedQuery
+            );
         }
 
         private static string BuildEffectiveQuery(
             string? query,
             string? contextSummary,
-            string? flattenedContext)
+            string? flattenedContext
+        )
         {
             if (query is null)
             {
@@ -136,7 +149,8 @@ internal sealed partial class McpGatewayRuntime
                     contextSummary,
                     SearchInputSegmentSeparator,
                     ContextPrefix,
-                    flattenedContext);
+                    flattenedContext
+                );
             }
 
             if (contextSummary is null)
@@ -147,7 +161,8 @@ internal sealed partial class McpGatewayRuntime
                         query,
                         SearchInputSegmentSeparator,
                         ContextPrefix,
-                        flattenedContext);
+                        flattenedContext
+                    );
             }
 
             if (flattenedContext is null)
@@ -156,7 +171,8 @@ internal sealed partial class McpGatewayRuntime
                     query,
                     SearchInputSegmentSeparator,
                     ContextSummaryPrefix,
-                    contextSummary);
+                    contextSummary
+                );
             }
 
             return string.Concat(
@@ -166,14 +182,15 @@ internal sealed partial class McpGatewayRuntime
                 contextSummary,
                 SearchInputSegmentSeparator,
                 ContextPrefix,
-                flattenedContext);
+                flattenedContext
+            );
         }
     }
 
     private sealed class EmbeddingGeneratorLease(
         IEmbeddingGenerator<string, Embedding<float>>? generator,
-        AsyncServiceScope? scope = null)
-        : IAsyncDisposable
+        AsyncServiceScope? scope = null
+    ) : IAsyncDisposable
     {
         public IEmbeddingGenerator<string, Embedding<float>>? Generator { get; } = generator;
 
@@ -182,8 +199,8 @@ internal sealed partial class McpGatewayRuntime
 
     private sealed class ToolEmbeddingStoreLease(
         IMcpGatewayToolEmbeddingStore? store,
-        AsyncServiceScope? scope = null)
-        : IAsyncDisposable
+        AsyncServiceScope? scope = null
+    ) : IAsyncDisposable
     {
         public IMcpGatewayToolEmbeddingStore? Store { get; } = store;
 
@@ -193,8 +210,8 @@ internal sealed partial class McpGatewayRuntime
     private sealed class ChatClientLease(
         IChatClient? client,
         string? fingerprint,
-        AsyncServiceScope? scope = null)
-        : IAsyncDisposable
+        AsyncServiceScope? scope = null
+    ) : IAsyncDisposable
     {
         public IChatClient? Client { get; } = client;
 
@@ -202,4 +219,9 @@ internal sealed partial class McpGatewayRuntime
 
         public ValueTask DisposeAsync() => scope?.DisposeAsync() ?? ValueTask.CompletedTask;
     }
+}
+
+internal sealed record VectorTokenUsage(long InputTokenCount, long TotalTokenCount)
+{
+    public static VectorTokenUsage Zero { get; } = new(0, 0);
 }

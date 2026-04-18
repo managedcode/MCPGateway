@@ -1,0 +1,6 @@
+# These files intentionally stay on the repository's dotnet-format whitespace layout.
+Directory.Build.props
+Directory.Packages.props
+src/ManagedCode.MCPGateway/Configuration/McpGatewayOptions.cs
+src/ManagedCode.MCPGateway/Internal/Catalog/Sources/McpGatewayToolSourceRegistrations.cs
+src/ManagedCode.MCPGateway/Internal/Runtime/Catalog/McpGatewayRuntime.Indexing.cs

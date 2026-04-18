@@ -12,7 +12,7 @@ In scope:
 - preserving both the original query and the English-normalized query for vector retrieval
 - using the normalized English query for graph retrieval when normalization changes the request
 - progressive auto-discovery that can expose vector primary tools plus graph-driven related or next-step tools
-- built-in runtime telemetry for search and index operations through .NET diagnostics
+- built-in runtime telemetry for search and index operations through .NET diagnostics, including vector token usage
 - deterministic regression and performance-smoke coverage
 
 Out of scope:
@@ -44,7 +44,7 @@ Out of scope:
 7. When English normalization changes the query, graph search should prefer the normalized English query so token-distance retrieval converges on the searchable English representation.
 8. Graph supplementation in `Auto` must stay semantically bounded: graph-only supplements should not flood the result set with tools that were not competitive in the vector candidate set.
 9. Auto-discovery must continue to expose a small direct tool set: two meta-tools first, then the latest discovered proxy tools from primary plus supplemental graph matches.
-10. Search and index operations must emit built-in .NET telemetry so hosts can observe duration and selected ranking behavior without extra dependencies.
+10. Search and index operations must emit built-in .NET telemetry so hosts can observe duration, selected ranking behavior, and vector token cost without extra dependencies.
 11. Performance coverage must include deterministic smoke tests over a larger catalog so the vector-first pipeline does not regress into repeated index rebuilds or unbounded query work.
 
 ## Main Flow

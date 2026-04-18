@@ -9,17 +9,11 @@ internal sealed partial class McpGatewayRuntime
         string? originalQuery,
         string? normalizedQuery,
         string? contextSummary,
-        string? flattenedContext)
-        => new(
-            originalQuery,
-            normalizedQuery,
-            contextSummary,
-            flattenedContext);
+        string? flattenedContext
+    ) => new(originalQuery, normalizedQuery, contextSummary, flattenedContext);
 
-    private static string? NormalizeSearchComponent(string? value)
-        => string.IsNullOrWhiteSpace(value)
-            ? null
-            : value.Trim();
+    private static string? NormalizeSearchComponent(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string? FlattenContext(IReadOnlyDictionary<string, object?>? context)
     {
@@ -28,8 +22,11 @@ internal sealed partial class McpGatewayRuntime
             return null;
         }
 
-        if (McpGatewayJsonSerializer.TrySerializeToElement(context) is not JsonElement contextElement ||
-            contextElement.ValueKind != JsonValueKind.Object)
+        if (
+            McpGatewayJsonSerializer.TrySerializeToElement(context)
+                is not JsonElement contextElement
+            || contextElement.ValueKind != JsonValueKind.Object
+        )
         {
             return null;
         }
@@ -40,19 +37,25 @@ internal sealed partial class McpGatewayRuntime
             AppendJsonElementTerms(builder, property.Name, property.Value);
         }
 
-        return builder.Length == 0
-            ? null
-            : builder.ToString();
+        return builder.Length == 0 ? null : builder.ToString();
     }
 
-    private static void AppendJsonElementTerms(StringBuilder builder, string key, JsonElement element)
+    private static void AppendJsonElementTerms(
+        StringBuilder builder,
+        string key,
+        JsonElement element
+    )
     {
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
                 foreach (var property in element.EnumerateObject())
                 {
-                    AppendJsonElementTerms(builder, string.Concat(key, " ", property.Name), property.Value);
+                    AppendJsonElementTerms(
+                        builder,
+                        string.Concat(key, " ", property.Name),
+                        property.Value
+                    );
                 }
                 return;
 
@@ -72,7 +75,11 @@ internal sealed partial class McpGatewayRuntime
 
             case JsonValueKind.True:
             case JsonValueKind.False:
-                AppendContextTerm(builder, key, element.GetBoolean() ? bool.TrueString : bool.FalseString);
+                AppendContextTerm(
+                    builder,
+                    key,
+                    element.GetBoolean() ? bool.TrueString : bool.FalseString
+                );
                 return;
 
             case JsonValueKind.Number:

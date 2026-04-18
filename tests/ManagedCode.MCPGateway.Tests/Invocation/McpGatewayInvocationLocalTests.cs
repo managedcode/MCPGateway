@@ -1,5 +1,5 @@
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
-
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -13,15 +13,20 @@ public sealed partial class McpGatewayInvocationTests
         {
             options.AddTool(
                 "local",
-                TestFunctionFactory.CreateFunction(TextUppercase, "text_uppercase", "Convert query text to uppercase."));
+                TestFunctionFactory.CreateFunction(
+                    TextUppercase,
+                    "text_uppercase",
+                    "Convert query text to uppercase."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "local:text_uppercase",
-            Query: "hello gateway"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:text_uppercase", Query: "hello gateway")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That(invokeResult.Output).IsTypeOf<string>();
@@ -35,15 +40,20 @@ public sealed partial class McpGatewayInvocationTests
         {
             options.AddTool(
                 "local",
-                TestFunctionFactory.CreateFunction(OptionalQueryEcho, "optional_query_echo", "Echo optional query text in uppercase."));
+                TestFunctionFactory.CreateFunction(
+                    OptionalQueryEcho,
+                    "optional_query_echo",
+                    "Echo optional query text in uppercase."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "local:optional_query_echo",
-            Query: "hello gateway"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:optional_query_echo", Query: "hello gateway")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That(invokeResult.Output).IsTypeOf<string>();
@@ -57,19 +67,29 @@ public sealed partial class McpGatewayInvocationTests
         {
             options.AddTool(
                 "local",
-                TestFunctionFactory.CreateFunction(EchoContextSummary, "context_summary_echo", "Echo query and context summary."));
+                TestFunctionFactory.CreateFunction(
+                    EchoContextSummary,
+                    "context_summary_echo",
+                    "Echo query and context summary."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "local:context_summary_echo",
-            Query: "open github",
-            ContextSummary: "user is on repository settings page"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(
+                ToolId: "local:context_summary_echo",
+                Query: "open github",
+                ContextSummary: "user is on repository settings page"
+            )
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
-        await Assert.That((string)invokeResult.Output!).IsEqualTo("open github|user is on repository settings page");
+        await Assert
+            .That((string)invokeResult.Output!)
+            .IsEqualTo("open github|user is on repository settings page");
     }
 
     [TUnit.Core.Test]
@@ -79,19 +99,27 @@ public sealed partial class McpGatewayInvocationTests
         {
             options.AddTool(
                 "local",
-                TestFunctionFactory.CreateFunction(ReadStructuredContext, "structured_context_echo", "Read structured context payload."));
+                TestFunctionFactory.CreateFunction(
+                    ReadStructuredContext,
+                    "structured_context_echo",
+                    "Read structured context payload."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "local:structured_context_echo",
-            Context: new Dictionary<string, object?>
-            {
-                ["domain"] = "genealogy",
-                ["page"] = "tree-profile"
-            }));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(
+                ToolId: "local:structured_context_echo",
+                Context: new Dictionary<string, object?>
+                {
+                    ["domain"] = "genealogy",
+                    ["page"] = "tree-profile",
+                }
+            )
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That((string)invokeResult.Output!).IsEqualTo("genealogy|tree-profile");
@@ -104,38 +132,49 @@ public sealed partial class McpGatewayInvocationTests
         {
             options.AddTool(
                 "local",
-                TestFunctionFactory.CreateFunction(EchoContextSummary, "context_summary_echo", "Echo query and context summary."));
+                TestFunctionFactory.CreateFunction(
+                    EchoContextSummary,
+                    "context_summary_echo",
+                    "Echo query and context summary."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "local:context_summary_echo",
-            Query: "mapped query",
-            ContextSummary: "mapped summary",
-            Arguments: new Dictionary<string, object?>
-            {
-                ["query"] = "explicit query",
-                ["contextSummary"] = "explicit summary"
-            }));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(
+                ToolId: "local:context_summary_echo",
+                Query: "mapped query",
+                ContextSummary: "mapped summary",
+                Arguments: new Dictionary<string, object?>
+                {
+                    ["query"] = "explicit query",
+                    ["contextSummary"] = "explicit summary",
+                }
+            )
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
-        await Assert.That((string)invokeResult.Output!).IsEqualTo("explicit query|explicit summary");
+        await Assert
+            .That((string)invokeResult.Output!)
+            .IsEqualTo("explicit query|explicit summary");
     }
 
     [TUnit.Core.Test]
     public async Task InvokeAsync_ResolvesByToolNameAndSourceId()
     {
-        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureSharedSearchTools);
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigureSharedSearchTools
+        );
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolName: "shared_search",
-            SourceId: "beta",
-            Query: "hello"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolName: "shared_search", SourceId: "beta", Query: "hello")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That((string)invokeResult.Output!).IsEqualTo("beta:hello");
@@ -144,23 +183,41 @@ public sealed partial class McpGatewayInvocationTests
     [TUnit.Core.Test]
     public async Task InvokeAsync_ReturnsAmbiguousErrorWhenToolNameExistsInMultipleSources()
     {
-        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureSharedSearchTools);
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigureSharedSearchTools
+        );
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolName: "shared_search",
-            Query: "hello"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolName: "shared_search", Query: "hello")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsFalse();
-        await Assert.That(invokeResult.Error!.Contains("ambiguous", StringComparison.OrdinalIgnoreCase)).IsTrue();
+        await Assert
+            .That(invokeResult.Error!.Contains("ambiguous", StringComparison.OrdinalIgnoreCase))
+            .IsTrue();
     }
 
     private static void ConfigureSharedSearchTools(McpGatewayOptions options)
     {
-        options.AddTool("alpha", TestFunctionFactory.CreateFunction(AlphaSharedSearch, "shared_search", "Alpha search tool."));
-        options.AddTool("beta", TestFunctionFactory.CreateFunction(BetaSharedSearch, "shared_search", "Beta search tool."));
+        options.AddTool(
+            "alpha",
+            TestFunctionFactory.CreateFunction(
+                AlphaSharedSearch,
+                "shared_search",
+                "Alpha search tool."
+            )
+        );
+        options.AddTool(
+            "beta",
+            TestFunctionFactory.CreateFunction(
+                BetaSharedSearch,
+                "shared_search",
+                "Beta search tool."
+            )
+        );
     }
 
     [TUnit.Core.Test]
@@ -168,17 +225,27 @@ public sealed partial class McpGatewayInvocationTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", TestFunctionFactory.CreateFunction(TextUppercase, "text_uppercase", "Convert query text to uppercase."));
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    TextUppercase,
+                    "text_uppercase",
+                    "Convert query text to uppercase."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "local:missing_tool"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:missing_tool")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsFalse();
-        await Assert.That(invokeResult.Error!.Contains("was not found", StringComparison.OrdinalIgnoreCase)).IsTrue();
+        await Assert
+            .That(invokeResult.Error!.Contains("was not found", StringComparison.OrdinalIgnoreCase))
+            .IsTrue();
     }
 
     [TUnit.Core.Test]
@@ -186,14 +253,22 @@ public sealed partial class McpGatewayInvocationTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", TestFunctionFactory.CreateFunction(ReturnJsonString, "json_string_result", "Return a JSON string scalar."));
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ReturnJsonString,
+                    "json_string_result",
+                    "Return a JSON string scalar."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "local:json_string_result"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:json_string_result")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That(invokeResult.Output).IsTypeOf<string>();
@@ -201,18 +276,146 @@ public sealed partial class McpGatewayInvocationTests
     }
 
     [TUnit.Core.Test]
-    public async Task InvokeAsync_ReturnsFailureWhenLocalFunctionThrows()
+    public async Task InvokeAsync_NormalizesJsonBooleanNumericAndNullOutputs()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", TestFunctionFactory.CreateFunction(ThrowingTool, "throwing_tool", "Throw an exception for test coverage."));
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ReturnJsonBoolean,
+                    "json_bool_result",
+                    "Return a JSON boolean scalar."
+                )
+            );
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ReturnJsonInt64,
+                    "json_int64_result",
+                    "Return a JSON int64 scalar."
+                )
+            );
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ReturnJsonDecimal,
+                    "json_decimal_result",
+                    "Return a JSON decimal scalar."
+                )
+            );
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ReturnJsonDouble,
+                    "json_double_result",
+                    "Return a JSON double scalar."
+                )
+            );
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ReturnJsonNull,
+                    "json_null_result",
+                    "Return a JSON null scalar."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "local:throwing_tool"));
+        var boolResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:json_bool_result")
+        );
+        var int64Result = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:json_int64_result")
+        );
+        var decimalResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:json_decimal_result")
+        );
+        var doubleResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:json_double_result")
+        );
+        var nullResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:json_null_result")
+        );
+
+        await Assert.That(boolResult.Output).IsTypeOf<bool>();
+        await Assert.That((bool)boolResult.Output!).IsTrue();
+        await Assert.That(int64Result.Output).IsTypeOf<long>();
+        await Assert.That((long)int64Result.Output!).IsEqualTo(42L);
+        await Assert.That(decimalResult.Output).IsTypeOf<decimal>();
+        await Assert.That((decimal)decimalResult.Output!).IsEqualTo(12.5m);
+        await Assert.That(doubleResult.Output).IsTypeOf<double>();
+        await Assert.That((double)doubleResult.Output!).IsGreaterThan(1e99d);
+        await Assert.That(nullResult.Output).IsNull();
+    }
+
+    [TUnit.Core.Test]
+    public async Task InvokeAsync_PreservesStructuredJsonOutputs()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ReturnJsonObject,
+                    "json_object_result",
+                    "Return a JSON object."
+                )
+            );
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ReturnJsonDocument,
+                    "json_document_result",
+                    "Return a JSON document."
+                )
+            );
+        });
+
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        await gateway.BuildIndexAsync();
+
+        var objectResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:json_object_result")
+        );
+        var documentResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:json_document_result")
+        );
+
+        await Assert.That(objectResult.Output).IsTypeOf<JsonElement>();
+        await Assert
+            .That(GetJsonProperty((JsonElement)objectResult.Output!, "kind").GetString())
+            .IsEqualTo("object");
+        await Assert.That(documentResult.Output).IsTypeOf<JsonElement>();
+        await Assert
+            .That(GetJsonProperty((JsonElement)documentResult.Output!, "kind").GetString())
+            .IsEqualTo("document");
+    }
+
+    [TUnit.Core.Test]
+    public async Task InvokeAsync_ReturnsFailureWhenLocalFunctionThrows()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    ThrowingTool,
+                    "throwing_tool",
+                    "Throw an exception for test coverage."
+                )
+            );
+        });
+
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        await gateway.BuildIndexAsync();
+
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "local:throwing_tool")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsFalse();
         await Assert.That(invokeResult.Error).IsEqualTo("boom");

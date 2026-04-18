@@ -12,14 +12,14 @@ public sealed partial class McpGatewaySearchTests
     [TUnit.Core.Test]
     public async Task BuildIndexAsync_ReportsEmbeddingCountMismatch()
     {
-        var embeddingGenerator = new TestEmbeddingGenerator(new TestEmbeddingGeneratorOptions
-        {
-            ReturnMismatchedBatchCount = true
-        });
+        var embeddingGenerator = new TestEmbeddingGenerator(
+            new TestEmbeddingGeneratorOptions { ReturnMismatchedBatchCount = true }
+        );
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureVectorSearchTools,
-            embeddingGenerator);
+            embeddingGenerator
+        );
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var buildResult = await gateway.BuildIndexAsync();
@@ -27,7 +27,13 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(buildResult.IsVectorSearchEnabled).IsFalse();
         await Assert.That(buildResult.VectorizedToolCount).IsEqualTo(0);
-        await Assert.That(buildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "embedding_count_mismatch")).IsTrue();
+        await Assert
+            .That(
+                buildResult.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "embedding_count_mismatch"
+                )
+            )
+            .IsTrue();
         await Assert.That(buildResult.IsGraphSearchEnabled).IsTrue();
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
     }
@@ -38,9 +44,13 @@ public sealed partial class McpGatewaySearchTests
         var options = new McpGatewayOptions();
 
         await Assert.That(options.SearchStrategy).IsEqualTo(McpGatewaySearchStrategy.Graph);
-        await Assert.That(options.MarkdownLdGraphSource).IsEqualTo(McpGatewayMarkdownLdGraphSource.GeneratedToolGraph);
+        await Assert
+            .That(options.MarkdownLdGraphSource)
+            .IsEqualTo(McpGatewayMarkdownLdGraphSource.GeneratedToolGraph);
         await Assert.That(options.MarkdownLdGraphPath).IsNull();
-        await Assert.That(options.SearchQueryNormalization).IsEqualTo(McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable);
+        await Assert
+            .That(options.SearchQueryNormalization)
+            .IsEqualTo(McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable);
         await Assert.That(options.DefaultSearchLimit).IsEqualTo(5);
     }
 
@@ -51,21 +61,23 @@ public sealed partial class McpGatewaySearchTests
 
         options.UseMarkdownLdGraphFile("/tmp/mcp-tools.graph.json");
 
-        await Assert.That(options.MarkdownLdGraphSource).IsEqualTo(McpGatewayMarkdownLdGraphSource.FileSystem);
+        await Assert
+            .That(options.MarkdownLdGraphSource)
+            .IsEqualTo(McpGatewayMarkdownLdGraphSource.FileSystem);
         await Assert.That(options.MarkdownLdGraphPath).IsEqualTo("/tmp/mcp-tools.graph.json");
     }
 
     [TUnit.Core.Test]
     public async Task BuildIndexAsync_DefaultGraphStrategyDoesNotCallEmbeddingGenerator()
     {
-        var embeddingGenerator = new TestEmbeddingGenerator(new TestEmbeddingGeneratorOptions
-        {
-            ThrowOnInput = static _ => true
-        });
+        var embeddingGenerator = new TestEmbeddingGenerator(
+            new TestEmbeddingGeneratorOptions { ThrowOnInput = static _ => true }
+        );
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureSearchTools,
-            embeddingGenerator);
+            embeddingGenerator
+        );
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var buildResult = await gateway.BuildIndexAsync();
@@ -74,16 +86,24 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(buildResult.IsVectorSearchEnabled).IsFalse();
         await Assert.That(buildResult.VectorizedToolCount).IsEqualTo(0);
         await Assert.That(embeddingGenerator.Calls.Count).IsEqualTo(0);
-        await Assert.That(buildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "embedding_failed")).IsFalse();
+        await Assert
+            .That(
+                buildResult.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "embedding_failed"
+                )
+            )
+            .IsFalse();
     }
 
     [TUnit.Core.Test]
     public async Task McpGatewayClientFactory_UsesAssemblyBuildVersionForClientInfo()
     {
         var clientOptions = McpGatewayClientFactory.CreateClientOptions();
-        var expectedVersion = typeof(McpGatewayClientFactory).Assembly
-                                  .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-                              ?? typeof(McpGatewayClientFactory).Assembly.GetName().Version?.ToString();
+        var expectedVersion =
+            typeof(McpGatewayClientFactory)
+                .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion
+            ?? typeof(McpGatewayClientFactory).Assembly.GetName().Version?.ToString();
 
         await Assert.That(clientOptions.ClientInfo?.Version).IsEqualTo(expectedVersion);
     }
@@ -91,21 +111,27 @@ public sealed partial class McpGatewaySearchTests
     [TUnit.Core.Test]
     public async Task BuildIndexAsync_ReportsEmbeddingFailure()
     {
-        var embeddingGenerator = new TestEmbeddingGenerator(new TestEmbeddingGeneratorOptions
-        {
-            ThrowOnInput = static _ => true
-        });
+        var embeddingGenerator = new TestEmbeddingGenerator(
+            new TestEmbeddingGeneratorOptions { ThrowOnInput = static _ => true }
+        );
 
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureVectorSearchTools,
-            embeddingGenerator);
+            embeddingGenerator
+        );
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var buildResult = await gateway.BuildIndexAsync();
 
         await Assert.That(buildResult.IsVectorSearchEnabled).IsFalse();
         await Assert.That(buildResult.VectorizedToolCount).IsEqualTo(0);
-        await Assert.That(buildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "embedding_failed")).IsTrue();
+        await Assert
+            .That(
+                buildResult.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "embedding_failed"
+                )
+            )
+            .IsTrue();
     }
 
     [TUnit.Core.Test]
@@ -113,15 +139,35 @@ public sealed partial class McpGatewaySearchTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
-            options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHubAgain, "github_search_issues", "Duplicate tool id for test coverage."));
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHub,
+                    "github_search_issues",
+                    "Search GitHub issues and pull requests by user query."
+                )
+            );
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHubAgain,
+                    "github_search_issues",
+                    "Duplicate tool id for test coverage."
+                )
+            );
         });
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var buildResult = await gateway.BuildIndexAsync();
 
         await Assert.That(buildResult.ToolCount).IsEqualTo(1);
-        await Assert.That(buildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "duplicate_tool_id")).IsTrue();
+        await Assert
+            .That(
+                buildResult.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "duplicate_tool_id"
+                )
+            )
+            .IsTrue();
     }
 
     [TUnit.Core.Test]
@@ -129,7 +175,14 @@ public sealed partial class McpGatewaySearchTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHub,
+                    "github_search_issues",
+                    "Search GitHub issues and pull requests by user query."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
@@ -139,7 +192,12 @@ public sealed partial class McpGatewaySearchTests
 
         registry.AddTool(
             "local",
-            TestFunctionFactory.CreateFunction(SearchWeather, "weather_search_forecast", "Search weather forecast and temperature information by city name."));
+            TestFunctionFactory.CreateFunction(
+                SearchWeather,
+                "weather_search_forecast",
+                "Search weather forecast and temperature information by city name."
+            )
+        );
 
         var secondBuild = await gateway.BuildIndexAsync();
 
@@ -154,13 +212,22 @@ public sealed partial class McpGatewaySearchTests
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         var registry = serviceProvider.GetRequiredService<IMcpGatewayRegistry>();
 
-        await Task.WhenAll(Enumerable.Range(0, 40).Select(index => Task.Run(() =>
-            registry.AddTool(
-                "local",
-                TestFunctionFactory.CreateFunction(
-                    SearchWeather,
-                    $"weather_search_forecast_{index}",
-                    $"Search weather forecast and temperature information for city {index}.")))));
+        await Task.WhenAll(
+            Enumerable
+                .Range(0, 40)
+                .Select(index =>
+                    Task.Run(() =>
+                        registry.AddTool(
+                            "local",
+                            TestFunctionFactory.CreateFunction(
+                                SearchWeather,
+                                $"weather_search_forecast_{index}",
+                                $"Search weather forecast and temperature information for city {index}."
+                            )
+                        )
+                    )
+                )
+        );
 
         var buildResult = await gateway.BuildIndexAsync();
 
@@ -172,7 +239,14 @@ public sealed partial class McpGatewaySearchTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHub,
+                    "github_search_issues",
+                    "Search GitHub issues and pull requests by user query."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
@@ -226,11 +300,18 @@ public sealed partial class McpGatewaySearchTests
 
         registry.AddTool(
             "local",
-            TestFunctionFactory.CreateFunction(SearchWeather, "weather_search_forecast", "Search weather forecast and temperature information by city name."));
+            TestFunctionFactory.CreateFunction(
+                SearchWeather,
+                "weather_search_forecast",
+                "Search weather forecast and temperature information by city name."
+            )
+        );
 
         var tools = await gateway.ListToolsAsync();
 
-        await Assert.That(typeof(IMcpGatewayRegistry).IsAssignableFrom(gateway.GetType())).IsFalse();
+        await Assert
+            .That(typeof(IMcpGatewayRegistry).IsAssignableFrom(gateway.GetType()))
+            .IsFalse();
         await Assert.That(tools.Count).IsEqualTo(1);
         await Assert.That(tools.Single().ToolId).IsEqualTo("local:weather_search_forecast");
     }
@@ -248,7 +329,12 @@ public sealed partial class McpGatewaySearchTests
         {
             registry.AddTool(
                 "local",
-                TestFunctionFactory.CreateFunction(SearchWeather, "weather_search_forecast", "Search weather forecast and temperature information by city name."));
+                TestFunctionFactory.CreateFunction(
+                    SearchWeather,
+                    "weather_search_forecast",
+                    "Search weather forecast and temperature information by city name."
+                )
+            );
         }
         catch (ObjectDisposedException ex)
         {
@@ -278,7 +364,8 @@ public sealed partial class McpGatewaySearchTests
 
                     return ValueTask.FromResult(serverHost.Client);
                 },
-                disposeClient: false);
+                disposeClient: false
+            );
         });
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
@@ -287,9 +374,21 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(attempts).IsEqualTo(2);
         await Assert.That(firstBuild.ToolCount).IsEqualTo(0);
-        await Assert.That(firstBuild.Diagnostics.Any(static diagnostic => diagnostic.Code == "source_load_failed")).IsTrue();
+        await Assert
+            .That(
+                firstBuild.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "source_load_failed"
+                )
+            )
+            .IsTrue();
         await Assert.That(secondBuild.ToolCount).IsEqualTo(3);
-        await Assert.That(secondBuild.Diagnostics.Any(static diagnostic => diagnostic.Code == "source_load_failed")).IsFalse();
+        await Assert
+            .That(
+                secondBuild.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "source_load_failed"
+                )
+            )
+            .IsFalse();
     }
 
     [TUnit.Core.Test]
@@ -298,8 +397,12 @@ public sealed partial class McpGatewaySearchTests
         await using var serverHost = await TestMcpServerHost.StartAsync();
 
         var attempts = 0;
-        var factoryStarted = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var releaseFactory = new TaskCompletionSource<McpClient>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factoryStarted = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var releaseFactory = new TaskCompletionSource<McpClient>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
             options.AddMcpClientFactory(
@@ -310,13 +413,12 @@ public sealed partial class McpGatewaySearchTests
                     factoryStarted.TrySetResult(null);
                     return await releaseFactory.Task;
                 },
-                disposeClient: false);
+                disposeClient: false
+            );
         });
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
-        var buildTasks = Enumerable.Range(0, 20)
-            .Select(_ => gateway.BuildIndexAsync())
-            .ToArray();
+        var buildTasks = Enumerable.Range(0, 20).Select(_ => gateway.BuildIndexAsync()).ToArray();
 
         await factoryStarted.Task;
         releaseFactory.TrySetResult(serverHost.Client);
@@ -333,7 +435,9 @@ public sealed partial class McpGatewaySearchTests
         await using var serverHost = await TestMcpServerHost.StartAsync();
 
         var attempts = 0;
-        var factoryStarted = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var factoryStarted = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
             options.AddMcpClientFactory(
@@ -349,7 +453,8 @@ public sealed partial class McpGatewaySearchTests
 
                     return serverHost.Client;
                 },
-                disposeClient: false);
+                disposeClient: false
+            );
         });
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         using var cancellationSource = new CancellationTokenSource();
@@ -386,22 +491,36 @@ public sealed partial class McpGatewaySearchTests
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var tools = await gateway.ListToolsAsync();
-        var descriptor = tools.Single(static tool => tool.ToolId == "test-mcp:github_repository_search");
+        var descriptor = tools.Single(static tool =>
+            tool.ToolId == "test-mcp:github_repository_search"
+        );
 
         await Assert.That(string.IsNullOrWhiteSpace(descriptor.InputSchemaJson)).IsFalse();
-        await Assert.That(descriptor.RequiredArguments.Any(static argument => string.Equals(argument, "query", StringComparison.OrdinalIgnoreCase))).IsTrue();
+        await Assert
+            .That(
+                descriptor.RequiredArguments.Any(static argument =>
+                    string.Equals(argument, "query", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+            .IsTrue();
     }
 
     [TUnit.Core.Test]
     public async Task ListToolsAsync_BuildsIndexOnDemand()
     {
-        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(ConfigureSearchTools);
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigureSearchTools
+        );
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var tools = await gateway.ListToolsAsync();
 
         await Assert.That(tools.Count).IsEqualTo(2);
-        await Assert.That(tools.Any(static tool => tool.ToolId == "local:github_search_issues")).IsTrue();
-        await Assert.That(tools.Any(static tool => tool.ToolId == "local:weather_search_forecast")).IsTrue();
+        await Assert
+            .That(tools.Any(static tool => tool.ToolId == "local:github_search_issues"))
+            .IsTrue();
+        await Assert
+            .That(tools.Any(static tool => tool.ToolId == "local:weather_search_forecast"))
+            .IsTrue();
     }
 }

@@ -27,13 +27,17 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
         McpGatewaySearchQueryNormalization normalization,
         string query,
         string? chatClientFingerprint,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_cache.TryGetValue(
+        if (
+            _cache.TryGetValue(
                 new NormalizedQueryCacheKey(normalization, query, chatClientFingerprint),
-                out CachedNormalizedQuery? entry))
+                out CachedNormalizedQuery? entry
+            )
+        )
         {
             return ValueTask.FromResult((true, entry!.NormalizedQuery));
         }
@@ -46,39 +50,50 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
         string query,
         string? chatClientFingerprint,
         string? normalizedQuery,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         _cache.Set(
             new NormalizedQueryCacheKey(normalization, query, chatClientFingerprint),
             new CachedNormalizedQuery(normalizedQuery),
-            CreateEntryOptions(NormalizedQueryCacheTtl));
+            CreateEntryOptions(NormalizedQueryCacheTtl)
+        );
         return ValueTask.CompletedTask;
     }
 
     public ValueTask<(bool found, McpGatewayQueryEmbedding? embedding)> TryGetQueryEmbeddingAsync(
         string query,
         string? embeddingGeneratorFingerprint,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_cache.TryGetValue(
+        if (
+            _cache.TryGetValue(
                 new QueryEmbeddingCacheKey(query, embeddingGeneratorFingerprint),
-                out McpGatewayQueryEmbedding? entry))
+                out McpGatewayQueryEmbedding? entry
+            )
+        )
         {
-            return ValueTask.FromResult<(bool found, McpGatewayQueryEmbedding? embedding)>((true, CloneQueryEmbedding(entry!)));
+            return ValueTask.FromResult<(bool found, McpGatewayQueryEmbedding? embedding)>(
+                (true, CloneQueryEmbedding(entry!))
+            );
         }
 
-        return ValueTask.FromResult<(bool found, McpGatewayQueryEmbedding? embedding)>((false, null));
+        return ValueTask.FromResult<(bool found, McpGatewayQueryEmbedding? embedding)>(
+            (false, null)
+        );
     }
 
     public ValueTask SetQueryEmbeddingAsync(
         string query,
         string? embeddingGeneratorFingerprint,
         McpGatewayQueryEmbedding embedding,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(embedding);
@@ -86,7 +101,8 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
         _cache.Set(
             new QueryEmbeddingCacheKey(query, embeddingGeneratorFingerprint),
             CloneQueryEmbedding(embedding),
-            CreateEntryOptions(QueryEmbeddingCacheTtl));
+            CreateEntryOptions(QueryEmbeddingCacheTtl)
+        );
         return ValueTask.CompletedTask;
     }
 
@@ -100,11 +116,13 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
         int limit,
         string? chatClientFingerprint,
         string? embeddingGeneratorFingerprint,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_cache.TryGetValue(
+        if (
+            _cache.TryGetValue(
                 new SearchResultCacheKey(
                     snapshotVersion,
                     strategy,
@@ -114,13 +132,20 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
                     flattenedContext,
                     limit,
                     chatClientFingerprint,
-                    embeddingGeneratorFingerprint),
-                out McpGatewaySearchCachedResult? entry))
+                    embeddingGeneratorFingerprint
+                ),
+                out McpGatewaySearchCachedResult? entry
+            )
+        )
         {
-            return ValueTask.FromResult<(bool found, McpGatewaySearchCachedResult? result)>((true, CloneSearchResult(entry!)));
+            return ValueTask.FromResult<(bool found, McpGatewaySearchCachedResult? result)>(
+                (true, CloneSearchResult(entry!))
+            );
         }
 
-        return ValueTask.FromResult<(bool found, McpGatewaySearchCachedResult? result)>((false, null));
+        return ValueTask.FromResult<(bool found, McpGatewaySearchCachedResult? result)>(
+            (false, null)
+        );
     }
 
     public ValueTask SetSearchResultAsync(
@@ -134,7 +159,8 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
         string? chatClientFingerprint,
         string? embeddingGeneratorFingerprint,
         McpGatewaySearchCachedResult result,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(result);
@@ -149,36 +175,35 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
                 flattenedContext,
                 limit,
                 chatClientFingerprint,
-                embeddingGeneratorFingerprint),
+                embeddingGeneratorFingerprint
+            ),
             CloneSearchResult(result),
-            CreateEntryOptions(SearchResultCacheTtl));
+            CreateEntryOptions(SearchResultCacheTtl)
+        );
         return ValueTask.CompletedTask;
     }
 
     public void Dispose() => _ownedCache?.Dispose();
 
-    private static MemoryCacheEntryOptions CreateEntryOptions(TimeSpan slidingExpiration)
-        => new()
-        {
-            SlidingExpiration = slidingExpiration
-        };
+    private static MemoryCacheEntryOptions CreateEntryOptions(TimeSpan slidingExpiration) =>
+        new() { SlidingExpiration = slidingExpiration };
 
-    private static McpGatewayQueryEmbedding CloneQueryEmbedding(McpGatewayQueryEmbedding embedding)
-        => embedding with
-        {
-            Vector = [.. embedding.Vector]
-        };
+    private static McpGatewayQueryEmbedding CloneQueryEmbedding(
+        McpGatewayQueryEmbedding embedding
+    ) => embedding with { Vector = [.. embedding.Vector] };
 
-    private static McpGatewaySearchCachedResult CloneSearchResult(McpGatewaySearchCachedResult result)
-        => result with
+    private static McpGatewaySearchCachedResult CloneSearchResult(
+        McpGatewaySearchCachedResult result
+    ) =>
+        result with
         {
             Result = result.Result with
             {
                 Matches = [.. result.Result.Matches],
                 Diagnostics = [.. result.Result.Diagnostics],
                 RelatedMatches = [.. result.Result.RelatedMatches],
-                NextStepMatches = [.. result.Result.NextStepMatches]
-            }
+                NextStepMatches = [.. result.Result.NextStepMatches],
+            },
         };
 
     private sealed record CachedNormalizedQuery(string? NormalizedQuery);
@@ -186,11 +211,13 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
     private readonly record struct NormalizedQueryCacheKey(
         McpGatewaySearchQueryNormalization Normalization,
         string Query,
-        string? ChatClientFingerprint);
+        string? ChatClientFingerprint
+    );
 
     private readonly record struct QueryEmbeddingCacheKey(
         string Query,
-        string? EmbeddingGeneratorFingerprint);
+        string? EmbeddingGeneratorFingerprint
+    );
 
     private readonly record struct SearchResultCacheKey(
         int SnapshotVersion,
@@ -201,5 +228,6 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
         string? FlattenedContext,
         int Limit,
         string? ChatClientFingerprint,
-        string? EmbeddingGeneratorFingerprint);
+        string? EmbeddingGeneratorFingerprint
+    );
 }

@@ -14,8 +14,12 @@ public sealed class McpGatewayOptions
 
     public string? MarkdownLdGraphPath { get; set; }
 
-    public Func<IReadOnlyList<McpGatewayToolDescriptor>, CancellationToken, ValueTask<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>>?
-        MarkdownLdGraphDocumentFactory
+    public Func<
+        IReadOnlyList<McpGatewayToolDescriptor>,
+        CancellationToken,
+        ValueTask<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>
+    >
+        ? MarkdownLdGraphDocumentFactory
     { get; private set; }
 
     public McpGatewaySearchQueryNormalization SearchQueryNormalization { get; set; } =
@@ -27,32 +31,66 @@ public sealed class McpGatewayOptions
 
     public int MaxDescriptorLength { get; set; } = 4096;
 
-    internal IReadOnlyList<McpGatewayToolSourceRegistration> SourceRegistrations => _sourceRegistrations.Snapshot();
+    internal IReadOnlyList<McpGatewayToolSourceRegistration> SourceRegistrations =>
+        _sourceRegistrations.Snapshot();
 
-    public McpGatewayOptions AddTool(string sourceId, AITool tool, string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddTool(sourceId, tool, displayName));
+    public McpGatewayOptions AddTool(string sourceId, AITool tool, string? displayName = null) =>
+        ConfigureRegistrations(registrations => registrations.AddTool(sourceId, tool, displayName));
 
-    public McpGatewayOptions AddTool(string sourceId, AITool tool, McpGatewayToolSearchHints searchHints, string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddTool(sourceId, tool, searchHints, displayName));
+    public McpGatewayOptions AddTool(
+        string sourceId,
+        AITool tool,
+        McpGatewayToolSearchHints searchHints,
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddTool(sourceId, tool, searchHints, displayName)
+        );
 
-    public McpGatewayOptions AddTool(AITool tool, string sourceId = McpGatewayDefaults.DefaultSourceId, string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddTool(tool, sourceId, displayName));
+    public McpGatewayOptions AddTool(
+        AITool tool,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations => registrations.AddTool(tool, sourceId, displayName));
 
-    public McpGatewayOptions AddTool(AITool tool, McpGatewayToolSearchHints searchHints, string sourceId = McpGatewayDefaults.DefaultSourceId, string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddTool(tool, searchHints, sourceId, displayName));
+    public McpGatewayOptions AddTool(
+        AITool tool,
+        McpGatewayToolSearchHints searchHints,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddTool(tool, searchHints, sourceId, displayName)
+        );
 
-    public McpGatewayOptions AddTools(string sourceId, IEnumerable<AITool> tools, string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddTools(sourceId, tools, displayName));
+    public McpGatewayOptions AddTools(
+        string sourceId,
+        IEnumerable<AITool> tools,
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddTools(sourceId, tools, displayName)
+        );
 
-    public McpGatewayOptions AddTools(IEnumerable<AITool> tools, string sourceId = McpGatewayDefaults.DefaultSourceId, string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddTools(tools, sourceId, displayName));
+    public McpGatewayOptions AddTools(
+        IEnumerable<AITool> tools,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddTools(tools, sourceId, displayName)
+        );
 
     public McpGatewayOptions AddHttpServer(
         string sourceId,
         Uri endpoint,
         IReadOnlyDictionary<string, string>? headers = null,
-        string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddHttpServer(sourceId, endpoint, headers, displayName));
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddHttpServer(sourceId, endpoint, headers, displayName)
+        );
 
     public McpGatewayOptions AddStdioServer(
         string sourceId,
@@ -60,22 +98,38 @@ public sealed class McpGatewayOptions
         IReadOnlyList<string>? arguments = null,
         string? workingDirectory = null,
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
-        string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddStdioServer(sourceId, command, arguments, workingDirectory, environmentVariables, displayName));
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddStdioServer(
+                sourceId,
+                command,
+                arguments,
+                workingDirectory,
+                environmentVariables,
+                displayName
+            )
+        );
 
     public McpGatewayOptions AddMcpClient(
         string sourceId,
         McpClient client,
         bool disposeClient = false,
-        string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddMcpClient(sourceId, client, disposeClient, displayName));
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddMcpClient(sourceId, client, disposeClient, displayName)
+        );
 
     public McpGatewayOptions AddMcpClientFactory(
         string sourceId,
         Func<CancellationToken, ValueTask<McpClient>> clientFactory,
         bool disposeClient = true,
-        string? displayName = null)
-        => ConfigureRegistrations(registrations => registrations.AddMcpClientFactory(sourceId, clientFactory, disposeClient, displayName));
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddMcpClientFactory(sourceId, clientFactory, disposeClient, displayName)
+        );
 
     public McpGatewayOptions UseGeneratedMarkdownLdGraph()
     {
@@ -96,7 +150,12 @@ public sealed class McpGatewayOptions
     }
 
     public McpGatewayOptions UseMarkdownLdGraphDocuments(
-        Func<IReadOnlyList<McpGatewayToolDescriptor>, CancellationToken, ValueTask<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>> documentFactory)
+        Func<
+            IReadOnlyList<McpGatewayToolDescriptor>,
+            CancellationToken,
+            ValueTask<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>
+        > documentFactory
+    )
     {
         ArgumentNullException.ThrowIfNull(documentFactory);
 
@@ -106,31 +165,45 @@ public sealed class McpGatewayOptions
         return this;
     }
 
-    public McpGatewayOptions UseMarkdownLdGraphDocuments(IEnumerable<McpGatewayMarkdownLdGraphDocument> documents)
+    public McpGatewayOptions UseMarkdownLdGraphDocuments(
+        IEnumerable<McpGatewayMarkdownLdGraphDocument> documents
+    )
     {
         ArgumentNullException.ThrowIfNull(documents);
 
         var materializedDocuments = documents.ToArray();
-        return UseMarkdownLdGraphDocuments((descriptors, cancellationToken) =>
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>(materializedDocuments);
-        });
+        return UseMarkdownLdGraphDocuments(
+            (descriptors, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return ValueTask.FromResult<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>(
+                    materializedDocuments
+                );
+            }
+        );
     }
 
     public McpGatewayOptions UseMarkdownLdGraphDocuments(
-        Func<IReadOnlyList<McpGatewayToolDescriptor>, IReadOnlyList<McpGatewayMarkdownLdGraphDocument>> documentFactory)
+        Func<
+            IReadOnlyList<McpGatewayToolDescriptor>,
+            IReadOnlyList<McpGatewayMarkdownLdGraphDocument>
+        > documentFactory
+    )
     {
         ArgumentNullException.ThrowIfNull(documentFactory);
 
-        return UseMarkdownLdGraphDocuments((descriptors, cancellationToken) =>
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return ValueTask.FromResult(documentFactory(descriptors));
-        });
+        return UseMarkdownLdGraphDocuments(
+            (descriptors, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return ValueTask.FromResult(documentFactory(descriptors));
+            }
+        );
     }
 
-    private McpGatewayOptions ConfigureRegistrations(Action<McpGatewayRegistrationCollection> configure)
+    private McpGatewayOptions ConfigureRegistrations(
+        Action<McpGatewayRegistrationCollection> configure
+    )
     {
         configure(_sourceRegistrations);
         return this;

@@ -1,5 +1,4 @@
 using System.Globalization;
-
 using Microsoft.Extensions.AI;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -35,7 +34,9 @@ internal static class GatewayIntegrationTestSupport
                         TestFunctionFactory.CreateFunction(
                             (string query) => $"weather:{query}",
                             WeatherToolName,
-                            "Get weather forecast, temperature, wind, and precipitation details for a city."));
+                            "Get weather forecast, temperature, wind, and precipitation details for a city."
+                        )
+                    );
                     break;
                 case 38:
                     options.AddTool(
@@ -43,7 +44,9 @@ internal static class GatewayIntegrationTestSupport
                         TestFunctionFactory.CreateFunction(
                             (string query) => $"air-quality:{query}",
                             WeatherAirQualityToolName,
-                            "Check weather alerts, air quality, smoke exposure, and pollution levels for a city."));
+                            "Check weather alerts, air quality, smoke exposure, and pollution levels for a city."
+                        )
+                    );
                     break;
                 case 41:
                     options.AddTool(
@@ -51,7 +54,9 @@ internal static class GatewayIntegrationTestSupport
                         TestFunctionFactory.CreateFunction(
                             (string query) => $"portfolio:{query}",
                             PortfolioToolName,
-                            "Summarize portfolio holdings, market value, exposure, and unrealized profit for a brokerage account."));
+                            "Summarize portfolio holdings, market value, exposure, and unrealized profit for a brokerage account."
+                        )
+                    );
                     break;
                 case 42:
                     options.AddTool(
@@ -59,7 +64,9 @@ internal static class GatewayIntegrationTestSupport
                         TestFunctionFactory.CreateFunction(
                             (string query) => $"invoice:{query}",
                             InvoiceToolName,
-                            "Review finance invoices, billing exposure, receivables, and payment holds for a customer account."));
+                            "Review finance invoices, billing exposure, receivables, and payment holds for a customer account."
+                        )
+                    );
                     break;
                 default:
                     var toolIndex = index.ToString("D2", CultureInfo.InvariantCulture);
@@ -69,24 +76,31 @@ internal static class GatewayIntegrationTestSupport
                         TestFunctionFactory.CreateFunction(
                             (string query) => $"{toolName}:{query}",
                             toolName,
-                            $"Handle archive lookup workflow number {toolIndex} for genealogy records."));
+                            $"Handle archive lookup workflow number {toolIndex} for genealogy records."
+                        )
+                    );
                     break;
             }
         }
     }
 
-    public static TestEmbeddingGenerator CreateAutoDiscoveryEmbeddingGenerator()
-        => new(new TestEmbeddingGeneratorOptions
-        {
-            Metadata = new EmbeddingGeneratorMetadata(
-                "ManagedCode.MCPGateway.Tests",
-                new Uri("https://example.test"),
-                "gateway-autodiscovery",
-                4),
-            CreateVector = CreateSemanticVector
-        });
+    public static TestEmbeddingGenerator CreateAutoDiscoveryEmbeddingGenerator() =>
+        new(
+            new TestEmbeddingGeneratorOptions
+            {
+                Metadata = new EmbeddingGeneratorMetadata(
+                    "ManagedCode.MCPGateway.Tests",
+                    new Uri("https://example.test"),
+                    "gateway-autodiscovery",
+                    4
+                ),
+                CreateVector = CreateSemanticVector,
+            }
+        );
 
-    public static IReadOnlyList<TestChatClientScenario> CreateAutoDiscoveryScenarios(bool useSemanticQueries)
+    public static IReadOnlyList<TestChatClientScenario> CreateAutoDiscoveryScenarios(
+        bool useSemanticQueries
+    )
     {
         var firstSearchQuery = useSemanticQueries ? WeatherSemanticQuery : WeatherGraphQuery;
         var secondSearchQuery = useSemanticQueries ? PortfolioSemanticQuery : PortfolioGraphQuery;
@@ -95,109 +109,144 @@ internal static class GatewayIntegrationTestSupport
         [
             new(
                 "search weather tools",
-                invocation => invocation.CountFunctionResults(McpGatewayToolSet.DefaultSearchToolName) == 0,
-                _ => TestChatClientScenario.FunctionCall(
-                    callId: "search-weather",
-                    functionName: McpGatewayToolSet.DefaultSearchToolName,
-                    arguments: new Dictionary<string, object?>
-                    {
-                        ["query"] = firstSearchQuery,
-                        ["maxResults"] = 2
-                    })),
+                invocation =>
+                    invocation.CountFunctionResults(McpGatewayToolSet.DefaultSearchToolName) == 0,
+                _ =>
+                    TestChatClientScenario.FunctionCall(
+                        callId: "search-weather",
+                        functionName: McpGatewayToolSet.DefaultSearchToolName,
+                        arguments: new Dictionary<string, object?>
+                        {
+                            ["query"] = firstSearchQuery,
+                            ["maxResults"] = 2,
+                        }
+                    )
+            ),
             new(
                 "invoke discovered weather tool",
-                invocation => invocation.CountFunctionResults(McpGatewayToolSet.DefaultSearchToolName) == 1 &&
-                              invocation.CountFunctionResults(WeatherToolName) == 0,
-                _ => TestChatClientScenario.FunctionCall(
-                    callId: "invoke-weather",
-                    functionName: WeatherToolName,
-                    arguments: new Dictionary<string, object?>
-                    {
-                        ["query"] = WeatherInvokeQuery
-                    })),
+                invocation =>
+                    invocation.CountFunctionResults(McpGatewayToolSet.DefaultSearchToolName) == 1
+                    && invocation.CountFunctionResults(WeatherToolName) == 0,
+                _ =>
+                    TestChatClientScenario.FunctionCall(
+                        callId: "invoke-weather",
+                        functionName: WeatherToolName,
+                        arguments: new Dictionary<string, object?>
+                        {
+                            ["query"] = WeatherInvokeQuery,
+                        }
+                    )
+            ),
             new(
                 "search finance tools",
-                invocation => invocation.CountFunctionResults(WeatherToolName) == 1 &&
-                              invocation.CountFunctionResults(McpGatewayToolSet.DefaultSearchToolName) == 1,
-                _ => TestChatClientScenario.FunctionCall(
-                    callId: "search-portfolio",
-                    functionName: McpGatewayToolSet.DefaultSearchToolName,
-                    arguments: new Dictionary<string, object?>
-                    {
-                        ["query"] = secondSearchQuery,
-                        ["maxResults"] = 2
-                    })),
+                invocation =>
+                    invocation.CountFunctionResults(WeatherToolName) == 1
+                    && invocation.CountFunctionResults(McpGatewayToolSet.DefaultSearchToolName)
+                        == 1,
+                _ =>
+                    TestChatClientScenario.FunctionCall(
+                        callId: "search-portfolio",
+                        functionName: McpGatewayToolSet.DefaultSearchToolName,
+                        arguments: new Dictionary<string, object?>
+                        {
+                            ["query"] = secondSearchQuery,
+                            ["maxResults"] = 2,
+                        }
+                    )
+            ),
             new(
                 "invoke discovered portfolio tool",
-                invocation => invocation.CountFunctionResults(McpGatewayToolSet.DefaultSearchToolName) == 2 &&
-                              invocation.CountFunctionResults(PortfolioToolName) == 0,
-                _ => TestChatClientScenario.FunctionCall(
-                    callId: "invoke-portfolio",
-                    functionName: PortfolioToolName,
-                    arguments: new Dictionary<string, object?>
-                    {
-                        ["query"] = PortfolioInvokeQuery
-                    })),
+                invocation =>
+                    invocation.CountFunctionResults(McpGatewayToolSet.DefaultSearchToolName) == 2
+                    && invocation.CountFunctionResults(PortfolioToolName) == 0,
+                _ =>
+                    TestChatClientScenario.FunctionCall(
+                        callId: "invoke-portfolio",
+                        functionName: PortfolioToolName,
+                        arguments: new Dictionary<string, object?>
+                        {
+                            ["query"] = PortfolioInvokeQuery,
+                        }
+                    )
+            ),
             new(
                 "return final text",
                 invocation => invocation.CountFunctionResults(PortfolioToolName) == 1,
                 invocation =>
                 {
-                    var weatherResult = invocation.ReadLatestFunctionResult<McpGatewayInvokeResult>(WeatherToolName)
-                                        ?? throw new InvalidOperationException("Weather result is missing.");
-                    var portfolioResult = invocation.ReadLatestFunctionResult<McpGatewayInvokeResult>(PortfolioToolName)
-                                          ?? throw new InvalidOperationException("Portfolio result is missing.");
+                    var weatherResult =
+                        invocation.ReadLatestFunctionResult<McpGatewayInvokeResult>(WeatherToolName)
+                        ?? throw new InvalidOperationException("Weather result is missing.");
+                    var portfolioResult =
+                        invocation.ReadLatestFunctionResult<McpGatewayInvokeResult>(
+                            PortfolioToolName
+                        ) ?? throw new InvalidOperationException("Portfolio result is missing.");
 
-                    return TestChatClientScenario.Text($"done:{weatherResult.Output}|{portfolioResult.Output}");
-                })
+                    return TestChatClientScenario.Text(
+                        $"done:{weatherResult.Output}|{portfolioResult.Output}"
+                    );
+                }
+            ),
         ];
     }
 
     public static async Task AssertAutoDiscoveryFlow(
         TestChatClient chatClient,
-        string expectedRankingMode)
+        string expectedRankingMode
+    )
     {
         await Assert.That(chatClient.Invocations.Count).IsEqualTo(5);
-        await Assert.That(chatClient.Invocations[0].ToolNames).IsEquivalentTo(
-            [
+        await Assert
+            .That(chatClient.Invocations[0].ToolNames)
+            .IsEquivalentTo([
                 McpGatewayToolSet.DefaultSearchToolName,
-                McpGatewayToolSet.DefaultInvokeToolName
+                McpGatewayToolSet.DefaultInvokeToolName,
             ]);
-        await Assert.That(chatClient.Invocations[1].ToolNames).IsEquivalentTo(
-            [
+        await Assert
+            .That(chatClient.Invocations[1].ToolNames)
+            .IsEquivalentTo([
                 McpGatewayToolSet.DefaultSearchToolName,
                 McpGatewayToolSet.DefaultInvokeToolName,
                 WeatherToolName,
-                WeatherAirQualityToolName
+                WeatherAirQualityToolName,
             ]);
-        await Assert.That(chatClient.Invocations[2].ToolNames).IsEquivalentTo(
-            [
+        await Assert
+            .That(chatClient.Invocations[2].ToolNames)
+            .IsEquivalentTo([
                 McpGatewayToolSet.DefaultSearchToolName,
                 McpGatewayToolSet.DefaultInvokeToolName,
                 WeatherToolName,
-                WeatherAirQualityToolName
+                WeatherAirQualityToolName,
             ]);
-        await Assert.That(chatClient.Invocations[3].ToolNames).IsEquivalentTo(
-            [
+        await Assert
+            .That(chatClient.Invocations[3].ToolNames)
+            .IsEquivalentTo([
                 McpGatewayToolSet.DefaultSearchToolName,
                 McpGatewayToolSet.DefaultInvokeToolName,
                 PortfolioToolName,
-                InvoiceToolName
+                InvoiceToolName,
             ]);
-        await Assert.That(chatClient.Invocations[4].ToolNames).IsEquivalentTo(
-            [
+        await Assert
+            .That(chatClient.Invocations[4].ToolNames)
+            .IsEquivalentTo([
                 McpGatewayToolSet.DefaultSearchToolName,
                 McpGatewayToolSet.DefaultInvokeToolName,
                 PortfolioToolName,
-                InvoiceToolName
+                InvoiceToolName,
             ]);
 
-        var firstSearchResult = chatClient.Invocations[1].ReadLatestFunctionResult<McpGatewaySearchResult>(
-                                    McpGatewayToolSet.DefaultSearchToolName)
-                                ?? throw new InvalidOperationException("First search result is missing.");
-        var secondSearchResult = chatClient.Invocations[3].ReadLatestFunctionResult<McpGatewaySearchResult>(
-                                     McpGatewayToolSet.DefaultSearchToolName)
-                                 ?? throw new InvalidOperationException("Second search result is missing.");
+        var firstSearchResult =
+            chatClient
+                .Invocations[1]
+                .ReadLatestFunctionResult<McpGatewaySearchResult>(
+                    McpGatewayToolSet.DefaultSearchToolName
+                ) ?? throw new InvalidOperationException("First search result is missing.");
+        var secondSearchResult =
+            chatClient
+                .Invocations[3]
+                .ReadLatestFunctionResult<McpGatewaySearchResult>(
+                    McpGatewayToolSet.DefaultSearchToolName
+                ) ?? throw new InvalidOperationException("Second search result is missing.");
 
         await Assert.That(firstSearchResult.RankingMode).IsEqualTo(expectedRankingMode);
         await Assert.That(firstSearchResult.Matches[0].ToolId).IsEqualTo(WeatherToolId);
@@ -208,7 +257,9 @@ internal static class GatewayIntegrationTestSupport
 
         foreach (var invocation in chatClient.Invocations)
         {
-            await Assert.That(invocation.FindLatestFunctionResult(McpGatewayToolSet.DefaultInvokeToolName)).IsNull();
+            await Assert
+                .That(invocation.FindLatestFunctionResult(McpGatewayToolSet.DefaultInvokeToolName))
+                .IsNull();
         }
     }
 
@@ -217,10 +268,35 @@ internal static class GatewayIntegrationTestSupport
         var normalized = value.ToLowerInvariant();
         var vector = new float[4];
 
-        vector[0] = Score(normalized, "weather", "forecast", "temperature", "umbrella", "rain", "wind", "precipitation");
+        vector[0] = Score(
+            normalized,
+            "weather",
+            "forecast",
+            "temperature",
+            "umbrella",
+            "rain",
+            "wind",
+            "precipitation"
+        );
         vector[1] = Score(normalized, "air quality", "pollution", "smoke", "aqi", "alerts");
-        vector[2] = Score(normalized, "portfolio", "brokerage", "holdings", "exposure", "market value", "profit", "snapshot");
-        vector[3] = Score(normalized, "invoice", "billing", "receivables", "payment", "collections");
+        vector[2] = Score(
+            normalized,
+            "portfolio",
+            "brokerage",
+            "holdings",
+            "exposure",
+            "market value",
+            "profit",
+            "snapshot"
+        );
+        vector[3] = Score(
+            normalized,
+            "invoice",
+            "billing",
+            "receivables",
+            "payment",
+            "collections"
+        );
 
         return vector;
     }

@@ -13,7 +13,8 @@ internal static class GatewayTestServiceProviderFactory
         IMcpGatewayToolEmbeddingStore? embeddingStore = null,
         IChatClient? searchQueryChatClient = null,
         IMcpGatewaySearchCache? searchCache = null,
-        bool useInMemorySearchCache = false)
+        bool useInMemorySearchCache = false
+    )
     {
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
@@ -30,7 +31,10 @@ internal static class GatewayTestServiceProviderFactory
 
         if (searchQueryChatClient is not null)
         {
-            services.AddKeyedSingleton<IChatClient>(McpGatewayServiceKeys.SearchQueryChatClient, searchQueryChatClient);
+            services.AddKeyedSingleton<IChatClient>(
+                McpGatewayServiceKeys.SearchQueryChatClient,
+                searchQueryChatClient
+            );
         }
 
         services.AddMcpGateway(configure);

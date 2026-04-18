@@ -9,4 +9,5 @@ public sealed record McpGatewaySearchMatch(
     string Description,
     IReadOnlyList<string> RequiredArguments,
     string? InputSchemaJson,
-    double Score);
+    double Score
+);

@@ -152,6 +152,7 @@ If no new rule is detected -> do not update the file.
 - Tool search must support sparse high-confidence selection plus an explicit related/next-step expansion path; do not make consumers pass the full tool catalog when a smaller capability set can answer the request.
 - For multilingual or noisy search inputs, prefer a generic English-normalization step before ranking when an AI/query-rewrite component is available, because the user wants the searchable representation to converge to English instead of relying only on language-specific token overlap.
 - For multilingual, typo-heavy, or noisy search inputs, keep confidence calibration strict: clearly weak or irrelevant matches must not surface with saturated `Score = 1`, because inflated certainty hides ranking defects and breaks tool selection trust.
+- When emitting telemetry for vector search or vector-backed index building, include token-usage metrics alongside duration so operators can see vector cost as well as latency.
 - Keep meta-tools available through `McpGatewayToolSet` and `IMcpGateway.CreateMetaTools(...)`.
 - When Markdown-LD graph search is selected, startup or explicit index initialization must build and validate the tool graph before search/tool discovery so LLM-facing MCP tool selection is based on the correct focused graph.
 - Markdown-LD graph search must support both startup-generated graphs and filesystem-provided graph files; tests for file-backed graph mode must generate the graph fixture through the package flow rather than relying on a hand-authored static artifact.
@@ -190,6 +191,7 @@ If no new rule is detected -> do not update the file.
 ### Documentation (ALL TASKS)
 
 - Update `README.md` whenever public API shape, setup, or usage changes.
+- When a README refresh is requested, remove stale sections and replace them with the current shipped behavior instead of appending changelog-style notes, because the user wants the README to read as the authoritative current guide.
 - For non-trivial architecture, runtime-flow, or cross-cutting search changes, always add or update an ADR under `docs/ADR/`, update `docs/Architecture/Overview.md`, and keep `README.md` synchronized with the shipped behavior and examples so the docs describe the real package rather than an older design snapshot.
 - When the package requires an initialization step such as index building, provide an ergonomic optional integration path (for example DI extension or hosted background warmup) instead of forcing every consumer to call it manually, and document when manual initialization is still appropriate.
 - Keep documented configuration defaults synchronized with the actual `McpGatewayOptions` defaults; for example, `MaxSearchResults` default is `15`, not stale sample values.
@@ -200,6 +202,7 @@ If no new rule is detected -> do not update the file.
 - Never leave empty placeholder setup blocks in README examples such as `// gateway configuration`; show a concrete minimal configuration that actually demonstrates the API.
 - Keep repo docs and skills in English to stay aligned with MCAF conventions.
 - Keep root packaging metadata centralized in `Directory.Build.props`.
+- Keep simple XML elements in packaging files on one line when they fit naturally, and never leave broken wrapped tags like split `Description` elements in `Directory.Build.props`, because the user explicitly rejects that formatting.
 - Keep package versions centralized in `Directory.Packages.props`.
 - Keep workflow logic only in `.github/workflows/`.
 
@@ -221,7 +224,7 @@ If no new rule is detected -> do not update the file.
 - Do not remove tests to get green builds.
 - Keep `global.json` configured for `Microsoft.Testing.Platform` when TUnit is used.
 - At the end of implementation work, run code-size and quality verification with `cloc`, `roslynator`, and the repository's strict .NET build/test checks, then fix actionable findings so oversized files and quality drift do not accumulate.
-- `CSharpier` and `Stryker.NET` are installed as opt-in local tools for focused checks; they are not default formatter or default fast-path CI gates in this repository.
+- `CSharpier` is installed as an opt-in local tool for focused checks and is not the default formatter or a default fast-path CI gate in this repository. `Stryker.NET` remains optional and is not assumed to be preinstalled in the local tool manifest.
 - Run verification in this order:
   - tool-restore
   - restore

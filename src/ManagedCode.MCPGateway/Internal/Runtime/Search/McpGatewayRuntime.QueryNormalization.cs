@@ -10,7 +10,8 @@ internal sealed partial class McpGatewayRuntime
     private async Task<string?> NormalizeSearchQueryAsync(
         string? query,
         ICollection<McpGatewayDiagnostic> diagnostics,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         if (_searchQueryNormalization == McpGatewaySearchQueryNormalization.Disabled)
         {
@@ -29,12 +30,15 @@ internal sealed partial class McpGatewayRuntime
             _searchQueryNormalization,
             trimmedQuery,
             chatClientFingerprint,
-            cancellationToken);
+            cancellationToken
+        );
         if (cachedNormalizedQuery.found)
         {
             if (cachedNormalizedQuery.normalizedQuery is not null)
             {
-                diagnostics.Add(new McpGatewayDiagnostic(QueryNormalizedDiagnosticCode, QueryNormalizedMessage));
+                diagnostics.Add(
+                    new McpGatewayDiagnostic(QueryNormalizedDiagnosticCode, QueryNormalizedMessage)
+                );
             }
 
             return cachedNormalizedQuery.normalizedQuery;
@@ -53,20 +57,24 @@ internal sealed partial class McpGatewayRuntime
                 {
                     Instructions = SearchQueryNormalizationInstructions,
                     Temperature = 0f,
-                    MaxOutputTokens = SearchQueryNormalizationMaxOutputTokens
+                    MaxOutputTokens = SearchQueryNormalizationMaxOutputTokens,
                 },
-                cancellationToken);
+                cancellationToken
+            );
 
             var normalizedQuery = NormalizeChatResponseText(response.Text);
-            if (string.IsNullOrWhiteSpace(normalizedQuery) ||
-                string.Equals(normalizedQuery, trimmedQuery, StringComparison.OrdinalIgnoreCase))
+            if (
+                string.IsNullOrWhiteSpace(normalizedQuery)
+                || string.Equals(normalizedQuery, trimmedQuery, StringComparison.OrdinalIgnoreCase)
+            )
             {
                 await _searchRuntimeCache.SetNormalizedQueryAsync(
                     _searchQueryNormalization,
                     trimmedQuery,
                     chatClientFingerprint,
                     null,
-                    cancellationToken);
+                    cancellationToken
+                );
                 return null;
             }
 
@@ -75,18 +83,25 @@ internal sealed partial class McpGatewayRuntime
                 trimmedQuery,
                 chatClientFingerprint,
                 normalizedQuery,
-                cancellationToken);
-            diagnostics.Add(new McpGatewayDiagnostic(QueryNormalizedDiagnosticCode, QueryNormalizedMessage));
+                cancellationToken
+            );
+            diagnostics.Add(
+                new McpGatewayDiagnostic(QueryNormalizedDiagnosticCode, QueryNormalizedMessage)
+            );
             return normalizedQuery;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            diagnostics.Add(new McpGatewayDiagnostic(
-                QueryNormalizationFailedDiagnosticCode,
-                string.Format(
-                    CultureInfo.InvariantCulture,
-                    QueryNormalizationFailedMessageFormat,
-                    ex.GetBaseException().Message)));
+            diagnostics.Add(
+                new McpGatewayDiagnostic(
+                    QueryNormalizationFailedDiagnosticCode,
+                    string.Format(
+                        CultureInfo.InvariantCulture,
+                        QueryNormalizationFailedMessageFormat,
+                        ex.GetBaseException().Message
+                    )
+                )
+            );
             _logger.LogWarning(ex, GatewayQueryNormalizationFailedLogMessage);
             return null;
         }
@@ -94,19 +109,29 @@ internal sealed partial class McpGatewayRuntime
 
     private ChatClientLease ResolveSearchQueryChatClient()
     {
-        if (_serviceProvider.GetService(typeof(IServiceScopeFactory)) is not IServiceScopeFactory scopeFactory)
+        if (
+            _serviceProvider.GetService(typeof(IServiceScopeFactory))
+            is not IServiceScopeFactory scopeFactory
+        )
         {
             var rootChatClient = ResolveSearchQueryChatClient(_serviceProvider);
-            return new ChatClientLease(rootChatClient, GetOrCreateSearchQueryChatClientFingerprint(rootChatClient));
+            return new ChatClientLease(
+                rootChatClient,
+                GetOrCreateSearchQueryChatClientFingerprint(rootChatClient)
+            );
         }
 
         var scope = scopeFactory.CreateAsyncScope();
         var scopedChatClient = ResolveSearchQueryChatClient(scope.ServiceProvider);
-        return new ChatClientLease(scopedChatClient, GetOrCreateSearchQueryChatClientFingerprint(scopedChatClient), scope);
+        return new ChatClientLease(
+            scopedChatClient,
+            GetOrCreateSearchQueryChatClientFingerprint(scopedChatClient),
+            scope
+        );
     }
 
-    private static IChatClient? ResolveSearchQueryChatClient(IServiceProvider serviceProvider)
-        => serviceProvider.GetKeyedService<IChatClient>(McpGatewayServiceKeys.SearchQueryChatClient);
+    private static IChatClient? ResolveSearchQueryChatClient(IServiceProvider serviceProvider) =>
+        serviceProvider.GetKeyedService<IChatClient>(McpGatewayServiceKeys.SearchQueryChatClient);
 
     private static string? NormalizeChatResponseText(string? responseText)
     {
@@ -118,7 +143,10 @@ internal sealed partial class McpGatewayRuntime
         var normalized = responseText.Trim();
         normalized = normalized.Trim('`', '"', '\'', ' ');
         normalized = normalized
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Split(
+                ['\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            )
             .FirstOrDefault();
 
         return string.IsNullOrWhiteSpace(normalized)

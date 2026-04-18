@@ -12,27 +12,31 @@ internal sealed partial class McpGatewayRuntime
         SearchInput searchInput,
         int limit,
         IList<McpGatewayDiagnostic> diagnostics,
-        CancellationToken cancellationToken)
-        => _searchStrategy switch
+        CancellationToken cancellationToken
+    ) =>
+        _searchStrategy switch
         {
             McpGatewaySearchStrategy.Embeddings => await RankWithEmbeddingsStrategyAsync(
                 snapshot,
                 searchInput,
                 limit,
                 diagnostics,
-                cancellationToken),
+                cancellationToken
+            ),
             McpGatewaySearchStrategy.Auto => await RankWithAutoStrategyAsync(
                 snapshot,
                 searchInput,
                 limit,
                 diagnostics,
-                cancellationToken),
+                cancellationToken
+            ),
             _ => await RankWithGraphStrategyAsync(
                 snapshot,
                 searchInput,
                 limit,
                 diagnostics,
-                cancellationToken)
+                cancellationToken
+            ),
         };
 
     private async Task<RankedSearch> RankWithGraphStrategyAsync(
@@ -40,7 +44,8 @@ internal sealed partial class McpGatewayRuntime
         SearchInput searchInput,
         int limit,
         IList<McpGatewayDiagnostic> diagnostics,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var graphRanked = await RankWithGraphOrEmptyAsync(
             snapshot,
@@ -50,7 +55,8 @@ internal sealed partial class McpGatewayRuntime
             addGraphFallbackDiagnostic: false,
             addUnavailableDiagnostic: true,
             addFailureDiagnostics: true,
-            cancellationToken);
+            cancellationToken
+        );
         AddLowConfidenceGraphDiagnostic(graphRanked, diagnostics);
         return graphRanked;
     }
@@ -60,7 +66,8 @@ internal sealed partial class McpGatewayRuntime
         SearchInput searchInput,
         int limit,
         IList<McpGatewayDiagnostic> diagnostics,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var vectorRanked = await TryRankWithVectorAsync(
             snapshot,
@@ -68,7 +75,8 @@ internal sealed partial class McpGatewayRuntime
             diagnostics,
             applyLexicalBoosts: true,
             addFailureDiagnostics: true,
-            cancellationToken);
+            cancellationToken
+        );
         if (vectorRanked is not null)
         {
             return vectorRanked;
@@ -82,7 +90,8 @@ internal sealed partial class McpGatewayRuntime
             addGraphFallbackDiagnostic: true,
             addUnavailableDiagnostic: true,
             addFailureDiagnostics: true,
-            cancellationToken);
+            cancellationToken
+        );
         AddLowConfidenceGraphDiagnostic(graphRanked, diagnostics);
         return graphRanked;
     }
@@ -92,7 +101,8 @@ internal sealed partial class McpGatewayRuntime
         SearchInput searchInput,
         int limit,
         IList<McpGatewayDiagnostic> diagnostics,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var vectorRanked = await TryRankWithVectorAsync(
             snapshot,
@@ -100,7 +110,8 @@ internal sealed partial class McpGatewayRuntime
             diagnostics,
             applyLexicalBoosts: false,
             addFailureDiagnostics: true,
-            cancellationToken);
+            cancellationToken
+        );
         if (vectorRanked is null)
         {
             var graphFallback = await RankWithGraphOrEmptyAsync(
@@ -111,7 +122,8 @@ internal sealed partial class McpGatewayRuntime
                 addGraphFallbackDiagnostic: true,
                 addUnavailableDiagnostic: true,
                 addFailureDiagnostics: true,
-                cancellationToken);
+                cancellationToken
+            );
             AddLowConfidenceGraphDiagnostic(graphFallback, diagnostics);
             return graphFallback;
         }
@@ -126,7 +138,8 @@ internal sealed partial class McpGatewayRuntime
                 addGraphFallbackDiagnostic: true,
                 addUnavailableDiagnostic: true,
                 addFailureDiagnostics: true,
-                cancellationToken);
+                cancellationToken
+            );
             AddLowConfidenceGraphDiagnostic(graphFallback, diagnostics);
             return graphFallback;
         }
@@ -138,7 +151,8 @@ internal sealed partial class McpGatewayRuntime
             diagnostics,
             addUnavailableDiagnostic: false,
             addFailureDiagnostics: false,
-            cancellationToken);
+            cancellationToken
+        );
         if (graphRanked is null)
         {
             return vectorRanked;
@@ -147,7 +161,9 @@ internal sealed partial class McpGatewayRuntime
         var merged = MergeAutoResults(vectorRanked, graphRanked, limit);
         if (string.Equals(merged.RankingMode, SearchModeHybrid, StringComparison.Ordinal))
         {
-            diagnostics.Add(new McpGatewayDiagnostic(HybridVectorMergeDiagnosticCode, HybridVectorMergeMessage));
+            diagnostics.Add(
+                new McpGatewayDiagnostic(HybridVectorMergeDiagnosticCode, HybridVectorMergeMessage)
+            );
         }
 
         return merged;
@@ -159,7 +175,8 @@ internal sealed partial class McpGatewayRuntime
         IList<McpGatewayDiagnostic> diagnostics,
         bool applyLexicalBoosts,
         bool addFailureDiagnostics,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         if (!snapshot.HasVectors)
         {
@@ -170,7 +187,10 @@ internal sealed partial class McpGatewayRuntime
         try
         {
             await using var embeddingGeneratorLease = ResolveEmbeddingGenerator();
-            if (embeddingGeneratorLease.Generator is not IEmbeddingGenerator<string, Embedding<float>> generator)
+            if (
+                embeddingGeneratorLease.Generator
+                is not IEmbeddingGenerator<string, Embedding<float>> generator
+            )
             {
                 return null;
             }
@@ -178,10 +198,12 @@ internal sealed partial class McpGatewayRuntime
             var embeddingGeneratorFingerprint = GetOrCreateEmbeddingGeneratorFingerprint(generator);
             float[] queryVector;
             double queryMagnitude;
+            var vectorTokenUsage = VectorTokenUsage.Zero;
             var cachedQueryEmbedding = await _searchRuntimeCache.TryGetQueryEmbeddingAsync(
                 searchInput.VectorQuery,
                 embeddingGeneratorFingerprint,
-                cancellationToken);
+                cancellationToken
+            );
             if (cachedQueryEmbedding.found && cachedQueryEmbedding.embedding is not null)
             {
                 queryVector = cachedQueryEmbedding.embedding.Vector;
@@ -189,53 +211,91 @@ internal sealed partial class McpGatewayRuntime
             }
             else
             {
-                var embedding = await generator.GenerateAsync(searchInput.VectorQuery, cancellationToken: cancellationToken);
-                queryVector = embedding.Vector.ToArray();
+                var vectorInputs = new[] { searchInput.VectorQuery };
+                var generatedEmbeddings = await generator.GenerateAsync(
+                    vectorInputs,
+                    cancellationToken: cancellationToken
+                );
+                if (generatedEmbeddings.Count != 1)
+                {
+                    throw new InvalidOperationException(
+                        string.Format(
+                            CultureInfo.InvariantCulture,
+                            QueryEmbeddingCountMismatchMessageFormat,
+                            generatedEmbeddings.Count,
+                            1
+                        )
+                    );
+                }
+
+                vectorTokenUsage = ExtractVectorTokenUsage(generatedEmbeddings.Usage, vectorInputs);
+                queryVector = generatedEmbeddings[0].Vector.ToArray();
                 queryMagnitude = CalculateMagnitude(queryVector);
                 await _searchRuntimeCache.SetQueryEmbeddingAsync(
                     searchInput.VectorQuery,
                     embeddingGeneratorFingerprint,
                     new McpGatewayQueryEmbedding(queryVector, queryMagnitude),
-                    cancellationToken);
+                    cancellationToken
+                );
             }
 
             if (queryMagnitude <= double.Epsilon)
             {
                 if (addFailureDiagnostics)
                 {
-                    diagnostics.Add(new McpGatewayDiagnostic(QueryVectorEmptyDiagnosticCode, QueryVectorEmptyMessage));
+                    diagnostics.Add(
+                        new McpGatewayDiagnostic(
+                            QueryVectorEmptyDiagnosticCode,
+                            QueryVectorEmptyMessage
+                        )
+                    );
                 }
 
                 return null;
             }
 
-            var ranked = snapshot.Entries
-                .Select(entry => new ScoredToolEntry(
+            var ranked = snapshot
+                .Entries.Select(entry => new ScoredToolEntry(
                     entry,
                     ScoreVectorEntry(
                         entry,
                         searchInput.BoostQuery,
                         queryVector,
                         queryMagnitude,
-                        applyLexicalBoosts)))
+                        applyLexicalBoosts
+                    )
+                ))
                 .OrderByDescending(static item => item.Score)
-                .ThenBy(static item => item.Entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(
+                    static item => item.Entry.Descriptor.ToolName,
+                    StringComparer.OrdinalIgnoreCase
+                )
                 .ToList();
             return new RankedSearch(ranked, SearchModeVector)
             {
                 Metrics = new RankedSearchMetrics(
                     UsedVectorSearch: true,
                     UsedGraphSearch: false,
-                    VectorDurationMilliseconds: stopwatch.Elapsed.TotalMilliseconds)
+                    VectorDurationMilliseconds: stopwatch.Elapsed.TotalMilliseconds,
+                    VectorInputTokenCount: vectorTokenUsage.InputTokenCount,
+                    VectorTotalTokenCount: vectorTokenUsage.TotalTokenCount
+                ),
             };
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             if (addFailureDiagnostics)
             {
-                diagnostics.Add(new McpGatewayDiagnostic(
-                    VectorSearchFailedDiagnosticCode,
-                    string.Format(CultureInfo.InvariantCulture, VectorSearchFailedMessageFormat, ex.GetBaseException().Message)));
+                diagnostics.Add(
+                    new McpGatewayDiagnostic(
+                        VectorSearchFailedDiagnosticCode,
+                        string.Format(
+                            CultureInfo.InvariantCulture,
+                            VectorSearchFailedMessageFormat,
+                            ex.GetBaseException().Message
+                        )
+                    )
+                );
             }
 
             _logger.LogWarning(ex, GatewayVectorSearchFailedLogMessage);
@@ -248,28 +308,28 @@ internal sealed partial class McpGatewayRuntime
         string boostQuery,
         float[] queryVector,
         double queryMagnitude,
-        bool applyLexicalBoosts)
+        bool applyLexicalBoosts
+    )
     {
         var cosine = Math.Max(0d, CalculateCosine(entry, queryVector, queryMagnitude));
-        return applyLexicalBoosts
-            ? ApplySearchBoosts(entry, boostQuery, cosine)
-            : cosine;
+        return applyLexicalBoosts ? ApplySearchBoosts(entry, boostQuery, cosine) : cosine;
     }
 
-    private static bool IsUnusableVectorResult(RankedSearch rankedSearch)
-        => rankedSearch.Ranked.Count == 0 || rankedSearch.Ranked[0].Score <= double.Epsilon;
+    private static bool IsUnusableVectorResult(RankedSearch rankedSearch) =>
+        rankedSearch.Ranked.Count == 0 || rankedSearch.Ranked[0].Score <= double.Epsilon;
 
     private static RankedSearch MergeAutoResults(
         RankedSearch vectorRanked,
         RankedSearch graphRanked,
-        int limit)
+        int limit
+    )
     {
-        var primaryToolIds = vectorRanked.Ranked
-            .Take(limit)
+        var primaryToolIds = vectorRanked
+            .Ranked.Take(limit)
             .Select(static item => item.Entry.Descriptor.ToolId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var candidateToolIds = vectorRanked.Ranked
-            .Take(CalculateAutoSupplementCandidateWindow(limit, vectorRanked.Ranked.Count))
+        var candidateToolIds = vectorRanked
+            .Ranked.Take(CalculateAutoSupplementCandidateWindow(limit, vectorRanked.Ranked.Count))
             .Select(static item => item.Entry.Descriptor.ToolId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -281,13 +341,20 @@ internal sealed partial class McpGatewayRuntime
         var related = CollectSupplementMatches(
             [.. graphRanked.Ranked, .. graphRanked.Related],
             candidateToolIds,
-            primaryToolIds);
-        var nextStepExcludedToolIds = new HashSet<string>(primaryToolIds, StringComparer.OrdinalIgnoreCase);
-        nextStepExcludedToolIds.UnionWith(related.Select(static item => item.Entry.Descriptor.ToolId));
+            primaryToolIds
+        );
+        var nextStepExcludedToolIds = new HashSet<string>(
+            primaryToolIds,
+            StringComparer.OrdinalIgnoreCase
+        );
+        nextStepExcludedToolIds.UnionWith(
+            related.Select(static item => item.Entry.Descriptor.ToolId)
+        );
         var nextSteps = CollectSupplementMatches(
             graphRanked.NextSteps,
             candidateToolIds,
-            nextStepExcludedToolIds);
+            nextStepExcludedToolIds
+        );
         var metrics = CombineRankedSearchMetrics(vectorRanked.Metrics, graphRanked.Metrics);
 
         if (related.Count == 0 && nextSteps.Count == 0)
@@ -296,7 +363,7 @@ internal sealed partial class McpGatewayRuntime
             {
                 FocusedGraphNodeCount = graphRanked.FocusedGraphNodeCount,
                 FocusedGraphEdgeCount = graphRanked.FocusedGraphEdgeCount,
-                Metrics = metrics
+                Metrics = metrics,
             };
         }
 
@@ -306,19 +373,24 @@ internal sealed partial class McpGatewayRuntime
             NextSteps = nextSteps,
             FocusedGraphNodeCount = graphRanked.FocusedGraphNodeCount,
             FocusedGraphEdgeCount = graphRanked.FocusedGraphEdgeCount,
-            Metrics = metrics
+            Metrics = metrics,
         };
     }
 
-    private static int CalculateAutoSupplementCandidateWindow(int limit, int rankedCount)
-        => Math.Min(
+    private static int CalculateAutoSupplementCandidateWindow(int limit, int rankedCount) =>
+        Math.Min(
             rankedCount,
-            Math.Max(limit * AutoSupplementCandidateMultiplier, AutoSupplementMinimumCandidateWindow));
+            Math.Max(
+                limit * AutoSupplementCandidateMultiplier,
+                AutoSupplementMinimumCandidateWindow
+            )
+        );
 
     private static IReadOnlyList<ScoredToolEntry> CollectSupplementMatches(
         IEnumerable<ScoredToolEntry> graphMatches,
         IReadOnlySet<string> candidateToolIds,
-        IReadOnlySet<string> excludedToolIds)
+        IReadOnlySet<string> excludedToolIds
+    )
     {
         var matches = new List<ScoredToolEntry>();
         var seenToolIds = new HashSet<string>(excludedToolIds, StringComparer.OrdinalIgnoreCase);
@@ -339,10 +411,22 @@ internal sealed partial class McpGatewayRuntime
 
     private static RankedSearchMetrics CombineRankedSearchMetrics(
         RankedSearchMetrics? primaryMetrics,
-        RankedSearchMetrics? supplementalMetrics)
-        => new(
-            UsedVectorSearch: (primaryMetrics?.UsedVectorSearch ?? false) || (supplementalMetrics?.UsedVectorSearch ?? false),
-            UsedGraphSearch: (primaryMetrics?.UsedGraphSearch ?? false) || (supplementalMetrics?.UsedGraphSearch ?? false),
-            VectorDurationMilliseconds: primaryMetrics?.VectorDurationMilliseconds ?? supplementalMetrics?.VectorDurationMilliseconds,
-            GraphDurationMilliseconds: supplementalMetrics?.GraphDurationMilliseconds ?? primaryMetrics?.GraphDurationMilliseconds);
+        RankedSearchMetrics? supplementalMetrics
+    ) =>
+        new(
+            UsedVectorSearch: (primaryMetrics?.UsedVectorSearch ?? false)
+                || (supplementalMetrics?.UsedVectorSearch ?? false),
+            UsedGraphSearch: (primaryMetrics?.UsedGraphSearch ?? false)
+                || (supplementalMetrics?.UsedGraphSearch ?? false),
+            VectorDurationMilliseconds: primaryMetrics?.VectorDurationMilliseconds
+                ?? supplementalMetrics?.VectorDurationMilliseconds,
+            GraphDurationMilliseconds: supplementalMetrics?.GraphDurationMilliseconds
+                ?? primaryMetrics?.GraphDurationMilliseconds,
+            VectorInputTokenCount: primaryMetrics?.VectorInputTokenCount
+                ?? supplementalMetrics?.VectorInputTokenCount
+                ?? 0,
+            VectorTotalTokenCount: primaryMetrics?.VectorTotalTokenCount
+                ?? supplementalMetrics?.VectorTotalTokenCount
+                ?? 0
+        );
 }

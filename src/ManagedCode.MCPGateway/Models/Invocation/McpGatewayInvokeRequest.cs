@@ -7,4 +7,5 @@ public sealed record McpGatewayInvokeRequest(
     IReadOnlyDictionary<string, object?>? Arguments = null,
     string? Query = null,
     IReadOnlyDictionary<string, object?>? Context = null,
-    string? ContextSummary = null);
+    string? ContextSummary = null
+);

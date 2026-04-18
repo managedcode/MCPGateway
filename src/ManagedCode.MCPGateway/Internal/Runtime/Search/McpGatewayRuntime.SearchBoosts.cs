@@ -9,7 +9,8 @@ internal sealed partial class McpGatewayRuntime
             return score;
         }
 
-        var queryTerms = BuildOrderedGraphTerms(boostQuery).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var queryTerms = BuildOrderedGraphTerms(boostQuery)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (queryTerms.Count == 0)
         {
             return score;
@@ -27,7 +28,9 @@ internal sealed partial class McpGatewayRuntime
                     " ",
                     string.Join(" ", entry.Descriptor.SearchKeywords),
                     " ",
-                    string.Join(" ", entry.Descriptor.RequiredArguments)))
+                    string.Join(" ", entry.Descriptor.RequiredArguments)
+                )
+            )
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         if (descriptorTerms.Count == 0)
         {

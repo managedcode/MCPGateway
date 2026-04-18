@@ -3,7 +3,8 @@ namespace ManagedCode.MCPGateway;
 public sealed record McpGatewaySearchResult(
     IReadOnlyList<McpGatewaySearchMatch> Matches,
     IReadOnlyList<McpGatewayDiagnostic> Diagnostics,
-    string RankingMode)
+    string RankingMode
+)
 {
     public IReadOnlyList<McpGatewaySearchMatch> RelatedMatches { get; init; } = [];
 

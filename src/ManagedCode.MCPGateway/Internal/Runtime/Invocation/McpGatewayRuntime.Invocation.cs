@@ -12,7 +12,8 @@ internal sealed partial class McpGatewayRuntime
 {
     public async Task<McpGatewayInvokeResult> InvokeAsync(
         McpGatewayInvokeRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -26,7 +27,8 @@ internal sealed partial class McpGatewayRuntime
                 request.SourceId ?? string.Empty,
                 request.ToolName ?? string.Empty,
                 Output: null,
-                Error: resolution.Error);
+                Error: resolution.Error
+            );
         }
 
         var entry = resolution.Entry;
@@ -34,33 +36,44 @@ internal sealed partial class McpGatewayRuntime
             ? new Dictionary<string, object?>(request.Arguments, StringComparer.OrdinalIgnoreCase)
             : new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
 
-        if (!string.IsNullOrWhiteSpace(request.Query) &&
-            !arguments.ContainsKey(QueryArgumentName) &&
-            SupportsArgument(entry.Descriptor, QueryArgumentName))
+        if (
+            !string.IsNullOrWhiteSpace(request.Query)
+            && !arguments.ContainsKey(QueryArgumentName)
+            && SupportsArgument(entry.Descriptor, QueryArgumentName)
+        )
         {
             arguments[QueryArgumentName] = request.Query;
         }
 
         MapRequestArgument(arguments, entry.Descriptor, ContextArgumentName, request.Context);
-        MapRequestArgument(arguments, entry.Descriptor, ContextSummaryArgumentName, request.ContextSummary);
+        MapRequestArgument(
+            arguments,
+            entry.Descriptor,
+            ContextSummaryArgumentName,
+            request.ContextSummary
+        );
 
         try
         {
-            var resolvedMcpTool = entry.Tool as McpClientTool ?? entry.Tool.GetService<McpClientTool>();
+            var resolvedMcpTool =
+                entry.Tool as McpClientTool ?? entry.Tool.GetService<McpClientTool>();
             if (resolvedMcpTool is not null)
             {
-                var result = await AttachInvocationMeta(resolvedMcpTool, request).CallAsync(
-                    arguments,
-                    progress: null,
-                    options: new RequestOptions(),
-                    cancellationToken: cancellationToken);
+                var result = await AttachInvocationMeta(resolvedMcpTool, request)
+                    .CallAsync(
+                        arguments,
+                        progress: null,
+                        options: new RequestOptions(),
+                        cancellationToken: cancellationToken
+                    );
 
                 return new McpGatewayInvokeResult(
                     true,
                     entry.Descriptor.ToolId,
                     entry.Descriptor.SourceId,
                     entry.Descriptor.ToolName,
-                    ExtractMcpOutput(result));
+                    ExtractMcpOutput(result)
+                );
             }
 
             var function = entry.Tool as AIFunction ?? entry.Tool.GetService<AIFunction>();
@@ -72,18 +85,25 @@ internal sealed partial class McpGatewayRuntime
                     entry.Descriptor.SourceId,
                     entry.Descriptor.ToolName,
                     Output: null,
-                    Error: string.Format(CultureInfo.InvariantCulture, ToolNotInvokableMessageFormat, entry.Descriptor.ToolName));
+                    Error: string.Format(
+                        CultureInfo.InvariantCulture,
+                        ToolNotInvokableMessageFormat,
+                        entry.Descriptor.ToolName
+                    )
+                );
             }
 
             var resultValue = await function.InvokeAsync(
                 new AIFunctionArguments(arguments, StringComparer.OrdinalIgnoreCase),
-                cancellationToken);
+                cancellationToken
+            );
             return new McpGatewayInvokeResult(
                 true,
                 entry.Descriptor.ToolId,
                 entry.Descriptor.SourceId,
                 entry.Descriptor.ToolName,
-                NormalizeFunctionOutput(resultValue));
+                NormalizeFunctionOutput(resultValue)
+            );
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -94,7 +114,8 @@ internal sealed partial class McpGatewayRuntime
                 entry.Descriptor.SourceId,
                 entry.Descriptor.ToolName,
                 Output: null,
-                Error: ex.GetBaseException().Message);
+                Error: ex.GetBaseException().Message
+            );
         }
     }
 
@@ -102,11 +123,14 @@ internal sealed partial class McpGatewayRuntime
         IDictionary<string, object?> arguments,
         McpGatewayToolDescriptor descriptor,
         string argumentName,
-        object? value)
+        object? value
+    )
     {
-        if (value is null ||
-            arguments.ContainsKey(argumentName) ||
-            !SupportsArgument(descriptor, argumentName))
+        if (
+            value is null
+            || arguments.ContainsKey(argumentName)
+            || !SupportsArgument(descriptor, argumentName)
+        )
         {
             return;
         }
@@ -119,9 +143,7 @@ internal sealed partial class McpGatewayRuntime
         arguments[argumentName] = value;
     }
 
-    private static bool SupportsArgument(
-        McpGatewayToolDescriptor descriptor,
-        string argumentName)
+    private static bool SupportsArgument(McpGatewayToolDescriptor descriptor, string argumentName)
     {
         if (descriptor.RequiredArguments.Contains(argumentName, StringComparer.OrdinalIgnoreCase))
         {
@@ -136,15 +158,22 @@ internal sealed partial class McpGatewayRuntime
         try
         {
             using var schemaDocument = JsonDocument.Parse(descriptor.InputSchemaJson);
-            if (!schemaDocument.RootElement.TryGetProperty(InputSchemaPropertiesPropertyName, out var properties) ||
-                properties.ValueKind != JsonValueKind.Object)
+            if (
+                !schemaDocument.RootElement.TryGetProperty(
+                    InputSchemaPropertiesPropertyName,
+                    out var properties
+                )
+                || properties.ValueKind != JsonValueKind.Object
+            )
             {
                 return false;
             }
 
             return properties
                 .EnumerateObject()
-                .Any(property => string.Equals(property.Name, argumentName, StringComparison.OrdinalIgnoreCase));
+                .Any(property =>
+                    string.Equals(property.Name, argumentName, StringComparison.OrdinalIgnoreCase)
+                );
         }
         catch (JsonException)
         {
@@ -152,7 +181,10 @@ internal sealed partial class McpGatewayRuntime
         }
     }
 
-    private static McpClientTool AttachInvocationMeta(McpClientTool tool, McpGatewayInvokeRequest request)
+    private static McpClientTool AttachInvocationMeta(
+        McpClientTool tool,
+        McpGatewayInvokeRequest request
+    )
     {
         var meta = BuildInvocationMeta(request);
         return meta is null ? tool : tool.WithMeta(meta);
@@ -180,12 +212,6 @@ internal sealed partial class McpGatewayRuntime
             }
         }
 
-        return payload.Count == 0
-            ? null
-            : new JsonObject
-            {
-                [GatewayInvocationMetaKey] = payload
-            };
+        return payload.Count == 0 ? null : new JsonObject { [GatewayInvocationMetaKey] = payload };
     }
-
 }

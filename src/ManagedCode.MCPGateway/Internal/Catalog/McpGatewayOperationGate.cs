@@ -45,9 +45,10 @@ internal sealed class McpGatewayOperationGate
         }
 
         var operationsDrainedSignal = EnsureOperationsDrainedSignal();
-        waitForDrain = Volatile.Read(ref _activeOperations) > 0
-            ? new ValueTask(operationsDrainedSignal.Task)
-            : ValueTask.CompletedTask;
+        waitForDrain =
+            Volatile.Read(ref _activeOperations) > 0
+                ? new ValueTask(operationsDrainedSignal.Task)
+                : ValueTask.CompletedTask;
         return true;
     }
 
@@ -56,7 +57,9 @@ internal sealed class McpGatewayOperationGate
         var operationsDrainedSignal = Volatile.Read(ref _operationsDrainedSignal);
         while (operationsDrainedSignal is null)
         {
-            var created = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var created = new TaskCompletionSource<object?>(
+                TaskCreationOptions.RunContinuationsAsynchronously
+            );
             if (Interlocked.CompareExchange(ref _operationsDrainedSignal, created, null) is null)
             {
                 operationsDrainedSignal = created;

@@ -11,12 +11,13 @@ internal enum McpGatewaySourceRegistrationKind
     Local,
     Http,
     Stdio,
-    CustomMcpClient
+    CustomMcpClient,
 }
 
 internal sealed record McpGatewayLoadedTool(
     AITool Tool,
-    McpGatewayToolSearchHints? SearchHints = null);
+    McpGatewayToolSearchHints? SearchHints = null
+);
 
 internal abstract class McpGatewayToolSourceRegistration(string sourceId, string? displayName)
     : IAsyncDisposable
@@ -29,7 +30,8 @@ internal abstract class McpGatewayToolSourceRegistration(string sourceId, string
 
     public abstract ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken
+    );
 
     public virtual ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
@@ -41,27 +43,28 @@ internal sealed class McpGatewayLocalToolSourceRegistration(string sourceId, str
 
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Local;
 
-    public void AddTool(AITool tool, McpGatewayToolSearchHints? searchHints = null)
-        => _tools.Enqueue(new McpGatewayLoadedTool(tool, searchHints));
+    public void AddTool(AITool tool, McpGatewayToolSearchHints? searchHints = null) =>
+        _tools.Enqueue(new McpGatewayLoadedTool(tool, searchHints));
 
     public override ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
-        => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedTool>>(_tools.ToArray());
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedTool>>(_tools.ToArray());
 }
 
 internal sealed class McpGatewayHttpToolSourceRegistration(
     string sourceId,
     Uri endpoint,
     IReadOnlyDictionary<string, string>? headers,
-    string? displayName)
-    : McpGatewayClientToolSourceRegistration(sourceId, displayName, disposeClient: true)
+    string? displayName
+) : McpGatewayClientToolSourceRegistration(sourceId, displayName, disposeClient: true)
 {
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Http;
 
     protected override async ValueTask<McpClient> CreateClientAsync(
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var httpClient = new HttpClient();
         if (headers is { Count: > 0 })
@@ -76,20 +79,18 @@ internal sealed class McpGatewayHttpToolSourceRegistration(
         }
 
         var transport = new HttpClientTransport(
-            new HttpClientTransportOptions
-            {
-                Endpoint = endpoint,
-                Name = SourceId
-            },
+            new HttpClientTransportOptions { Endpoint = endpoint, Name = SourceId },
             httpClient,
             loggerFactory,
-            ownsHttpClient: true);
+            ownsHttpClient: true
+        );
 
         return await McpClient.CreateAsync(
             transport,
             McpGatewayClientFactory.CreateClientOptions(),
             loggerFactory,
-            cancellationToken);
+            cancellationToken
+        );
     }
 }
 
@@ -99,14 +100,15 @@ internal sealed class McpGatewayStdioToolSourceRegistration(
     IReadOnlyList<string>? arguments,
     string? workingDirectory,
     IReadOnlyDictionary<string, string?>? environmentVariables,
-    string? displayName)
-    : McpGatewayClientToolSourceRegistration(sourceId, displayName, disposeClient: true)
+    string? displayName
+) : McpGatewayClientToolSourceRegistration(sourceId, displayName, disposeClient: true)
 {
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Stdio;
 
     protected override async ValueTask<McpClient> CreateClientAsync(
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var options = new StdioClientTransportOptions
         {
@@ -116,7 +118,10 @@ internal sealed class McpGatewayStdioToolSourceRegistration(
             WorkingDirectory = workingDirectory,
             EnvironmentVariables = environmentVariables is null
                 ? new Dictionary<string, string?>()
-                : new Dictionary<string, string?>(environmentVariables, StringComparer.OrdinalIgnoreCase)
+                : new Dictionary<string, string?>(
+                    environmentVariables,
+                    StringComparer.OrdinalIgnoreCase
+                ),
         };
 
         var transport = new StdioClientTransport(options, loggerFactory);
@@ -124,7 +129,8 @@ internal sealed class McpGatewayStdioToolSourceRegistration(
             transport,
             McpGatewayClientFactory.CreateClientOptions(),
             loggerFactory,
-            cancellationToken);
+            cancellationToken
+        );
     }
 }
 
@@ -132,22 +138,23 @@ internal sealed class McpGatewayProvidedClientToolSourceRegistration(
     string sourceId,
     Func<CancellationToken, ValueTask<McpClient>> clientFactory,
     bool disposeClient,
-    string? displayName)
-    : McpGatewayClientToolSourceRegistration(sourceId, displayName, disposeClient)
+    string? displayName
+) : McpGatewayClientToolSourceRegistration(sourceId, displayName, disposeClient)
 {
-    public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.CustomMcpClient;
+    public override McpGatewaySourceRegistrationKind Kind =>
+        McpGatewaySourceRegistrationKind.CustomMcpClient;
 
     protected override ValueTask<McpClient> CreateClientAsync(
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
-        => clientFactory(cancellationToken);
+        CancellationToken cancellationToken
+    ) => clientFactory(cancellationToken);
 }
 
 internal abstract class McpGatewayClientToolSourceRegistration(
     string sourceId,
     string? displayName,
-    bool disposeClient)
-    : McpGatewayToolSourceRegistration(sourceId, displayName)
+    bool disposeClient
+) : McpGatewayToolSourceRegistration(sourceId, displayName)
 {
     private readonly bool _disposeClient = disposeClient;
     private McpClient? _client;
@@ -156,19 +163,18 @@ internal abstract class McpGatewayClientToolSourceRegistration(
 
     public override async ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var client = await GetClientAsync(loggerFactory, cancellationToken);
         var tools = await client.ListToolsAsync(new RequestOptions(), cancellationToken);
-        return tools
-            .Cast<AITool>()
-            .Select(static tool => new McpGatewayLoadedTool(tool))
-            .ToList();
+        return tools.Cast<AITool>().Select(static tool => new McpGatewayLoadedTool(tool)).ToList();
     }
 
     protected abstract ValueTask<McpClient> CreateClientAsync(
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken
+    );
 
     public override async ValueTask DisposeAsync()
     {
@@ -187,7 +193,8 @@ internal abstract class McpGatewayClientToolSourceRegistration(
 
     private async Task<McpClient> GetClientAsync(
         ILoggerFactory loggerFactory,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
@@ -201,7 +208,9 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         {
             if (clientTask is null)
             {
-                var clientSource = new TaskCompletionSource<McpClient>(TaskCreationOptions.RunContinuationsAsynchronously);
+                var clientSource = new TaskCompletionSource<McpClient>(
+                    TaskCreationOptions.RunContinuationsAsynchronously
+                );
                 var createdTask = new ClientOperation(clientSource.Task, cancellationToken);
                 if (Interlocked.CompareExchange(ref _clientOperation, createdTask, null) is null)
                 {
@@ -243,13 +252,17 @@ internal abstract class McpGatewayClientToolSourceRegistration(
     private async Task RunCreateClientAsync(
         TaskCompletionSource<McpClient> clientSource,
         ILoggerFactory loggerFactory,
-        ClientOperation clientOperation)
+        ClientOperation clientOperation
+    )
     {
         try
         {
-            clientSource.SetResult(await CreateClientAsync(loggerFactory, clientOperation.CancellationToken));
+            clientSource.SetResult(
+                await CreateClientAsync(loggerFactory, clientOperation.CancellationToken)
+            );
         }
-        catch (OperationCanceledException) when (clientOperation.CancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException)
+            when (clientOperation.CancellationToken.IsCancellationRequested)
         {
             clientSource.SetCanceled(clientOperation.CancellationToken);
         }
@@ -261,7 +274,8 @@ internal abstract class McpGatewayClientToolSourceRegistration(
 
     private async Task<McpClient> AwaitClientTaskAsync(
         Task<McpClient> clientTask,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         try
         {
@@ -281,8 +295,10 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         }
         catch when (clientTask.IsFaulted || clientTask.IsCanceled)
         {
-            if (Volatile.Read(ref _clientOperation) is { Task: { } currentTask } currentOperation &&
-                ReferenceEquals(currentTask, clientTask))
+            if (
+                Volatile.Read(ref _clientOperation) is { Task: { } currentTask } currentOperation
+                && ReferenceEquals(currentTask, clientTask)
+            )
             {
                 _ = Interlocked.CompareExchange(ref _clientOperation, null, currentOperation);
             }
@@ -296,12 +312,13 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         {
             await clientOperation.Task;
         }
-        catch (OperationCanceledException) when (clientOperation.CancellationToken.IsCancellationRequested)
-        {
-        }
+        catch (OperationCanceledException)
+            when (clientOperation.CancellationToken.IsCancellationRequested)
+        { }
     }
 
     private sealed record ClientOperation(
         Task<McpClient> Task,
-        CancellationToken CancellationToken);
+        CancellationToken CancellationToken
+    );
 }

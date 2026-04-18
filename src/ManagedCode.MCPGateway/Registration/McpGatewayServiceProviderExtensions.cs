@@ -7,7 +7,8 @@ public static class McpGatewayServiceProviderExtensions
 {
     public static Task<McpGatewayIndexBuildResult> InitializeMcpGatewayAsync(
         this IServiceProvider serviceProvider,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         return serviceProvider.GetRequiredService<IMcpGateway>().BuildIndexAsync(cancellationToken);

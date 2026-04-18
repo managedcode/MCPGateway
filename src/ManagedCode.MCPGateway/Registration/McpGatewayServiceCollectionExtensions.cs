@@ -9,7 +9,8 @@ public static class McpGatewayServiceCollectionExtensions
 {
     public static IServiceCollection AddMcpGateway(
         this IServiceCollection services,
-        Action<McpGatewayOptions>? configure = null)
+        Action<McpGatewayOptions>? configure = null
+    )
     {
         ArgumentNullException.ThrowIfNull(services);
 
@@ -27,21 +28,30 @@ public static class McpGatewayServiceCollectionExtensions
         return services;
     }
 
-    public static IServiceCollection AddMcpGatewayInMemorySearchCache(this IServiceCollection services)
+    public static IServiceCollection AddMcpGatewayInMemorySearchCache(
+        this IServiceCollection services
+    )
     {
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddMemoryCache();
-        services.Replace(ServiceDescriptor.Singleton<IMcpGatewaySearchCache, McpGatewayInMemorySearchCache>());
+        services.Replace(
+            ServiceDescriptor.Singleton<IMcpGatewaySearchCache, McpGatewayInMemorySearchCache>()
+        );
         return services;
     }
 
-    public static IServiceCollection AddMcpGatewayInMemoryToolEmbeddingStore(this IServiceCollection services)
+    public static IServiceCollection AddMcpGatewayInMemoryToolEmbeddingStore(
+        this IServiceCollection services
+    )
     {
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddMemoryCache();
-        services.TryAddSingleton<IMcpGatewayToolEmbeddingStore, McpGatewayInMemoryToolEmbeddingStore>();
+        services.TryAddSingleton<
+            IMcpGatewayToolEmbeddingStore,
+            McpGatewayInMemoryToolEmbeddingStore
+        >();
         return services;
     }
 
@@ -49,7 +59,9 @@ public static class McpGatewayServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, McpGatewayIndexWarmupService>());
+        services.TryAddEnumerable(
+            ServiceDescriptor.Singleton<IHostedService, McpGatewayIndexWarmupService>()
+        );
         return services;
     }
 }

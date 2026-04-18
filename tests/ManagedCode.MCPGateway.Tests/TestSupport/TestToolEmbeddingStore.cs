@@ -13,7 +13,8 @@ internal sealed class TestToolEmbeddingStore : IMcpGatewayToolEmbeddingStore
 
     public Task<IReadOnlyList<McpGatewayToolEmbedding>> GetAsync(
         IReadOnlyList<McpGatewayToolEmbeddingLookup> lookups,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -32,13 +33,12 @@ internal sealed class TestToolEmbeddingStore : IMcpGatewayToolEmbeddingStore
 
     public Task UpsertAsync(
         IReadOnlyList<McpGatewayToolEmbedding> embeddings,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var clonedBatch = embeddings
-            .Select(Clone)
-            .ToList();
+        var clonedBatch = embeddings.Select(Clone).ToList();
 
         foreach (var embedding in clonedBatch)
         {
@@ -53,8 +53,10 @@ internal sealed class TestToolEmbeddingStore : IMcpGatewayToolEmbeddingStore
     public void Remove(string toolId)
     {
         var normalizedToolId = NormalizeToolId(toolId);
-        var keys = _embeddings.Keys
-            .Where(key => string.Equals(key.NormalizedToolId, normalizedToolId, StringComparison.Ordinal))
+        var keys = _embeddings
+            .Keys.Where(key =>
+                string.Equals(key.NormalizedToolId, normalizedToolId, StringComparison.Ordinal)
+            )
             .ToList();
 
         foreach (var key in keys)
@@ -65,7 +67,8 @@ internal sealed class TestToolEmbeddingStore : IMcpGatewayToolEmbeddingStore
 
     private bool TryGetEmbedding(
         McpGatewayToolEmbeddingLookup lookup,
-        out McpGatewayToolEmbedding embedding)
+        out McpGatewayToolEmbedding embedding
+    )
     {
         var storeKey = StoreKey.FromLookup(lookup);
         if (lookup.EmbeddingGeneratorFingerprint is not null)
@@ -86,10 +89,10 @@ internal sealed class TestToolEmbeddingStore : IMcpGatewayToolEmbeddingStore
         return false;
     }
 
-    private static McpGatewayToolEmbedding Clone(McpGatewayToolEmbedding embedding)
-        => embedding with
+    private static McpGatewayToolEmbedding Clone(McpGatewayToolEmbedding embedding) =>
+        embedding with
         {
-            Vector = [.. embedding.Vector]
+            Vector = [.. embedding.Vector],
         };
 
     private static string NormalizeToolId(string toolId) => toolId.ToUpperInvariant();
@@ -97,27 +100,33 @@ internal sealed class TestToolEmbeddingStore : IMcpGatewayToolEmbeddingStore
     private readonly record struct StoreKey(
         string NormalizedToolId,
         string DocumentHash,
-        string? EmbeddingGeneratorFingerprint)
+        string? EmbeddingGeneratorFingerprint
+    )
     {
-        public static StoreKey FromLookup(McpGatewayToolEmbeddingLookup lookup)
-            => new(
+        public static StoreKey FromLookup(McpGatewayToolEmbeddingLookup lookup) =>
+            new(
                 NormalizeToolId(lookup.ToolId),
                 lookup.DocumentHash,
-                lookup.EmbeddingGeneratorFingerprint);
+                lookup.EmbeddingGeneratorFingerprint
+            );
 
-        public static StoreKey FromEmbedding(McpGatewayToolEmbedding embedding)
-            => new(
+        public static StoreKey FromEmbedding(McpGatewayToolEmbedding embedding) =>
+            new(
                 NormalizeToolId(embedding.ToolId),
                 embedding.DocumentHash,
-                embedding.EmbeddingGeneratorFingerprint);
+                embedding.EmbeddingGeneratorFingerprint
+            );
 
-        public bool Matches(StoreKey other)
-            => string.Equals(NormalizedToolId, other.NormalizedToolId, StringComparison.Ordinal)
-                && string.Equals(DocumentHash, other.DocumentHash, StringComparison.Ordinal)
-                && (other.EmbeddingGeneratorFingerprint is null
-                    || string.Equals(
-                        EmbeddingGeneratorFingerprint,
-                        other.EmbeddingGeneratorFingerprint,
-                        StringComparison.Ordinal));
+        public bool Matches(StoreKey other) =>
+            string.Equals(NormalizedToolId, other.NormalizedToolId, StringComparison.Ordinal)
+            && string.Equals(DocumentHash, other.DocumentHash, StringComparison.Ordinal)
+            && (
+                other.EmbeddingGeneratorFingerprint is null
+                || string.Equals(
+                    EmbeddingGeneratorFingerprint,
+                    other.EmbeddingGeneratorFingerprint,
+                    StringComparison.Ordinal
+                )
+            );
     }
 }

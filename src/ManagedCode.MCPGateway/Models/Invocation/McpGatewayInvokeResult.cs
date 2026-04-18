@@ -6,4 +6,5 @@ public sealed record McpGatewayInvokeResult(
     string SourceId,
     string ToolName,
     object? Output,
-    string? Error = null);
+    string? Error = null
+);

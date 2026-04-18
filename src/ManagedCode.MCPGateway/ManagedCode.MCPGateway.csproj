@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <PackageId>ManagedCode.MCPGateway</PackageId>
     <Description>Searchable MCP and AITool gateway built on Microsoft.Extensions.AI and the official MCP C# SDK.</Description>
@@ -15,5 +14,4 @@
     <PackageReference Include="ManagedCode.MarkdownLd.Kb" />
     <PackageReference Include="ModelContextProtocol" />
   </ItemGroup>
-
 </Project>

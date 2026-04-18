@@ -1,7 +1,5 @@
 using System.Text.Json;
-
 using ManagedCode.MCPGateway.Abstractions;
-
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -20,9 +18,12 @@ public sealed partial class McpGatewayInvocationTests
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "test-mcp:github_repository_search",
-            Query: "managedcode"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(
+                ToolId: "test-mcp:github_repository_search",
+                Query: "managedcode"
+            )
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That(invokeResult.Output).IsTypeOf<JsonElement>();
@@ -44,27 +45,38 @@ public sealed partial class McpGatewayInvocationTests
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "test-mcp:github_repository_search",
-            Query: "managedcode",
-            ContextSummary: "user is on repository settings page",
-            Context: new Dictionary<string, object?>
-            {
-                ["page"] = "settings",
-                ["domain"] = "github"
-            }));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(
+                ToolId: "test-mcp:github_repository_search",
+                Query: "managedcode",
+                ContextSummary: "user is on repository settings page",
+                Context: new Dictionary<string, object?>
+                {
+                    ["page"] = "settings",
+                    ["domain"] = "github",
+                }
+            )
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That(serverHost.CapturedMeta.Count > 0).IsTrue();
 
         var payload = serverHost.CapturedMeta[^1];
-        await Assert.That(payload.TryGetPropertyValue("managedCodeMcpGateway", out var gatewayNode)).IsTrue();
+        await Assert
+            .That(payload.TryGetPropertyValue("managedCodeMcpGateway", out var gatewayNode))
+            .IsTrue();
 
         var gatewayMeta = gatewayNode!.AsObject();
         await Assert.That(gatewayMeta["query"]!.GetValue<string>()).IsEqualTo("managedcode");
-        await Assert.That(gatewayMeta["contextSummary"]!.GetValue<string>()).IsEqualTo("user is on repository settings page");
-        await Assert.That(gatewayMeta["context"]!["page"]!.GetValue<string>()).IsEqualTo("settings");
-        await Assert.That(gatewayMeta["context"]!["domain"]!.GetValue<string>()).IsEqualTo("github");
+        await Assert
+            .That(gatewayMeta["contextSummary"]!.GetValue<string>())
+            .IsEqualTo("user is on repository settings page");
+        await Assert
+            .That(gatewayMeta["context"]!["page"]!.GetValue<string>())
+            .IsEqualTo("settings");
+        await Assert
+            .That(gatewayMeta["context"]!["domain"]!.GetValue<string>())
+            .IsEqualTo("github");
     }
 
     [TUnit.Core.Test]
@@ -81,19 +93,21 @@ public sealed partial class McpGatewayInvocationTests
         cyclicContext.Self = cyclicContext;
 
         await gateway.BuildIndexAsync();
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "test-mcp:github_repository_search",
-            Query: "managedcode",
-            Context: new Dictionary<string, object?>
-            {
-                ["broken"] = cyclicContext
-            }));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(
+                ToolId: "test-mcp:github_repository_search",
+                Query: "managedcode",
+                Context: new Dictionary<string, object?> { ["broken"] = cyclicContext }
+            )
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That(serverHost.CapturedMeta.Count > 0).IsTrue();
 
         var payload = serverHost.CapturedMeta[^1];
-        await Assert.That(payload.TryGetPropertyValue("managedCodeMcpGateway", out var gatewayNode)).IsTrue();
+        await Assert
+            .That(payload.TryGetPropertyValue("managedCodeMcpGateway", out var gatewayNode))
+            .IsTrue();
 
         var gatewayMeta = gatewayNode!.AsObject();
         await Assert.That(gatewayMeta["query"]!.GetValue<string>()).IsEqualTo("managedcode");
@@ -112,9 +126,9 @@ public sealed partial class McpGatewayInvocationTests
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "test-mcp:json_text_search",
-            Query: "managedcode"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "test-mcp:json_text_search", Query: "managedcode")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That(invokeResult.Output).IsTypeOf<JsonElement>();
@@ -136,9 +150,9 @@ public sealed partial class McpGatewayInvocationTests
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeResult = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
-            ToolId: "test-mcp:plain_text_search",
-            Query: "managedcode"));
+        var invokeResult = await gateway.InvokeAsync(
+            new McpGatewayInvokeRequest(ToolId: "test-mcp:plain_text_search", Query: "managedcode")
+        );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
         await Assert.That(invokeResult.Output).IsTypeOf<string>();

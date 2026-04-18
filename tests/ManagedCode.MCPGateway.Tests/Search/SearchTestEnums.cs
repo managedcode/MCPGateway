@@ -4,13 +4,13 @@ internal enum WorkItemState
 {
     Open,
     Closed,
-    Merged
+    Merged,
 }
 
 internal enum TemperatureUnit
 {
     Celsius,
-    Fahrenheit
+    Fahrenheit,
 }
 
 internal enum FileIntent
@@ -19,7 +19,7 @@ internal enum FileIntent
     Read,
     Write,
     Move,
-    List
+    List,
 }
 
 internal enum TicketSeverity
@@ -27,7 +27,7 @@ internal enum TicketSeverity
     Low,
     Medium,
     High,
-    Critical
+    Critical,
 }
 
 internal enum FinanceIntent
@@ -36,5 +36,5 @@ internal enum FinanceIntent
     Refund,
     Exchange,
     Reconciliation,
-    Tax
+    Tax,
 }

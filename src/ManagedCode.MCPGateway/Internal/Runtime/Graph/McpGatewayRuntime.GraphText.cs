@@ -17,8 +17,10 @@ internal sealed partial class McpGatewayRuntime
 
         foreach (var character in identifier.Trim())
         {
-            if (char.IsWhiteSpace(character) ||
-                character is '_' or '-' or '.' or ',' or ';' or ':' or '/' or '\\')
+            if (
+                char.IsWhiteSpace(character)
+                || character is '_' or '-' or '.' or ',' or ';' or ':' or '/' or '\\'
+            )
             {
                 if (builder.Length > 0 && !previousWasSeparator)
                 {

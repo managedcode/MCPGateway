@@ -39,7 +39,7 @@ Key points:
 - Graph supplementation is semantically bounded by the vector candidate window so irrelevant graph-only hits do not flood multilingual or noisy searches.
 - When normalization changes the query, vector search preserves both the original query and the English-normalized query, while graph search prefers the English-normalized query.
 - When query embeddings are unavailable, fail, or return an unusable vector, `Auto` falls back to Markdown-LD graph ranking.
-- The package will emit built-in .NET runtime telemetry for index builds and search execution through `ActivitySource` and `Meter`.
+- The package will emit built-in .NET runtime telemetry for index builds and search execution through `ActivitySource` and `Meter`, including vector token usage for query embeddings and index embedding batches.
 
 ## Diagram
 

@@ -8,7 +8,8 @@ internal sealed class McpGatewayNoOpSearchCache : IMcpGatewaySearchCache
         McpGatewaySearchQueryNormalization normalization,
         string query,
         string? chatClientFingerprint,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.FromResult<(bool found, string? normalizedQuery)>((false, null));
@@ -19,7 +20,8 @@ internal sealed class McpGatewayNoOpSearchCache : IMcpGatewaySearchCache
         string query,
         string? chatClientFingerprint,
         string? normalizedQuery,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
@@ -28,17 +30,21 @@ internal sealed class McpGatewayNoOpSearchCache : IMcpGatewaySearchCache
     public ValueTask<(bool found, McpGatewayQueryEmbedding? embedding)> TryGetQueryEmbeddingAsync(
         string query,
         string? embeddingGeneratorFingerprint,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<(bool found, McpGatewayQueryEmbedding? embedding)>((false, null));
+        return ValueTask.FromResult<(bool found, McpGatewayQueryEmbedding? embedding)>(
+            (false, null)
+        );
     }
 
     public ValueTask SetQueryEmbeddingAsync(
         string query,
         string? embeddingGeneratorFingerprint,
         McpGatewayQueryEmbedding embedding,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;
@@ -54,10 +60,13 @@ internal sealed class McpGatewayNoOpSearchCache : IMcpGatewaySearchCache
         int limit,
         string? chatClientFingerprint,
         string? embeddingGeneratorFingerprint,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult<(bool found, McpGatewaySearchCachedResult? result)>((false, null));
+        return ValueTask.FromResult<(bool found, McpGatewaySearchCachedResult? result)>(
+            (false, null)
+        );
     }
 
     public ValueTask SetSearchResultAsync(
@@ -71,7 +80,8 @@ internal sealed class McpGatewayNoOpSearchCache : IMcpGatewaySearchCache
         string? chatClientFingerprint,
         string? embeddingGeneratorFingerprint,
         McpGatewaySearchCachedResult result,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
         return ValueTask.CompletedTask;

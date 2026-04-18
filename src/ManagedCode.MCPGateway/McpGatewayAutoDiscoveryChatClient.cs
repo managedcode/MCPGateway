@@ -1,5 +1,4 @@
 using System.Text.Json;
-
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,7 +18,8 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
         McpGatewayToolSet toolSet,
         ILoggerFactory? loggerFactory = null,
         IServiceProvider? functionInvocationServices = null,
-        McpGatewayAutoDiscoveryOptions? options = null)
+        McpGatewayAutoDiscoveryOptions? options = null
+    )
     {
         ArgumentNullException.ThrowIfNull(innerClient);
         ArgumentNullException.ThrowIfNull(toolSet);
@@ -34,20 +34,33 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
     public async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default
+    )
     {
         using var functionInvokingChatClient = CreateFunctionInvokingChatClient();
-        return await functionInvokingChatClient.GetResponseAsync(messages, options, cancellationToken);
+        return await functionInvokingChatClient.GetResponseAsync(
+            messages,
+            options,
+            cancellationToken
+        );
     }
 
     public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        [System.Runtime.CompilerServices.EnumeratorCancellation]
+            CancellationToken cancellationToken = default
+    )
     {
         using var functionInvokingChatClient = CreateFunctionInvokingChatClient();
 
-        await foreach (var update in functionInvokingChatClient.GetStreamingResponseAsync(messages, options, cancellationToken))
+        await foreach (
+            var update in functionInvokingChatClient.GetStreamingResponseAsync(
+                messages,
+                options,
+                cancellationToken
+            )
+        )
         {
             cancellationToken.ThrowIfCancellationRequested();
             yield return update;
@@ -87,12 +100,14 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
             _innerClient,
             _toolSet,
             _options,
-            UpdateAdditionalTools);
+            UpdateAdditionalTools
+        );
 
         functionInvokingChatClient = new FunctionInvokingChatClient(
             requestClient,
             _loggerFactory,
-            _functionInvocationServices);
+            _functionInvocationServices
+        );
 
         return functionInvokingChatClient;
     }
@@ -101,17 +116,20 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
         IChatClient innerClient,
         McpGatewayToolSet toolSet,
         McpGatewayAutoDiscoveryOptions options,
-        Action<IReadOnlyList<AITool>> updateAdditionalTools) : IChatClient
+        Action<IReadOnlyList<AITool>> updateAdditionalTools
+    ) : IChatClient
     {
         private readonly IChatClient _innerClient = innerClient;
         private readonly McpGatewayToolSet _toolSet = toolSet;
         private readonly McpGatewayAutoDiscoveryOptions _options = options;
-        private readonly Action<IReadOnlyList<AITool>> _updateAdditionalTools = updateAdditionalTools;
+        private readonly Action<IReadOnlyList<AITool>> _updateAdditionalTools =
+            updateAdditionalTools;
 
         public Task<ChatResponse> GetResponseAsync(
             IEnumerable<ChatMessage> messages,
             ChatOptions? options = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -122,13 +140,15 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
             return _innerClient.GetResponseAsync(
                 messageList,
                 CreateOptions(options, gatewayTools),
-                cancellationToken);
+                cancellationToken
+            );
         }
 
         public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(
             IEnumerable<ChatMessage> messages,
             ChatOptions? options = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default
+        )
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -139,7 +159,8 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
             return _innerClient.GetStreamingResponseAsync(
                 messageList,
                 CreateOptions(options, gatewayTools),
-                cancellationToken);
+                cancellationToken
+            );
         }
 
         public object? GetService(Type serviceType, object? serviceKey = null)
@@ -148,9 +169,7 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
             return _innerClient.GetService(serviceType, serviceKey);
         }
 
-        public void Dispose()
-        {
-        }
+        public void Dispose() { }
 
         private IReadOnlyList<AITool> CreateGatewayTools(IReadOnlyList<ChatMessage> messages)
         {
@@ -166,12 +185,16 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
 
             var reservedToolNames = new HashSet<string>(
                 gatewayTools.Select(static tool => tool.Name),
-                StringComparer.OrdinalIgnoreCase);
+                StringComparer.OrdinalIgnoreCase
+            );
 
-            foreach (var discoveredTool in _toolSet.CreateDiscoveredTools(
-                         EnumerateDiscoveryMatches(latestSearchResult),
-                         reservedToolNames,
-                         Math.Max(0, _options.MaxDiscoveredTools)))
+            foreach (
+                var discoveredTool in _toolSet.CreateDiscoveredTools(
+                    EnumerateDiscoveryMatches(latestSearchResult),
+                    reservedToolNames,
+                    Math.Max(0, _options.MaxDiscoveredTools)
+                )
+            )
             {
                 gatewayTools.Add(discoveredTool);
             }
@@ -179,7 +202,9 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
             return gatewayTools;
         }
 
-        private static IEnumerable<McpGatewaySearchMatch> EnumerateDiscoveryMatches(McpGatewaySearchResult searchResult)
+        private static IEnumerable<McpGatewaySearchMatch> EnumerateDiscoveryMatches(
+            McpGatewaySearchResult searchResult
+        )
         {
             var discoveredToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var match in searchResult.Matches)
@@ -207,7 +232,10 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
             }
         }
 
-        private static ChatOptions CreateOptions(ChatOptions? options, IReadOnlyList<AITool> gatewayTools)
+        private static ChatOptions CreateOptions(
+            ChatOptions? options,
+            IReadOnlyList<AITool> gatewayTools
+        )
         {
             var effectiveOptions = options?.Clone() ?? new ChatOptions();
             var effectiveTools = effectiveOptions.Tools is { Count: > 0 }
@@ -216,8 +244,15 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
 
             foreach (var gatewayTool in gatewayTools)
             {
-                if (effectiveTools.Any(existingTool =>
-                        string.Equals(existingTool.Name, gatewayTool.Name, StringComparison.OrdinalIgnoreCase)))
+                if (
+                    effectiveTools.Any(existingTool =>
+                        string.Equals(
+                            existingTool.Name,
+                            gatewayTool.Name,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                )
                 {
                     continue;
                 }
@@ -231,7 +266,9 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
 
         private McpGatewaySearchResult? FindLatestSearchResult(IReadOnlyList<ChatMessage> messages)
         {
-            var functionNamesByCallId = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var functionNamesByCallId = new Dictionary<string, string>(
+                StringComparer.OrdinalIgnoreCase
+            );
             McpGatewaySearchResult? latestSearchResult = null;
 
             foreach (var message in messages)
@@ -244,8 +281,15 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
                             functionNamesByCallId[functionCall.CallId] = functionCall.Name;
                             break;
                         case FunctionResultContent functionResult
-                            when functionNamesByCallId.TryGetValue(functionResult.CallId, out var functionName) &&
-                                 string.Equals(functionName, _options.SearchToolName, StringComparison.OrdinalIgnoreCase):
+                            when functionNamesByCallId.TryGetValue(
+                                functionResult.CallId,
+                                out var functionName
+                            )
+                                && string.Equals(
+                                    functionName,
+                                    _options.SearchToolName,
+                                    StringComparison.OrdinalIgnoreCase
+                                ):
                             latestSearchResult = ReadSearchResult(functionResult.Result);
                             break;
                     }
@@ -270,7 +314,9 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
 
             try
             {
-                return jsonElement.Deserialize<McpGatewaySearchResult>(McpGatewayJsonSerializer.Options);
+                return jsonElement.Deserialize<McpGatewaySearchResult>(
+                    McpGatewayJsonSerializer.Options
+                );
             }
             catch (JsonException)
             {

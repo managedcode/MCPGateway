@@ -35,42 +35,73 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string QueryNormalizedDiagnosticCode = "query_normalized";
     private const string QueryNormalizationFailedDiagnosticCode = "query_normalization_failed";
     private const string VectorSearchFailedDiagnosticCode = "vector_search_failed";
-    private const string MarkdownLdGraphPathMissingDiagnosticCode = "markdown_ld_graph_path_missing";
-    private const string MarkdownLdGraphDocumentFactoryMissingDiagnosticCode = "markdown_ld_graph_document_factory_missing";
-    private const string SourceLoadFailedMessageTemplate = "Failed to load tools from source '{0}': {1}";
+    private const string MarkdownLdGraphPathMissingDiagnosticCode =
+        "markdown_ld_graph_path_missing";
+    private const string MarkdownLdGraphDocumentFactoryMissingDiagnosticCode =
+        "markdown_ld_graph_document_factory_missing";
+    private const string SourceLoadFailedMessageTemplate =
+        "Failed to load tools from source '{0}': {1}";
     private const string DuplicateToolIdMessageTemplate = "Skipped duplicate tool id '{0}'.";
-    private const string GraphBuildFailedMessageTemplate = "Building the Markdown-LD tool graph failed: {0}";
-    private const string GraphFallbackMessage = "Vector search was unavailable or unusable. Markdown-LD graph ranking was used.";
-    private const string LowConfidenceResultsMessage = "Graph ranking confidence was low for this query.";
-    private const string HybridVectorMergeMessage = "Vector-first ranking was supplemented with Markdown-LD graph expansion.";
+    private const string GraphBuildFailedMessageTemplate =
+        "Building the Markdown-LD tool graph failed: {0}";
+    private const string GraphFallbackMessage =
+        "Vector search was unavailable or unusable. Markdown-LD graph ranking was used.";
+    private const string LowConfidenceResultsMessage =
+        "Graph ranking confidence was low for this query.";
+    private const string HybridVectorMergeMessage =
+        "Vector-first ranking was supplemented with Markdown-LD graph expansion.";
     private const string GraphUnavailableMessage = "Markdown-LD graph ranking is unavailable.";
     private const string GraphSearchFailedMessageTemplate = "Markdown-LD graph ranking failed: {0}";
-    private const string EmbeddingCountMismatchMessageTemplate = "Embedding generation returned {0} vectors for {1} tools.";
-    private const string EmbeddingGeneratorMissingMessage = "No keyed or unkeyed IEmbeddingGenerator<string, Embedding<float>> is registered. Stored tool embeddings may be reused, but search falls back to Markdown-LD graph ranking without a query embedding generator.";
+    private const string EmbeddingCountMismatchMessageTemplate =
+        "Embedding generation returned {0} vectors for {1} tools.";
+    private const string QueryEmbeddingCountMismatchMessageTemplate =
+        "Embedding generation returned {0} vectors for {1} search query.";
+    private const string EmbeddingGeneratorMissingMessage =
+        "No keyed or unkeyed IEmbeddingGenerator<string, Embedding<float>> is registered. Stored tool embeddings may be reused, but search falls back to Markdown-LD graph ranking without a query embedding generator.";
     private const string EmbeddingFailedMessageTemplate = "Embedding generation failed: {0}";
-    private const string EmbeddingStoreLoadFailedMessageTemplate = "Loading stored tool embeddings failed: {0}";
-    private const string EmbeddingStoreSaveFailedMessageTemplate = "Persisting generated tool embeddings failed: {0}";
-    private const string QueryVectorEmptyMessage = "Embedding generator returned an empty query vector.";
-    private const string QueryNormalizedMessage = "Search query was normalized to English before ranking.";
-    private const string QueryNormalizationFailedMessageTemplate = "Search query normalization failed and the original query was used: {0}";
-    private const string VectorSearchFailedMessageTemplate = "Vector ranking failed and Markdown-LD graph fallback was used: {0}";
-    private const string MarkdownLdGraphPathMissingMessage = "Markdown-LD graph file mode requires MarkdownLdGraphPath to point to a graph bundle file, Markdown source file, or directory.";
-    private const string MarkdownLdGraphDocumentFactoryMissingMessage = "Markdown-LD custom document mode requires MarkdownLdGraphDocumentFactory to be configured.";
+    private const string EmbeddingStoreLoadFailedMessageTemplate =
+        "Loading stored tool embeddings failed: {0}";
+    private const string EmbeddingStoreSaveFailedMessageTemplate =
+        "Persisting generated tool embeddings failed: {0}";
+    private const string QueryVectorEmptyMessage =
+        "Embedding generator returned an empty query vector.";
+    private const string QueryNormalizedMessage =
+        "Search query was normalized to English before ranking.";
+    private const string QueryNormalizationFailedMessageTemplate =
+        "Search query normalization failed and the original query was used: {0}";
+    private const string VectorSearchFailedMessageTemplate =
+        "Vector ranking failed and Markdown-LD graph fallback was used: {0}";
+    private const string MarkdownLdGraphPathMissingMessage =
+        "Markdown-LD graph file mode requires MarkdownLdGraphPath to point to a graph bundle file, Markdown source file, or directory.";
+    private const string MarkdownLdGraphDocumentFactoryMissingMessage =
+        "Markdown-LD custom document mode requires MarkdownLdGraphDocumentFactory to be configured.";
     private const string ToolNotInvokableMessageTemplate = "Tool '{0}' is not invokable.";
     private const string ToolIdOrToolNameRequiredMessage = "Either ToolId or ToolName is required.";
     private const string ToolIdNotFoundMessageTemplate = "Tool '{0}' was not found.";
-    private const string ToolNameAmbiguousMessageTemplate = "Tool '{0}' is ambiguous. Use ToolId or specify SourceId explicitly.";
-    private const string CatalogSourceMissingMessage = "ManagedCode.MCPGateway requires IMcpGatewayRegistry to be registered in the service provider. Use AddMcpGateway(...) to wire the package services.";
-    private const string FailedToLoadGatewaySourceLogMessage = "Failed to load gateway source {SourceId}.";
-    private const string GatewayGraphBuildFailedLogMessage = "Gateway Markdown-LD graph build failed.";
-    private const string GatewayGraphSearchFailedLogMessage = "Gateway Markdown-LD graph search failed.";
-    private const string EmbeddingGenerationFailedLogMessage = "Gateway embedding generation failed. Falling back to Markdown-LD graph search.";
-    private const string GatewayIndexRebuiltLogMessage = "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount} GraphNodes={GraphNodeCount} GraphEdges={GraphEdgeCount}.";
-    private const string GatewayVectorSearchFailedLogMessage = "Gateway vector search failed. Falling back to Markdown-LD graph ranking.";
-    private const string GatewayInvocationFailedLogMessage = "Gateway invocation failed for {ToolId}.";
-    private const string EmbeddingStoreLoadFailedLogMessage = "Loading stored tool embeddings failed. Falling back to generator-backed indexing.";
-    private const string EmbeddingStoreSaveFailedLogMessage = "Persisting generated tool embeddings failed.";
-    private const string GatewayQueryNormalizationFailedLogMessage = "Gateway search query normalization failed. Using original query.";
+    private const string ToolNameAmbiguousMessageTemplate =
+        "Tool '{0}' is ambiguous. Use ToolId or specify SourceId explicitly.";
+    private const string CatalogSourceMissingMessage =
+        "ManagedCode.MCPGateway requires IMcpGatewayRegistry to be registered in the service provider. Use AddMcpGateway(...) to wire the package services.";
+    private const string FailedToLoadGatewaySourceLogMessage =
+        "Failed to load gateway source {SourceId}.";
+    private const string GatewayGraphBuildFailedLogMessage =
+        "Gateway Markdown-LD graph build failed.";
+    private const string GatewayGraphSearchFailedLogMessage =
+        "Gateway Markdown-LD graph search failed.";
+    private const string EmbeddingGenerationFailedLogMessage =
+        "Gateway embedding generation failed. Falling back to Markdown-LD graph search.";
+    private const string GatewayIndexRebuiltLogMessage =
+        "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount} GraphNodes={GraphNodeCount} GraphEdges={GraphEdgeCount}.";
+    private const string GatewayVectorSearchFailedLogMessage =
+        "Gateway vector search failed. Falling back to Markdown-LD graph ranking.";
+    private const string GatewayInvocationFailedLogMessage =
+        "Gateway invocation failed for {ToolId}.";
+    private const string EmbeddingStoreLoadFailedLogMessage =
+        "Loading stored tool embeddings failed. Falling back to generator-backed indexing.";
+    private const string EmbeddingStoreSaveFailedLogMessage =
+        "Persisting generated tool embeddings failed.";
+    private const string GatewayQueryNormalizationFailedLogMessage =
+        "Gateway search query normalization failed. Using original query.";
     private const string InputSchemaPropertiesPropertyName = "properties";
     private const string InputSchemaRequiredPropertyName = "required";
     private const string InputSchemaDescriptionPropertyName = "description";
@@ -97,7 +128,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string InputSchemaLabel = "Input schema: ";
     private const string ContextSummaryPrefix = "context summary: ";
     private const string ContextPrefix = "context: ";
-    private const string GraphKnowledgeBaseUriText = "https://managedcode.com/mcpgateway/knowledge/";
+    private const string GraphKnowledgeBaseUriText =
+        "https://managedcode.com/mcpgateway/knowledge/";
     private const string GraphToolDocumentPathPrefix = "tools/";
     private const string GraphToolDocumentExtension = ".md";
     private const string GraphToolDocumentUriPrefix = "tools/";
@@ -167,7 +199,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string PluralSuffixEs = "es";
     private const string FingerprintUnknownComponent = "unknown";
     private const string FingerprintComponentSeparator = "\n";
-    private const string SearchQueryNormalizationInstructions = "Rewrite the user search request as a concise English tool-search query. Preserve identifiers, emails, repository names, CVE references, order numbers, tracking numbers, SKUs, version strings, filenames, and product names exactly. Do not answer the request. Do not explain anything. Return only the rewritten English search query. If the request is already concise English, return it unchanged.";
+    private const string SearchQueryNormalizationInstructions =
+        "Rewrite the user search request as a concise English tool-search query. Preserve identifiers, emails, repository names, CVE references, order numbers, tracking numbers, SKUs, version strings, filenames, and product names exactly. Do not answer the request. Do not explain anything. Return only the rewritten English search query. If the request is already concise English, return it unchanged.";
     private const int GraphMaxRelatedTokenSegments = 6;
     private const int GraphMaxRelatedToolsPerDocument = 4;
     private const int GraphMaxNextStepToolsPerDocument = 3;
@@ -209,9 +242,11 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         '\'',
         '@',
         '?',
-        '!'
+        '!',
     ];
-    private static readonly IReadOnlySet<string> IgnoredSearchTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    private static readonly IReadOnlySet<string> IgnoredSearchTerms = new HashSet<string>(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
         "a",
         "an",
@@ -233,18 +268,22 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         "thing",
         "this",
         "to",
-        "with"
+        "with",
     };
-    private static readonly IReadOnlySet<string> GraphDiscoveryTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    private static readonly IReadOnlySet<string> GraphDiscoveryTerms = new HashSet<string>(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
         GraphOperationTermSearch,
         GraphOperationTermFind,
         GraphOperationTermList,
         GraphOperationTermQuery,
         GraphOperationTermDiscover,
-        GraphOperationTermBrowse
+        GraphOperationTermBrowse,
     };
-    private static readonly IReadOnlySet<string> GraphInspectionTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    private static readonly IReadOnlySet<string> GraphInspectionTerms = new HashSet<string>(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
         GraphOperationTermGet,
         GraphOperationTermRead,
@@ -255,9 +294,11 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         GraphOperationTermShow,
         GraphOperationTermInspect,
         GraphOperationTermStatus,
-        GraphOperationTermRetrieve
+        GraphOperationTermRetrieve,
     };
-    private static readonly IReadOnlySet<string> GraphActionTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    private static readonly IReadOnlySet<string> GraphActionTerms = new HashSet<string>(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
         GraphOperationTermCreate,
         GraphOperationTermUpdate,
@@ -270,36 +311,65 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         GraphOperationTermWrite,
         GraphOperationTermInvoke,
         GraphOperationTermRun,
-        GraphOperationTermExecute
+        GraphOperationTermExecute,
     };
-    private static readonly IReadOnlySet<string> GraphGenericTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    private static readonly IReadOnlySet<string> GraphGenericTerms = new HashSet<string>(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
         GraphGenericToolTerm,
         GraphGenericToolsTerm,
         GraphGenericMcpTerm,
-        GraphGenericGatewayTerm
+        GraphGenericGatewayTerm,
     };
-    private static readonly CompositeFormat SourceLoadFailedMessageFormat = CompositeFormat.Parse(SourceLoadFailedMessageTemplate);
-    private static readonly CompositeFormat DuplicateToolIdMessageFormat = CompositeFormat.Parse(DuplicateToolIdMessageTemplate);
-    private static readonly CompositeFormat GraphBuildFailedMessageFormat = CompositeFormat.Parse(GraphBuildFailedMessageTemplate);
-    private static readonly CompositeFormat GraphSearchFailedMessageFormat = CompositeFormat.Parse(GraphSearchFailedMessageTemplate);
-    private static readonly CompositeFormat EmbeddingCountMismatchMessageFormat = CompositeFormat.Parse(EmbeddingCountMismatchMessageTemplate);
-    private static readonly CompositeFormat EmbeddingFailedMessageFormat = CompositeFormat.Parse(EmbeddingFailedMessageTemplate);
-    private static readonly CompositeFormat EmbeddingStoreLoadFailedMessageFormat = CompositeFormat.Parse(EmbeddingStoreLoadFailedMessageTemplate);
-    private static readonly CompositeFormat EmbeddingStoreSaveFailedMessageFormat = CompositeFormat.Parse(EmbeddingStoreSaveFailedMessageTemplate);
-    private static readonly CompositeFormat QueryNormalizationFailedMessageFormat = CompositeFormat.Parse(QueryNormalizationFailedMessageTemplate);
-    private static readonly CompositeFormat VectorSearchFailedMessageFormat = CompositeFormat.Parse(VectorSearchFailedMessageTemplate);
-    private static readonly CompositeFormat ToolNotInvokableMessageFormat = CompositeFormat.Parse(ToolNotInvokableMessageTemplate);
-    private static readonly CompositeFormat ToolIdNotFoundMessageFormat = CompositeFormat.Parse(ToolIdNotFoundMessageTemplate);
-    private static readonly CompositeFormat ToolNameAmbiguousMessageFormat = CompositeFormat.Parse(ToolNameAmbiguousMessageTemplate);
+    private static readonly CompositeFormat SourceLoadFailedMessageFormat = CompositeFormat.Parse(
+        SourceLoadFailedMessageTemplate
+    );
+    private static readonly CompositeFormat DuplicateToolIdMessageFormat = CompositeFormat.Parse(
+        DuplicateToolIdMessageTemplate
+    );
+    private static readonly CompositeFormat GraphBuildFailedMessageFormat = CompositeFormat.Parse(
+        GraphBuildFailedMessageTemplate
+    );
+    private static readonly CompositeFormat GraphSearchFailedMessageFormat = CompositeFormat.Parse(
+        GraphSearchFailedMessageTemplate
+    );
+    private static readonly CompositeFormat EmbeddingCountMismatchMessageFormat =
+        CompositeFormat.Parse(EmbeddingCountMismatchMessageTemplate);
+    private static readonly CompositeFormat QueryEmbeddingCountMismatchMessageFormat =
+        CompositeFormat.Parse(QueryEmbeddingCountMismatchMessageTemplate);
+    private static readonly CompositeFormat EmbeddingFailedMessageFormat = CompositeFormat.Parse(
+        EmbeddingFailedMessageTemplate
+    );
+    private static readonly CompositeFormat EmbeddingStoreLoadFailedMessageFormat =
+        CompositeFormat.Parse(EmbeddingStoreLoadFailedMessageTemplate);
+    private static readonly CompositeFormat EmbeddingStoreSaveFailedMessageFormat =
+        CompositeFormat.Parse(EmbeddingStoreSaveFailedMessageTemplate);
+    private static readonly CompositeFormat QueryNormalizationFailedMessageFormat =
+        CompositeFormat.Parse(QueryNormalizationFailedMessageTemplate);
+    private static readonly CompositeFormat VectorSearchFailedMessageFormat = CompositeFormat.Parse(
+        VectorSearchFailedMessageTemplate
+    );
+    private static readonly CompositeFormat ToolNotInvokableMessageFormat = CompositeFormat.Parse(
+        ToolNotInvokableMessageTemplate
+    );
+    private static readonly CompositeFormat ToolIdNotFoundMessageFormat = CompositeFormat.Parse(
+        ToolIdNotFoundMessageTemplate
+    );
+    private static readonly CompositeFormat ToolNameAmbiguousMessageFormat = CompositeFormat.Parse(
+        ToolNameAmbiguousMessageTemplate
+    );
     private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<McpGatewayRuntime> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private readonly IMcpGatewayCatalogSource _catalogSource;
     private readonly McpGatewaySearchStrategy _searchStrategy;
     private readonly McpGatewayMarkdownLdGraphSource _markdownLdGraphSource;
-    private readonly Func<IReadOnlyList<McpGatewayToolDescriptor>, CancellationToken, ValueTask<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>>?
-        _markdownLdGraphDocumentFactory;
+    private readonly Func<
+        IReadOnlyList<McpGatewayToolDescriptor>,
+        CancellationToken,
+        ValueTask<IReadOnlyList<McpGatewayMarkdownLdGraphDocument>>
+    >? _markdownLdGraphDocumentFactory;
     private readonly McpGatewaySearchQueryNormalization _searchQueryNormalization;
     private readonly string? _markdownLdGraphPath;
     private readonly int _defaultSearchLimit;
@@ -315,7 +385,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         IServiceProvider serviceProvider,
         IOptions<McpGatewayOptions> options,
         ILogger<McpGatewayRuntime> logger,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory
+    )
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(options);
@@ -341,8 +412,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
 
     public IReadOnlyList<AITool> CreateMetaTools(
         string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
-        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName)
-        => new McpGatewayToolSet(this).CreateTools(searchToolName, invokeToolName);
+        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
+    ) => new McpGatewayToolSet(this).CreateTools(searchToolName, invokeToolName);
 
     public ValueTask DisposeAsync()
     {
@@ -357,12 +428,18 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
 
     private static IMcpGatewayCatalogSource ResolveCatalogSource(IServiceProvider serviceProvider)
     {
-        if (serviceProvider.GetService<IMcpGatewayCatalogSource>() is IMcpGatewayCatalogSource catalogSource)
+        if (
+            serviceProvider.GetService<IMcpGatewayCatalogSource>()
+            is IMcpGatewayCatalogSource catalogSource
+        )
         {
             return catalogSource;
         }
 
-        if (serviceProvider.GetService<IMcpGatewayRegistry>() is IMcpGatewayCatalogSource registryCatalogSource)
+        if (
+            serviceProvider.GetService<IMcpGatewayRegistry>()
+            is IMcpGatewayCatalogSource registryCatalogSource
+        )
         {
             return registryCatalogSource;
         }

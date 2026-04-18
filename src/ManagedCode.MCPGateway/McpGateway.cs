@@ -9,36 +9,44 @@ public sealed class McpGateway(
     IServiceProvider serviceProvider,
     IOptions<McpGatewayOptions> options,
     ILogger<McpGateway> logger,
-    ILoggerFactory loggerFactory) : IMcpGateway
+    ILoggerFactory loggerFactory
+) : IMcpGateway
 {
-    private readonly McpGatewayRuntime _runtime = CreateRuntime(serviceProvider, options, logger, loggerFactory);
+    private readonly McpGatewayRuntime _runtime = CreateRuntime(
+        serviceProvider,
+        options,
+        logger,
+        loggerFactory
+    );
 
-    public Task<McpGatewayIndexBuildResult> BuildIndexAsync(CancellationToken cancellationToken = default)
-        => _runtime.BuildIndexAsync(cancellationToken);
+    public Task<McpGatewayIndexBuildResult> BuildIndexAsync(
+        CancellationToken cancellationToken = default
+    ) => _runtime.BuildIndexAsync(cancellationToken);
 
-    public Task<IReadOnlyList<McpGatewayToolDescriptor>> ListToolsAsync(CancellationToken cancellationToken = default)
-        => _runtime.ListToolsAsync(cancellationToken);
+    public Task<IReadOnlyList<McpGatewayToolDescriptor>> ListToolsAsync(
+        CancellationToken cancellationToken = default
+    ) => _runtime.ListToolsAsync(cancellationToken);
 
     public Task<McpGatewaySearchResult> SearchAsync(
         string? query,
         int? maxResults = null,
-        CancellationToken cancellationToken = default)
-        => _runtime.SearchAsync(query, maxResults, cancellationToken);
+        CancellationToken cancellationToken = default
+    ) => _runtime.SearchAsync(query, maxResults, cancellationToken);
 
     public Task<McpGatewaySearchResult> SearchAsync(
         McpGatewaySearchRequest request,
-        CancellationToken cancellationToken = default)
-        => _runtime.SearchAsync(request, cancellationToken);
+        CancellationToken cancellationToken = default
+    ) => _runtime.SearchAsync(request, cancellationToken);
 
     public Task<McpGatewayInvokeResult> InvokeAsync(
         McpGatewayInvokeRequest request,
-        CancellationToken cancellationToken = default)
-        => _runtime.InvokeAsync(request, cancellationToken);
+        CancellationToken cancellationToken = default
+    ) => _runtime.InvokeAsync(request, cancellationToken);
 
     public IReadOnlyList<AITool> CreateMetaTools(
         string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
-        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName)
-        => _runtime.CreateMetaTools(searchToolName, invokeToolName);
+        string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
+    ) => _runtime.CreateMetaTools(searchToolName, invokeToolName);
 
     public ValueTask DisposeAsync() => _runtime.DisposeAsync();
 
@@ -46,7 +54,8 @@ public sealed class McpGateway(
         IServiceProvider serviceProvider,
         IOptions<McpGatewayOptions> options,
         ILogger<McpGateway> logger,
-        ILoggerFactory loggerFactory)
+        ILoggerFactory loggerFactory
+    )
     {
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(options);
@@ -57,6 +66,7 @@ public sealed class McpGateway(
             serviceProvider,
             options,
             loggerFactory.CreateLogger<McpGatewayRuntime>(),
-            loggerFactory);
+            loggerFactory
+        );
     }
 }

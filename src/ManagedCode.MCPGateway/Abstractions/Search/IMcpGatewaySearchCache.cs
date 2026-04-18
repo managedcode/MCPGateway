@@ -6,25 +6,29 @@ public interface IMcpGatewaySearchCache
         McpGatewaySearchQueryNormalization normalization,
         string query,
         string? chatClientFingerprint,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     ValueTask SetNormalizedQueryAsync(
         McpGatewaySearchQueryNormalization normalization,
         string query,
         string? chatClientFingerprint,
         string? normalizedQuery,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     ValueTask<(bool found, McpGatewayQueryEmbedding? embedding)> TryGetQueryEmbeddingAsync(
         string query,
         string? embeddingGeneratorFingerprint,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     ValueTask SetQueryEmbeddingAsync(
         string query,
         string? embeddingGeneratorFingerprint,
         McpGatewayQueryEmbedding embedding,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     ValueTask<(bool found, McpGatewaySearchCachedResult? result)> TryGetSearchResultAsync(
         int snapshotVersion,
@@ -36,7 +40,8 @@ public interface IMcpGatewaySearchCache
         int limit,
         string? chatClientFingerprint,
         string? embeddingGeneratorFingerprint,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 
     ValueTask SetSearchResultAsync(
         int snapshotVersion,
@@ -49,5 +54,6 @@ public interface IMcpGatewaySearchCache
         string? chatClientFingerprint,
         string? embeddingGeneratorFingerprint,
         McpGatewaySearchCachedResult result,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default
+    );
 }

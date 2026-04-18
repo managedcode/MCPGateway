@@ -9,7 +9,8 @@ internal sealed partial class McpGatewayRuntime
 {
     private static McpGatewayToolDescriptor? BuildDescriptor(
         McpGatewayToolSourceRegistration registration,
-        McpGatewayLoadedTool loadedTool)
+        McpGatewayLoadedTool loadedTool
+    )
     {
         var tool = loadedTool.Tool;
         if (string.IsNullOrWhiteSpace(tool.Name))
@@ -22,8 +23,9 @@ internal sealed partial class McpGatewayRuntime
         {
             McpGatewaySourceRegistrationKind.Http => McpGatewaySourceKind.HttpMcp,
             McpGatewaySourceRegistrationKind.Stdio => McpGatewaySourceKind.StdioMcp,
-            McpGatewaySourceRegistrationKind.CustomMcpClient => McpGatewaySourceKind.CustomMcpClient,
-            _ => McpGatewaySourceKind.Local
+            McpGatewaySourceRegistrationKind.CustomMcpClient =>
+                McpGatewaySourceKind.CustomMcpClient,
+            _ => McpGatewaySourceKind.Local,
         };
 
         var inputSchema = ResolveInputSchema(tool);
@@ -37,19 +39,21 @@ internal sealed partial class McpGatewayRuntime
             DisplayName: ResolveDisplayName(tool),
             Description: tool.Description ?? string.Empty,
             RequiredArguments: inputSchema.RequiredArguments,
-            InputSchemaJson: inputSchema.Json)
+            InputSchemaJson: inputSchema.Json
+        )
         {
             SearchAliases = searchHints.Aliases ?? [],
-            SearchKeywords = searchHints.Keywords ?? []
+            SearchKeywords = searchHints.Keywords ?? [],
         };
     }
 
-    private string BuildDescriptorDocument(McpGatewayToolDescriptor descriptor)
-        => BuildDescriptorDocument(descriptor, _maxDescriptorLength);
+    private string BuildDescriptorDocument(McpGatewayToolDescriptor descriptor) =>
+        BuildDescriptorDocument(descriptor, _maxDescriptorLength);
 
     internal static string BuildDescriptorDocument(
         McpGatewayToolDescriptor descriptor,
-        int maxDescriptorLength)
+        int maxDescriptorLength
+    )
     {
         var builder = new StringBuilder();
         builder.Append(ToolNameLabel);
@@ -88,9 +92,7 @@ internal sealed partial class McpGatewayRuntime
         AppendInputSchema(builder, descriptor.InputSchemaJson);
         var document = builder.ToString().Trim();
         var effectiveMaxLength = Math.Max(256, maxDescriptorLength);
-        return document.Length <= effectiveMaxLength
-            ? document
-            : document[..effectiveMaxLength];
+        return document.Length <= effectiveMaxLength ? document : document[..effectiveMaxLength];
     }
 
     private static void AppendInputSchema(StringBuilder builder, string? inputSchemaJson)
@@ -103,60 +105,14 @@ internal sealed partial class McpGatewayRuntime
         try
         {
             using var schemaDocument = JsonDocument.Parse(inputSchemaJson);
-            if (!schemaDocument.RootElement.TryGetProperty(InputSchemaPropertiesPropertyName, out var properties) ||
-                properties.ValueKind != JsonValueKind.Object)
+            if (!TryGetSchemaProperties(schemaDocument.RootElement, out var properties))
             {
                 return;
             }
 
             foreach (var property in properties.EnumerateObject())
             {
-                builder.Append(ParameterLabel);
-                builder.Append(property.Name);
-                builder.Append(": ");
-
-                if (property.Value.TryGetProperty(InputSchemaDescriptionPropertyName, out var description) &&
-                    description.ValueKind == JsonValueKind.String)
-                {
-                    builder.Append(description.GetString());
-                    builder.Append(". ");
-                }
-
-                if (property.Value.TryGetProperty(InputSchemaTypePropertyName, out var type) &&
-                    type.ValueKind == JsonValueKind.String)
-                {
-                    builder.Append(TypeLabel);
-                    builder.Append(type.GetString());
-                    builder.Append(". ");
-                }
-
-                if (property.Value.TryGetProperty(InputSchemaEnumPropertyName, out var enumValues) &&
-                    enumValues.ValueKind == JsonValueKind.Array)
-                {
-                    var values = new List<string>();
-                    foreach (var enumValue in enumValues.EnumerateArray())
-                    {
-                        if (enumValue.ValueKind != JsonValueKind.String)
-                        {
-                            continue;
-                        }
-
-                        var value = enumValue.GetString();
-                        if (!string.IsNullOrWhiteSpace(value))
-                        {
-                            values.Add(value);
-                        }
-                    }
-
-                    if (values.Count > 0)
-                    {
-                        builder.Append(TypicalValuesLabel);
-                        builder.Append(string.Join(", ", values));
-                        builder.Append(". ");
-                    }
-                }
-
-                builder.AppendLine();
+                AppendInputSchemaProperty(builder, property);
             }
         }
         catch (JsonException)
@@ -164,6 +120,122 @@ internal sealed partial class McpGatewayRuntime
             builder.Append(InputSchemaLabel);
             builder.AppendLine(inputSchemaJson);
         }
+    }
+
+    private static bool TryGetSchemaProperties(JsonElement rootElement, out JsonElement properties)
+    {
+        if (
+            rootElement.TryGetProperty(InputSchemaPropertiesPropertyName, out properties)
+            && properties.ValueKind == JsonValueKind.Object
+        )
+        {
+            return true;
+        }
+
+        properties = default;
+        return false;
+    }
+
+    private static void AppendInputSchemaProperty(StringBuilder builder, JsonProperty property)
+    {
+        builder.Append(ParameterLabel);
+        builder.Append(property.Name);
+        builder.Append(": ");
+
+        AppendSchemaDescription(builder, property.Value);
+        AppendSchemaType(builder, property.Value);
+        AppendSchemaEnumValues(builder, property.Value);
+
+        builder.AppendLine();
+    }
+
+    private static void AppendSchemaDescription(StringBuilder builder, JsonElement propertyValue)
+    {
+        if (
+            !TryReadSchemaString(
+                propertyValue,
+                InputSchemaDescriptionPropertyName,
+                out var description
+            )
+        )
+        {
+            return;
+        }
+
+        builder.Append(description);
+        builder.Append(". ");
+    }
+
+    private static void AppendSchemaType(StringBuilder builder, JsonElement propertyValue)
+    {
+        if (!TryReadSchemaString(propertyValue, InputSchemaTypePropertyName, out var type))
+        {
+            return;
+        }
+
+        builder.Append(TypeLabel);
+        builder.Append(type);
+        builder.Append(". ");
+    }
+
+    private static void AppendSchemaEnumValues(StringBuilder builder, JsonElement propertyValue)
+    {
+        var values = ReadSchemaEnumValues(propertyValue);
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        builder.Append(TypicalValuesLabel);
+        builder.Append(string.Join(", ", values));
+        builder.Append(". ");
+    }
+
+    private static bool TryReadSchemaString(
+        JsonElement element,
+        string propertyName,
+        out string? value
+    )
+    {
+        value = null;
+        if (
+            !element.TryGetProperty(propertyName, out var property)
+            || property.ValueKind != JsonValueKind.String
+        )
+        {
+            return false;
+        }
+
+        value = property.GetString();
+        return !string.IsNullOrWhiteSpace(value);
+    }
+
+    private static IReadOnlyList<string> ReadSchemaEnumValues(JsonElement propertyValue)
+    {
+        if (
+            !propertyValue.TryGetProperty(InputSchemaEnumPropertyName, out var enumValues)
+            || enumValues.ValueKind != JsonValueKind.Array
+        )
+        {
+            return [];
+        }
+
+        var values = new List<string>();
+        foreach (var enumValue in enumValues.EnumerateArray())
+        {
+            if (enumValue.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = enumValue.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                values.Add(value);
+            }
+        }
+
+        return values;
     }
 
     private static string? ResolveDisplayName(AITool tool)
@@ -174,10 +246,15 @@ internal sealed partial class McpGatewayRuntime
         }
 
         var function = tool as AIFunction ?? tool.GetService<AIFunction>();
-        if (function?.AdditionalProperties is { Count: > 0 } &&
-            function.AdditionalProperties.TryGetValue(DisplayNamePropertyName, out var displayName) &&
-            displayName is string value &&
-            !string.IsNullOrWhiteSpace(value))
+        if (
+            function?.AdditionalProperties is { Count: > 0 }
+            && function.AdditionalProperties.TryGetValue(
+                DisplayNamePropertyName,
+                out var displayName
+            )
+            && displayName is string value
+            && !string.IsNullOrWhiteSpace(value)
+        )
         {
             return value;
         }
@@ -187,7 +264,8 @@ internal sealed partial class McpGatewayRuntime
 
     private static McpGatewayToolSearchHints ResolveSearchHints(
         AITool tool,
-        McpGatewayToolSearchHints? registeredHints)
+        McpGatewayToolSearchHints? registeredHints
+    )
     {
         var aliases = new List<string>();
         var keywords = new List<string>();
@@ -199,13 +277,25 @@ internal sealed partial class McpGatewayRuntime
 
         if (tool is McpClientTool mcpTool)
         {
-            AddSerializedSearchHints(aliases, seenAliases, keywords, seenKeywords, mcpTool.ProtocolTool?.Annotations);
+            AddSerializedSearchHints(
+                aliases,
+                seenAliases,
+                keywords,
+                seenKeywords,
+                mcpTool.ProtocolTool?.Annotations
+            );
         }
 
         var function = tool as AIFunction ?? tool.GetService<AIFunction>();
         if (function?.AdditionalProperties is { Count: > 0 })
         {
-            AddSerializedSearchHints(aliases, seenAliases, keywords, seenKeywords, function.AdditionalProperties);
+            AddSerializedSearchHints(
+                aliases,
+                seenAliases,
+                keywords,
+                seenKeywords,
+                function.AdditionalProperties
+            );
         }
 
         return new McpGatewayToolSearchHints(aliases, keywords);
@@ -216,31 +306,45 @@ internal sealed partial class McpGatewayRuntime
         ISet<string> seenAliases,
         ICollection<string> keywords,
         ISet<string> seenKeywords,
-        object? value)
+        object? value
+    )
     {
-        if (McpGatewayJsonSerializer.TrySerializeToElement(value) is not JsonElement element ||
-            element.ValueKind != JsonValueKind.Object)
+        if (
+            McpGatewayJsonSerializer.TrySerializeToElement(value) is not JsonElement element
+            || element.ValueKind != JsonValueKind.Object
+        )
         {
             return;
         }
 
-        AddSearchHintValues(aliases, seenAliases, ReadSearchHintValues(
-            element,
-            SearchAliasesPropertyName,
-            SearchAliasesCamelCasePropertyName,
-            SearchAliasesSnakeCasePropertyName,
-            SearchAliasesShortPropertyName));
-        AddSearchHintValues(keywords, seenKeywords, ReadSearchHintValues(
-            element,
-            SearchKeywordsPropertyName,
-            SearchKeywordsCamelCasePropertyName,
-            SearchKeywordsSnakeCasePropertyName,
-            SearchKeywordsShortPropertyName));
+        AddSearchHintValues(
+            aliases,
+            seenAliases,
+            ReadSearchHintValues(
+                element,
+                SearchAliasesPropertyName,
+                SearchAliasesCamelCasePropertyName,
+                SearchAliasesSnakeCasePropertyName,
+                SearchAliasesShortPropertyName
+            )
+        );
+        AddSearchHintValues(
+            keywords,
+            seenKeywords,
+            ReadSearchHintValues(
+                element,
+                SearchKeywordsPropertyName,
+                SearchKeywordsCamelCasePropertyName,
+                SearchKeywordsSnakeCasePropertyName,
+                SearchKeywordsShortPropertyName
+            )
+        );
     }
 
     private static IReadOnlyList<string> ReadSearchHintValues(
         JsonElement element,
-        params string[] propertyNames)
+        params string[] propertyNames
+    )
     {
         foreach (var propertyName in propertyNames)
         {
@@ -260,18 +364,20 @@ internal sealed partial class McpGatewayRuntime
         return element.ValueKind switch
         {
             JsonValueKind.String => [element.GetString() ?? string.Empty],
-            JsonValueKind.Array => element.EnumerateArray()
+            JsonValueKind.Array => element
+                .EnumerateArray()
                 .Where(static item => item.ValueKind == JsonValueKind.String)
                 .Select(static item => item.GetString() ?? string.Empty)
                 .ToArray(),
-            _ => []
+            _ => [],
         };
     }
 
     private static void AddSearchHintValues(
         ICollection<string> target,
         ISet<string> seenValues,
-        IEnumerable<string>? values)
+        IEnumerable<string>? values
+    )
     {
         if (values is null)
         {
@@ -315,20 +421,26 @@ internal sealed partial class McpGatewayRuntime
 
     private static SerializedSchema SerializeSchema(object? schema)
     {
-        if (McpGatewayJsonSerializer.TrySerializeToElement(schema) is not JsonElement serializedSchema)
+        if (
+            McpGatewayJsonSerializer.TrySerializeToElement(schema)
+            is not JsonElement serializedSchema
+        )
         {
             return SerializedSchema.Empty;
         }
 
         return new SerializedSchema(
             serializedSchema.GetRawText(),
-            ExtractRequiredArguments(serializedSchema));
+            ExtractRequiredArguments(serializedSchema)
+        );
     }
 
     private static IReadOnlyList<string> ExtractRequiredArguments(JsonElement schemaElement)
     {
-        if (!schemaElement.TryGetProperty(InputSchemaRequiredPropertyName, out var required) ||
-            required.ValueKind != JsonValueKind.Array)
+        if (
+            !schemaElement.TryGetProperty(InputSchemaRequiredPropertyName, out var required)
+            || required.ValueKind != JsonValueKind.Array
+        )
         {
             return [];
         }

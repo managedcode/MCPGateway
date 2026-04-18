@@ -2,11 +2,9 @@ using System.ComponentModel;
 using System.IO.Pipelines;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -19,25 +17,33 @@ internal sealed class TestMcpServerHost(
     ModelContextProtocol.Server.McpServer server,
     CancellationTokenSource cancellationTokenSource,
     Task serverTask,
-    IReadOnlyList<JsonObject> capturedMeta) : IAsyncDisposable
+    IReadOnlyList<JsonObject> capturedMeta
+) : IAsyncDisposable
 {
     public McpClient Client { get; } = client;
 
     public IReadOnlyList<JsonObject> CapturedMeta { get; } = capturedMeta;
 
-    public static async Task<TestMcpServerHost> StartAsync(CancellationToken cancellationToken = default)
-        => await StartAsync(
+    public static async Task<TestMcpServerHost> StartAsync(
+        CancellationToken cancellationToken = default
+    ) =>
+        await StartAsync(
             static builder => builder.WithToolsFromAssembly(typeof(TestMcpTools).Assembly),
-            cancellationToken);
+            cancellationToken
+        );
 
-    public static async Task<TestMcpServerHost> StartGraphAsync(CancellationToken cancellationToken = default)
-        => await StartAsync(
+    public static async Task<TestMcpServerHost> StartGraphAsync(
+        CancellationToken cancellationToken = default
+    ) =>
+        await StartAsync(
             static builder => builder.WithTools<TestMcpGraphTools>(),
-            cancellationToken);
+            cancellationToken
+        );
 
     private static async Task<TestMcpServerHost> StartAsync(
         Action<IMcpServerBuilder> configureTools,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         var capturedMeta = new List<JsonObject>();
         var services = new ServiceCollection();
@@ -48,33 +54,40 @@ internal sealed class TestMcpServerHost(
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
         var options = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>();
 
-        options.Value.Filters.Request.CallToolFilters.Add(next => async (request, token) =>
-        {
-            if (request.Params?.Meta is JsonObject meta)
+        options.Value.Filters.Request.CallToolFilters.Add(next =>
+            async (request, token) =>
             {
-                capturedMeta.Add((JsonObject)meta.DeepClone());
-            }
-            else if (request.Params?.Meta is not null &&
-                     JsonSerializer.SerializeToNode(request.Params.Meta) is JsonObject serializedMeta)
-            {
-                capturedMeta.Add(serializedMeta);
-            }
+                if (request.Params?.Meta is JsonObject meta)
+                {
+                    capturedMeta.Add((JsonObject)meta.DeepClone());
+                }
+                else if (
+                    request.Params?.Meta is not null
+                    && JsonSerializer.SerializeToNode(request.Params.Meta)
+                        is JsonObject serializedMeta
+                )
+                {
+                    capturedMeta.Add(serializedMeta);
+                }
 
-            return await next(request, token);
-        });
+                return await next(request, token);
+            }
+        );
 
         var clientToServer = new Pipe();
         var serverToClient = new Pipe();
 
         var serverTransport = new StreamServerTransport(
             clientToServer.Reader.AsStream(),
-            serverToClient.Writer.AsStream());
+            serverToClient.Writer.AsStream()
+        );
 
         var server = ModelContextProtocol.Server.McpServer.Create(
             serverTransport,
             options.Value,
             loggerFactory,
-            serviceProvider);
+            serviceProvider
+        );
 
         var serverCancellation = new CancellationTokenSource();
         var serverTask = server.RunAsync(serverCancellation.Token);
@@ -82,7 +95,8 @@ internal sealed class TestMcpServerHost(
         var clientTransport = new StreamClientTransport(
             clientToServer.Writer.AsStream(),
             serverToClient.Reader.AsStream(),
-            loggerFactory);
+            loggerFactory
+        );
 
         var client = await McpClient.CreateAsync(
             clientTransport,
@@ -91,11 +105,12 @@ internal sealed class TestMcpServerHost(
                 ClientInfo = new Implementation
                 {
                     Name = "managedcode-mcpgateway-tests",
-                    Version = "1.0.0"
-                }
+                    Version = "1.0.0",
+                },
             },
             loggerFactory,
-            cancellationToken);
+            cancellationToken
+        );
 
         return new TestMcpServerHost(
             serviceProvider,
@@ -103,7 +118,8 @@ internal sealed class TestMcpServerHost(
             server,
             serverCancellation,
             serverTask,
-            capturedMeta);
+            capturedMeta
+        );
     }
 
     public async ValueTask DisposeAsync()
@@ -114,9 +130,7 @@ internal sealed class TestMcpServerHost(
         {
             await serverTask;
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { }
 
         await Client.DisposeAsync();
         await server.DisposeAsync();
@@ -132,33 +146,34 @@ internal sealed class TestMcpServerHost(
             Title = "Search GitHub repositories",
             Idempotent = true,
             ReadOnly = true,
-            UseStructuredContent = true)]
+            UseStructuredContent = true
+        )]
         [Description("Search GitHub repositories by query text.")]
         public static TestMcpSearchResult SearchRepositories(
-            [Description("Repository search query.")] string query)
-            => new(query, "mcp");
+            [Description("Repository search query.")] string query
+        ) => new(query, "mcp");
 
         [McpServerTool(
             Name = "json_text_search",
             Title = "Return JSON as text",
             Idempotent = true,
             ReadOnly = true,
-            UseStructuredContent = false)]
+            UseStructuredContent = false
+        )]
         [Description("Return a JSON document as plain text content.")]
-        public static string ReturnJsonAsText(
-            [Description("Payload query text.")] string query)
-            => JsonSerializer.Serialize(new TestMcpSearchResult(query, "text-json"));
+        public static string ReturnJsonAsText([Description("Payload query text.")] string query) =>
+            JsonSerializer.Serialize(new TestMcpSearchResult(query, "text-json"));
 
         [McpServerTool(
             Name = "plain_text_search",
             Title = "Return plain text",
             Idempotent = true,
             ReadOnly = true,
-            UseStructuredContent = false)]
+            UseStructuredContent = false
+        )]
         [Description("Return plain text content.")]
-        public static string ReturnPlainText(
-            [Description("Payload query text.")] string query)
-            => $"plain:{query}";
+        public static string ReturnPlainText([Description("Payload query text.")] string query) =>
+            $"plain:{query}";
     }
 
     private sealed class TestMcpGraphTools
@@ -168,44 +183,48 @@ internal sealed class TestMcpServerHost(
             Title = "Search story feed items",
             Idempotent = true,
             ReadOnly = true,
-            UseStructuredContent = true)]
+            UseStructuredContent = true
+        )]
         [Description("Search story feed items by query text before detail lookup or comments.")]
         public static TestMcpSearchResult SearchStoryItems(
-            [Description("Story feed search query.")] string query)
-            => new(query, "story-search");
+            [Description("Story feed search query.")] string query
+        ) => new(query, "story-search");
 
         [McpServerTool(
             Name = "story_item_detail",
             Title = "Read story feed item detail",
             Idempotent = true,
             ReadOnly = true,
-            UseStructuredContent = true)]
+            UseStructuredContent = true
+        )]
         [Description("Read story feed item detail by story id after search resolves the item.")]
         public static TestMcpSearchResult ReadStoryItem(
-            [Description("Story item id.")] string storyId)
-            => new(storyId, "story-detail");
+            [Description("Story item id.")] string storyId
+        ) => new(storyId, "story-detail");
 
         [McpServerTool(
             Name = "story_comments_list",
             Title = "List story comments",
             Idempotent = true,
             ReadOnly = true,
-            UseStructuredContent = true)]
+            UseStructuredContent = true
+        )]
         [Description("List story comments after a story item has been found.")]
         public static TestMcpSearchResult ListStoryComments(
-            [Description("Story item id.")] string storyId)
-            => new(storyId, "story-comments");
+            [Description("Story item id.")] string storyId
+        ) => new(storyId, "story-comments");
 
         [McpServerTool(
             Name = "people_profile_search",
             Title = "Search people profiles",
             Idempotent = true,
             ReadOnly = true,
-            UseStructuredContent = true)]
+            UseStructuredContent = true
+        )]
         [Description("Search people profiles by name, relationship, or organization.")]
         public static TestMcpSearchResult SearchPeople(
-            [Description("People profile search query.")] string query)
-            => new(query, "people-search");
+            [Description("People profile search query.")] string query
+        ) => new(query, "people-search");
     }
 
     private sealed record TestMcpSearchResult(string Query, string Source);

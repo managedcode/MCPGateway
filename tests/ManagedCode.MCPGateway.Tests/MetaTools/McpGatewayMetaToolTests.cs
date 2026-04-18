@@ -1,8 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
-
 using ManagedCode.MCPGateway.Abstractions;
-
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -14,30 +12,54 @@ public sealed class McpGatewayMetaToolTests
     public async Task CreateMetaTools_SearchToolSupportsContextAwareRequests()
     {
         var embeddingGenerator = new TestEmbeddingGenerator();
-        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
-        {
-            options.AddTool("local", TestFunctionFactory.CreateFunction(SearchGitHub, "github_search_issues", "Search GitHub issues and pull requests by user query."));
-            options.AddTool("local", TestFunctionFactory.CreateFunction(SearchWeather, "weather_search_forecast", "Search weather forecast and temperature information by city name."));
-        }, embeddingGenerator);
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            options =>
+            {
+                options.AddTool(
+                    "local",
+                    TestFunctionFactory.CreateFunction(
+                        SearchGitHub,
+                        "github_search_issues",
+                        "Search GitHub issues and pull requests by user query."
+                    )
+                );
+                options.AddTool(
+                    "local",
+                    TestFunctionFactory.CreateFunction(
+                        SearchWeather,
+                        "weather_search_forecast",
+                        "Search weather forecast and temperature information by city name."
+                    )
+                );
+            },
+            embeddingGenerator
+        );
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
-        var searchTool = GetFunction(gateway.CreateMetaTools(), McpGatewayToolSet.DefaultSearchToolName);
+        var searchTool = GetFunction(
+            gateway.CreateMetaTools(),
+            McpGatewayToolSet.DefaultSearchToolName
+        );
 
         var result = await searchTool.InvokeAsync(
             new AIFunctionArguments(
                 new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["query"] = "search",
-                    ["contextSummary"] = "weather forecast"
+                    ["contextSummary"] = "weather forecast",
                 },
-                StringComparer.OrdinalIgnoreCase));
+                StringComparer.OrdinalIgnoreCase
+            )
+        );
 
         await Assert.That(result).IsTypeOf<JsonElement>();
 
         var searchResult = (JsonElement)result!;
         var matches = GetJsonProperty(searchResult, "matches");
         await Assert.That(matches[0].ValueKind).IsEqualTo(JsonValueKind.Object);
-        await Assert.That(GetJsonProperty(matches[0], "toolId").GetString()).IsEqualTo("local:weather_search_forecast");
+        await Assert
+            .That(GetJsonProperty(matches[0], "toolId").GetString())
+            .IsEqualTo("local:weather_search_forecast");
     }
 
     [TUnit.Core.Test]
@@ -45,28 +67,42 @@ public sealed class McpGatewayMetaToolTests
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
-            options.AddTool("local", TestFunctionFactory.CreateFunction(EchoContextSummary, "context_summary_echo", "Echo query and context summary."));
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    EchoContextSummary,
+                    "context_summary_echo",
+                    "Echo query and context summary."
+                )
+            );
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         await gateway.BuildIndexAsync();
 
-        var invokeTool = GetFunction(gateway.CreateMetaTools(), McpGatewayToolSet.DefaultInvokeToolName);
+        var invokeTool = GetFunction(
+            gateway.CreateMetaTools(),
+            McpGatewayToolSet.DefaultInvokeToolName
+        );
         var result = await invokeTool.InvokeAsync(
             new AIFunctionArguments(
                 new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
                 {
                     ["toolId"] = "local:context_summary_echo",
                     ["query"] = "open github",
-                    ["contextSummary"] = "user is on repository settings page"
+                    ["contextSummary"] = "user is on repository settings page",
                 },
-                StringComparer.OrdinalIgnoreCase));
+                StringComparer.OrdinalIgnoreCase
+            )
+        );
 
         await Assert.That(result).IsTypeOf<JsonElement>();
 
         var invokeResult = (JsonElement)result!;
         await Assert.That(GetJsonProperty(invokeResult, "isSuccess").GetBoolean()).IsTrue();
-        await Assert.That(GetJsonProperty(invokeResult, "output").GetString()).IsEqualTo("open github|user is on repository settings page");
+        await Assert
+            .That(GetJsonProperty(invokeResult, "output").GetString())
+            .IsEqualTo("open github|user is on repository settings page");
     }
 
     [TUnit.Core.Test]
@@ -75,8 +111,7 @@ public sealed class McpGatewayMetaToolTests
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
         var toolSet = serviceProvider.GetRequiredService<McpGatewayToolSet>();
 
-        var discoveredTools = toolSet.CreateDiscoveredTools(
-        [
+        var discoveredTools = toolSet.CreateDiscoveredTools([
             new McpGatewaySearchMatch(
                 ToolId: "local:123-tool",
                 SourceId: "9-source",
@@ -86,28 +121,35 @@ public sealed class McpGatewayMetaToolTests
                 Description: "Example tool.",
                 RequiredArguments: [],
                 InputSchemaJson: null,
-                Score: 0.9d)
+                Score: 0.9d
+            ),
         ]);
 
         await Assert.That(discoveredTools.Count).IsEqualTo(1);
         await Assert.That(discoveredTools[0].Name).IsEqualTo("t_123_tool");
     }
 
-    private static AIFunction GetFunction(IReadOnlyList<AITool> tools, string toolName)
-        => (tools.Single(tool => tool.Name == toolName) as AIFunction)
-           ?? throw new InvalidOperationException($"Tool '{toolName}' is not an AIFunction.");
+    private static AIFunction GetFunction(IReadOnlyList<AITool> tools, string toolName) =>
+        (tools.Single(tool => tool.Name == toolName) as AIFunction)
+        ?? throw new InvalidOperationException($"Tool '{toolName}' is not an AIFunction.");
 
-    private static string SearchGitHub([Description("Search query text.")] string query) => $"github:{query}";
+    private static string SearchGitHub([Description("Search query text.")] string query) =>
+        $"github:{query}";
 
-    private static string SearchWeather([Description("City or weather request text.")] string query) => $"weather:{query}";
+    private static string SearchWeather(
+        [Description("City or weather request text.")] string query
+    ) => $"weather:{query}";
 
     private static string EchoContextSummary(
         [Description("Main query text.")] string query,
-        [Description("Execution context summary.")] string contextSummary)
-        => $"{query}|{contextSummary}";
+        [Description("Execution context summary.")] string contextSummary
+    ) => $"{query}|{contextSummary}";
 
-    private static JsonElement GetJsonProperty(JsonElement element, string name)
-        => element.EnumerateObject()
-            .First(property => string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase))
+    private static JsonElement GetJsonProperty(JsonElement element, string name) =>
+        element
+            .EnumerateObject()
+            .First(property =>
+                string.Equals(property.Name, name, StringComparison.OrdinalIgnoreCase)
+            )
             .Value;
 }

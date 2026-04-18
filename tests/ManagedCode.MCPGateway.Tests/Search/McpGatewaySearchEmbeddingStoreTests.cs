@@ -17,21 +17,27 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(firstBuildResult.VectorizedToolCount).IsEqualTo(2);
         await Assert.That(firstEmbeddingGenerator.Calls.Count).IsEqualTo(1);
 
-        var secondEmbeddingGenerator = new TestEmbeddingGenerator(new TestEmbeddingGeneratorOptions
-        {
-            ThrowOnInput = static _ => true
-        });
+        var secondEmbeddingGenerator = new TestEmbeddingGenerator(
+            new TestEmbeddingGeneratorOptions { ThrowOnInput = static _ => true }
+        );
 
         await using var secondServiceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureVectorSearchTools,
             secondEmbeddingGenerator,
-            embeddingStore);
+            embeddingStore
+        );
         var secondGateway = secondServiceProvider.GetRequiredService<IMcpGateway>();
 
         var secondBuildResult = await secondGateway.BuildIndexAsync();
 
         await Assert.That(secondBuildResult.VectorizedToolCount).IsEqualTo(2);
-        await Assert.That(secondBuildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "embedding_failed")).IsFalse();
+        await Assert
+            .That(
+                secondBuildResult.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "embedding_failed"
+                )
+            )
+            .IsFalse();
         await Assert.That(secondEmbeddingGenerator.Calls.Count).IsEqualTo(0);
     }
 
@@ -39,30 +45,37 @@ public sealed partial class McpGatewaySearchTests
     public async Task BuildIndexAsync_RegeneratesStoredToolEmbeddingsWhenGeneratorFingerprintChanges()
     {
         var embeddingStore = new TestToolEmbeddingStore();
-        var firstEmbeddingGenerator = new TestEmbeddingGenerator(new TestEmbeddingGeneratorOptions
-        {
-            Metadata = new EmbeddingGeneratorMetadata(
-                "ManagedCode.MCPGateway.Tests",
-                new Uri("https://example.test"),
-                "test-embedding-a",
-                21)
-        });
+        var firstEmbeddingGenerator = new TestEmbeddingGenerator(
+            new TestEmbeddingGeneratorOptions
+            {
+                Metadata = new EmbeddingGeneratorMetadata(
+                    "ManagedCode.MCPGateway.Tests",
+                    new Uri("https://example.test"),
+                    "test-embedding-a",
+                    21
+                ),
+            }
+        );
 
         await SeedSearchEmbeddingsAsync(embeddingStore, firstEmbeddingGenerator);
 
-        var secondEmbeddingGenerator = new TestEmbeddingGenerator(new TestEmbeddingGeneratorOptions
-        {
-            Metadata = new EmbeddingGeneratorMetadata(
-                "ManagedCode.MCPGateway.Tests",
-                new Uri("https://example.test"),
-                "test-embedding-b",
-                21)
-        });
+        var secondEmbeddingGenerator = new TestEmbeddingGenerator(
+            new TestEmbeddingGeneratorOptions
+            {
+                Metadata = new EmbeddingGeneratorMetadata(
+                    "ManagedCode.MCPGateway.Tests",
+                    new Uri("https://example.test"),
+                    "test-embedding-b",
+                    21
+                ),
+            }
+        );
 
         await using var secondServiceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureVectorSearchTools,
             secondEmbeddingGenerator,
-            embeddingStore);
+            embeddingStore
+        );
         var secondGateway = secondServiceProvider.GetRequiredService<IMcpGateway>();
 
         var secondBuildResult = await secondGateway.BuildIndexAsync();
@@ -84,7 +97,8 @@ public sealed partial class McpGatewaySearchTests
 
         await using var secondServiceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureVectorSearchTools,
-            embeddingStore: embeddingStore);
+            embeddingStore: embeddingStore
+        );
         var secondGateway = secondServiceProvider.GetRequiredService<IMcpGateway>();
 
         var buildResult = await secondGateway.BuildIndexAsync();
@@ -92,7 +106,13 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(buildResult.VectorizedToolCount).IsEqualTo(2);
         await Assert.That(buildResult.IsVectorSearchEnabled).IsFalse();
-        await Assert.That(buildResult.Diagnostics.Any(static diagnostic => diagnostic.Code == "embedding_generator_missing")).IsTrue();
+        await Assert
+            .That(
+                buildResult.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "embedding_generator_missing"
+                )
+            )
+            .IsTrue();
         await Assert.That(buildResult.IsGraphSearchEnabled).IsTrue();
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
     }
@@ -111,7 +131,8 @@ public sealed partial class McpGatewaySearchTests
         await using var incrementalServiceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureVectorSearchTools,
             incrementalEmbeddingGenerator,
-            embeddingStore);
+            embeddingStore
+        );
         var incrementalGateway = incrementalServiceProvider.GetRequiredService<IMcpGateway>();
 
         var buildResult = await incrementalGateway.BuildIndexAsync();
@@ -119,27 +140,39 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(buildResult.VectorizedToolCount).IsEqualTo(2);
         await Assert.That(incrementalEmbeddingGenerator.Calls.Count).IsEqualTo(1);
         await Assert.That(incrementalEmbeddingGenerator.Calls[0].Count).IsEqualTo(1);
-        await Assert.That(incrementalEmbeddingGenerator.Calls[0].Single().Contains("weather_search_forecast", StringComparison.Ordinal)).IsTrue();
+        await Assert
+            .That(
+                incrementalEmbeddingGenerator
+                    .Calls[0]
+                    .Single()
+                    .Contains("weather_search_forecast", StringComparison.Ordinal)
+            )
+            .IsTrue();
         await Assert.That(embeddingStore.UpsertCalls.Count).IsEqualTo(2);
         await Assert.That(embeddingStore.UpsertCalls[1].Count).IsEqualTo(1);
-        await Assert.That(embeddingStore.UpsertCalls[1].Single().ToolId).IsEqualTo("local:weather_search_forecast");
+        await Assert
+            .That(embeddingStore.UpsertCalls[1].Single().ToolId)
+            .IsEqualTo("local:weather_search_forecast");
     }
 
     private static async Task<McpGatewayIndexBuildResult> BuildSearchIndexAsync(
         IMcpGatewayToolEmbeddingStore embeddingStore,
-        IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator = null)
+        IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator = null
+    )
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureVectorSearchTools,
             embeddingGenerator,
-            embeddingStore);
+            embeddingStore
+        );
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
         return await gateway.BuildIndexAsync();
     }
 
     private static async Task SeedSearchEmbeddingsAsync(
         IMcpGatewayToolEmbeddingStore embeddingStore,
-        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator)
+        IEmbeddingGenerator<string, Embedding<float>> embeddingGenerator
+    )
     {
         await BuildSearchIndexAsync(embeddingStore, embeddingGenerator);
     }

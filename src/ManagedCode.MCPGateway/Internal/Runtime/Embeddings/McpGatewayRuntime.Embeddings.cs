@@ -11,7 +11,10 @@ internal sealed partial class McpGatewayRuntime
 {
     private EmbeddingGeneratorLease ResolveEmbeddingGenerator()
     {
-        if (_serviceProvider.GetService(typeof(IServiceScopeFactory)) is not IServiceScopeFactory scopeFactory)
+        if (
+            _serviceProvider.GetService(typeof(IServiceScopeFactory))
+            is not IServiceScopeFactory scopeFactory
+        )
         {
             return new EmbeddingGeneratorLease(ResolveEmbeddingGenerator(_serviceProvider));
         }
@@ -21,15 +24,23 @@ internal sealed partial class McpGatewayRuntime
         return new EmbeddingGeneratorLease(generator, scope);
     }
 
-    private static IEmbeddingGenerator<string, Embedding<float>>? ResolveEmbeddingGenerator(IServiceProvider serviceProvider)
-        => serviceProvider.GetKeyedService<IEmbeddingGenerator<string, Embedding<float>>>(McpGatewayServiceKeys.EmbeddingGenerator)
-            ?? serviceProvider.GetService<IEmbeddingGenerator<string, Embedding<float>>>();
+    private static IEmbeddingGenerator<string, Embedding<float>>? ResolveEmbeddingGenerator(
+        IServiceProvider serviceProvider
+    ) =>
+        serviceProvider.GetKeyedService<IEmbeddingGenerator<string, Embedding<float>>>(
+            McpGatewayServiceKeys.EmbeddingGenerator
+        ) ?? serviceProvider.GetService<IEmbeddingGenerator<string, Embedding<float>>>();
 
     private ToolEmbeddingStoreLease ResolveToolEmbeddingStore()
     {
-        if (_serviceProvider.GetService(typeof(IServiceScopeFactory)) is not IServiceScopeFactory scopeFactory)
+        if (
+            _serviceProvider.GetService(typeof(IServiceScopeFactory))
+            is not IServiceScopeFactory scopeFactory
+        )
         {
-            return new ToolEmbeddingStoreLease(_serviceProvider.GetService<IMcpGatewayToolEmbeddingStore>());
+            return new ToolEmbeddingStoreLease(
+                _serviceProvider.GetService<IMcpGatewayToolEmbeddingStore>()
+            );
         }
 
         var scope = scopeFactory.CreateAsyncScope();
@@ -37,9 +48,17 @@ internal sealed partial class McpGatewayRuntime
         return new ToolEmbeddingStoreLease(store, scope);
     }
 
-    private static double CalculateCosine(ToolCatalogEntry entry, float[] queryVector, double queryMagnitude)
+    private static double CalculateCosine(
+        ToolCatalogEntry entry,
+        float[] queryVector,
+        double queryMagnitude
+    )
     {
-        if (entry.Vector is null || entry.Magnitude <= double.Epsilon || queryMagnitude <= double.Epsilon)
+        if (
+            entry.Vector is null
+            || entry.Magnitude <= double.Epsilon
+            || queryMagnitude <= double.Epsilon
+        )
         {
             return 0d;
         }
@@ -75,11 +94,42 @@ internal sealed partial class McpGatewayRuntime
         return Math.Sqrt(magnitudeSquared);
     }
 
+    private static VectorTokenUsage ExtractVectorTokenUsage(
+        UsageDetails? usage,
+        IReadOnlyList<string>? inputs = null
+    )
+    {
+        var estimatedTokenCount = inputs is null ? 0L : EstimateTokenCount(inputs);
+        var inputTokenCount = Math.Max(0L, usage?.InputTokenCount ?? estimatedTokenCount);
+        var totalTokenCount = Math.Max(inputTokenCount, usage?.TotalTokenCount ?? inputTokenCount);
+        return new VectorTokenUsage(inputTokenCount, totalTokenCount);
+    }
+
+    private static long EstimateTokenCount(IReadOnlyList<string> inputs)
+    {
+        var tokenCount = 0L;
+        foreach (var input in inputs)
+        {
+            tokenCount += EstimateTokenCount(input);
+        }
+
+        return tokenCount;
+    }
+
+    private static long EstimateTokenCount(string value) =>
+        value
+            .Split(
+                [' ', '\t', '\r', '\n'],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            )
+            .LongLength;
+
     private static bool ApplyEmbedding(
         IList<ToolCatalogEntry> entries,
         int index,
         IReadOnlyList<float> vector,
-        ref int vectorizedToolCount)
+        ref int vectorizedToolCount
+    )
     {
         if (vector.Count == 0)
         {
@@ -88,11 +138,7 @@ internal sealed partial class McpGatewayRuntime
 
         var normalizedVector = vector.ToArray();
         var magnitude = CalculateMagnitude(normalizedVector);
-        entries[index] = entries[index] with
-        {
-            Vector = normalizedVector,
-            Magnitude = magnitude
-        };
+        entries[index] = entries[index] with { Vector = normalizedVector, Magnitude = magnitude };
 
         if (magnitude <= double.Epsilon)
         {
@@ -103,12 +149,13 @@ internal sealed partial class McpGatewayRuntime
         return true;
     }
 
-    private static string ComputeDocumentHash(string value)
-        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
+    private static string ComputeDocumentHash(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 
     private static bool MatchesStoredEmbedding(
         McpGatewayToolEmbeddingLookup lookup,
-        McpGatewayToolEmbedding embedding)
+        McpGatewayToolEmbedding embedding
+    )
     {
         if (!string.Equals(embedding.ToolId, lookup.ToolId, StringComparison.OrdinalIgnoreCase))
         {
@@ -128,31 +175,41 @@ internal sealed partial class McpGatewayRuntime
         return string.Equals(
             embedding.EmbeddingGeneratorFingerprint,
             lookup.EmbeddingGeneratorFingerprint,
-            StringComparison.Ordinal);
+            StringComparison.Ordinal
+        );
     }
 
     private static string? ResolveEmbeddingGeneratorFingerprint(
-        IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator)
+        IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator
+    )
     {
         if (embeddingGenerator is null)
         {
             return null;
         }
 
-        var metadata = embeddingGenerator.GetService(typeof(EmbeddingGeneratorMetadata)) as EmbeddingGeneratorMetadata;
-        var generatorTypeName = embeddingGenerator.GetType().FullName ?? embeddingGenerator.GetType().Name;
+        var metadata =
+            embeddingGenerator.GetService(typeof(EmbeddingGeneratorMetadata))
+            as EmbeddingGeneratorMetadata;
+        var generatorTypeName =
+            embeddingGenerator.GetType().FullName ?? embeddingGenerator.GetType().Name;
 
-        return ComputeDocumentHash(string.Join(
-            FingerprintComponentSeparator,
-            metadata?.ProviderName ?? FingerprintUnknownComponent,
-            metadata?.ProviderUri?.AbsoluteUri ?? FingerprintUnknownComponent,
-            metadata?.DefaultModelId ?? FingerprintUnknownComponent,
-            metadata?.DefaultModelDimensions?.ToString(CultureInfo.InvariantCulture) ?? FingerprintUnknownComponent,
-            generatorTypeName ?? FingerprintUnknownComponent));
+        return ComputeDocumentHash(
+            string.Join(
+                FingerprintComponentSeparator,
+                metadata?.ProviderName ?? FingerprintUnknownComponent,
+                metadata?.ProviderUri?.AbsoluteUri ?? FingerprintUnknownComponent,
+                metadata?.DefaultModelId ?? FingerprintUnknownComponent,
+                metadata?.DefaultModelDimensions?.ToString(CultureInfo.InvariantCulture)
+                    ?? FingerprintUnknownComponent,
+                generatorTypeName ?? FingerprintUnknownComponent
+            )
+        );
     }
 
     private string? GetOrCreateEmbeddingGeneratorFingerprint(
-        IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator)
+        IEmbeddingGenerator<string, Embedding<float>>? embeddingGenerator
+    )
     {
         var cachedFingerprint = Volatile.Read(ref _embeddingGeneratorFingerprint);
         if (cachedFingerprint is not null)
@@ -166,7 +223,11 @@ internal sealed partial class McpGatewayRuntime
             return null;
         }
 
-        return Interlocked.CompareExchange(ref _embeddingGeneratorFingerprint, resolvedFingerprint, null) ?? resolvedFingerprint;
+        return Interlocked.CompareExchange(
+                ref _embeddingGeneratorFingerprint,
+                resolvedFingerprint,
+                null
+            ) ?? resolvedFingerprint;
     }
 
     private static string? ResolveSearchQueryChatClientFingerprint(IChatClient? chatClient)
@@ -179,12 +240,15 @@ internal sealed partial class McpGatewayRuntime
         var metadata = chatClient.GetService(typeof(ChatClientMetadata)) as ChatClientMetadata;
         var clientTypeName = chatClient.GetType().FullName ?? chatClient.GetType().Name;
 
-        return ComputeDocumentHash(string.Join(
-            FingerprintComponentSeparator,
-            metadata?.ProviderName ?? FingerprintUnknownComponent,
-            metadata?.ProviderUri?.AbsoluteUri ?? FingerprintUnknownComponent,
-            metadata?.DefaultModelId ?? FingerprintUnknownComponent,
-            clientTypeName ?? FingerprintUnknownComponent));
+        return ComputeDocumentHash(
+            string.Join(
+                FingerprintComponentSeparator,
+                metadata?.ProviderName ?? FingerprintUnknownComponent,
+                metadata?.ProviderUri?.AbsoluteUri ?? FingerprintUnknownComponent,
+                metadata?.DefaultModelId ?? FingerprintUnknownComponent,
+                clientTypeName ?? FingerprintUnknownComponent
+            )
+        );
     }
 
     private string? GetOrCreateSearchQueryChatClientFingerprint(IChatClient? chatClient)
@@ -201,19 +265,26 @@ internal sealed partial class McpGatewayRuntime
             return null;
         }
 
-        return Interlocked.CompareExchange(ref _searchQueryChatClientFingerprint, resolvedFingerprint, null) ?? resolvedFingerprint;
+        return Interlocked.CompareExchange(
+                ref _searchQueryChatClientFingerprint,
+                resolvedFingerprint,
+                null
+            ) ?? resolvedFingerprint;
     }
 
     private async Task<string?> ResolveSearchResultEmbeddingGeneratorFingerprintAsync(
         ToolCatalogSnapshot snapshot,
         SearchInput searchInput,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken
+    )
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!snapshot.HasVectors ||
-            !searchInput.HasTerms ||
-            _searchStrategy == McpGatewaySearchStrategy.Graph)
+        if (
+            !snapshot.HasVectors
+            || !searchInput.HasTerms
+            || _searchStrategy == McpGatewaySearchStrategy.Graph
+        )
         {
             return null;
         }

@@ -8,7 +8,8 @@ public sealed record McpGatewayToolDescriptor(
     string? DisplayName,
     string Description,
     IReadOnlyList<string> RequiredArguments,
-    string? InputSchemaJson)
+    string? InputSchemaJson
+)
 {
     public IReadOnlyList<string> SearchAliases { get; init; } = [];
 
