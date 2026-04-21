@@ -22,9 +22,14 @@ dotnet add package ManagedCode.MCPGateway
 ## What You Get
 
 - one gateway for local `AITool` instances and MCP tools
+- one prompt catalog for MCP prompts aggregated across registered MCP sources
+- one downstream MCP server export path over the aggregated tool and prompt catalog
 - one search API with default Markdown-LD graph ranking, opt-in vector ranking, and vector-first `Auto`
 - one invocation API for both local tools and MCP tools
-- runtime catalog mutation through `IMcpGatewayRegistry`
+- additive catalog registration through `IMcpGatewayRegistry`
+- full in-memory catalog control through `IMcpGatewayCatalogRuntime`
+- prompt inspection and rendering through `IMcpGatewayPromptCatalog`
+- DI-owned factory creation for isolated custom gateway instances
 - reusable gateway meta-tools for chat loops
 - optional warmup, caching, query normalization, and embedding reuse
 
@@ -32,6 +37,9 @@ After `services.AddMcpGateway(...)`, the container exposes:
 
 - `IMcpGateway`
 - `IMcpGatewayRegistry`
+- `IMcpGatewayCatalogRuntime`
+- `IMcpGatewayPromptCatalog`
+- `IMcpGatewayFactory`
 - `McpGatewayToolSet`
 
 ## Quickstart
@@ -120,7 +128,7 @@ You can also register:
 - existing `McpClient` instances through `AddMcpClient(...)`
 - deferred `McpClient` factories through `AddMcpClientFactory(...)`
 
-If you need to change the catalog after the container is built, use `IMcpGatewayRegistry`:
+If you need to add tools or sources after the container is built, use `IMcpGatewayRegistry`:
 
 ```csharp
 await using var serviceProvider = services.BuildServiceProvider();
@@ -142,6 +150,106 @@ var tools = await gateway.ListToolsAsync();
 ```
 
 Registry updates invalidate the catalog. The next list, search, or invoke rebuilds the index automatically.
+
+## List And Render MCP Prompts
+
+If registered MCP sources expose prompts, resolve `IMcpGatewayPromptCatalog` from DI and use it as the aggregated MCP prompt surface:
+
+```csharp
+var promptCatalog = serviceProvider.GetRequiredService<IMcpGatewayPromptCatalog>();
+
+var prompts = await promptCatalog.ListPromptsAsync();
+var prompt = await promptCatalog.GetPromptAsync(new McpGatewayPromptRequest(
+    SourceId: prompts[0].SourceId,
+    PromptName: prompts[0].PromptName,
+    Arguments: new Dictionary<string, object?>
+    {
+        ["repository"] = "ManagedCode.MCPGateway"
+    }));
+```
+
+Prompt retrieval is source-aware on purpose. Different MCP servers may expose prompts with the same name, so callers should use the `SourceId` plus `PromptName` pair returned by `ListPromptsAsync()`.
+
+## Export The Gateway As An MCP Server
+
+If you want one downstream MCP endpoint over the aggregated gateway catalog, register an MCP server and add the gateway export:
+
+```csharp
+var services = new ServiceCollection();
+services.AddLogging();
+services.AddMcpGateway(options =>
+{
+    options.AddMcpClient("docs", docsClient, disposeClient: false);
+    options.AddMcpClient("ops", opsClient, disposeClient: false);
+});
+
+services.AddMcpServer()
+    .WithStdioServerTransport()
+    .WithMcpGatewayCatalog();
+```
+
+`WithMcpGatewayCatalog()` exports:
+
+- aggregated tools through MCP `list_tools` and `call_tool`
+- aggregated prompts through MCP `list_prompts` and `prompts/get`
+
+Exported MCP tool and prompt names are source-qualified gateway ids such as `docs:search_repository` or `ops:deployment_review_system_prompt`, so multiple upstream servers can be combined without name collisions.
+
+If you need to fully reconfigure the in-memory runtime catalog, use `IMcpGatewayCatalogRuntime` instead of internal reflection:
+
+```csharp
+var catalogRuntime = serviceProvider.GetRequiredService<IMcpGatewayCatalogRuntime>();
+var replacement = new McpGatewayOptions()
+    .AddTool(
+        "runtime",
+        AIFunctionFactory.Create(
+            static (string query) => $"status:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "project_status_lookup",
+                Description = "Look up project status by identifier or short title."
+            }));
+
+await catalogRuntime.ReconfigureAsync(replacement);
+```
+
+## Factory-Created Custom Gateways
+
+If you want an isolated custom gateway instance beyond the default singleton gateway, resolve `IMcpGatewayFactory` from DI and create a custom gateway from there:
+
+```csharp
+var services = new ServiceCollection();
+services.AddLogging();
+services.AddMcpGateway();
+
+await using var serviceProvider = services.BuildServiceProvider();
+var factory = serviceProvider.GetRequiredService<IMcpGatewayFactory>();
+
+await using var gatewayHost = factory.Create(options =>
+{
+    options.AddTool(
+        "local",
+        AIFunctionFactory.Create(
+            static (string query) => $"github:{query}",
+            new AIFunctionFactoryOptions
+            {
+                Name = "github_search_repositories",
+                Description = "Search GitHub repositories by user query."
+            }));
+});
+
+var search = await gatewayHost.Gateway.SearchAsync("find github repositories");
+var prompts = await gatewayHost.PromptCatalog.ListPromptsAsync();
+```
+
+Use the package surfaces like this:
+
+- `IMcpGateway`: build, list, search, invoke
+- `IMcpGatewayRegistry`: additive tool and source registration
+- `IMcpGatewayCatalogRuntime`: full in-memory catalog clear or reconfiguration
+- `IMcpGatewayPromptCatalog`: list and render aggregated MCP prompts
+- `IMcpGatewayFactory`: create isolated custom gateway instances
+- `McpGatewayToolSet`: reusable meta-tools
 
 ## Search And Invoke
 

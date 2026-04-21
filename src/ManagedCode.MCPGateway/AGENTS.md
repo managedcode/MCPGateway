@@ -70,3 +70,6 @@ For this .NET project:
 - Keep `McpGateway` focused on search and invoke orchestration; registry mutation belongs in catalog and registration collaborators.
 - Keep transport-specific logic inside registration and source abstractions, not scattered through runtime code.
 - When production behavior changes here, update the integration-style tests under `tests/ManagedCode.MCPGateway.Tests/` in the same task.
+- Do not hide shared runtime services such as `ILoggerFactory` inside options bags for public factory APIs; when custom gateway instances need host-owned shared dependencies, expose a DI-registered factory service that resolves those dependencies from the container and accepts only gateway-specific configuration at creation time.
+- For public runtime-mutation APIs in this package, use precise lifecycle verbs such as `Reconfigure` or `Reset`; avoid ambiguous or alarming names like `Replace` when the operation only rebuilds in-memory registry configuration.
+- For public factory APIs in this package, prefer explicit overloads over nullable optional delegate parameters; use `Create()` plus `Create(Action<T>)` when both cases are supported.

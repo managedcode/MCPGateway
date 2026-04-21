@@ -7,12 +7,46 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
     : IMcpGatewayRegistry,
+        IMcpGatewayCatalogRuntime,
         IMcpGatewayCatalogSource,
         IAsyncDisposable
 {
-    private readonly McpGatewayRegistrationCollection _registrations = CreateRegistrations(options);
+    private McpGatewayRegistrationCollection _registrations = CreateRegistrations(options);
     private readonly McpGatewayOperationGate _operationGate = new();
     private int _version;
+
+    public ValueTask ClearAsync(CancellationToken cancellationToken = default) =>
+        ReconfigureAsync(new McpGatewayOptions(), cancellationToken);
+
+    public async ValueTask ReconfigureAsync(
+        McpGatewayOptions configuration,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        IReadOnlyList<McpGatewayToolSourceRegistration> previousRegistrations;
+        _operationGate.Enter(this);
+        try
+        {
+            _operationGate.ThrowIfDisposed(this);
+
+            var previousCollection = _registrations;
+            _registrations = new McpGatewayRegistrationCollection(configuration.SourceRegistrations);
+            previousRegistrations = previousCollection.Drain();
+            Interlocked.Increment(ref _version);
+        }
+        finally
+        {
+            _operationGate.Exit();
+        }
+
+        foreach (var registration in previousRegistrations)
+        {
+            await registration.DisposeAsync();
+        }
+    }
 
     public void AddTool(string sourceId, AITool tool, string? displayName = null) =>
         Mutate(registrations => registrations.AddTool(sourceId, tool, displayName));

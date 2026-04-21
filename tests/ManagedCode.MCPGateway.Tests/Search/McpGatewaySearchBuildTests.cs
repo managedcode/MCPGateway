@@ -206,6 +206,88 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
+    public async Task BuildIndexAsync_RebuildsAfterRegistryIsReplaced()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHub,
+                    "github_search_issues",
+                    "Search GitHub issues and pull requests by user query."
+                )
+            );
+        });
+
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        var catalogRuntime = serviceProvider.GetRequiredService<IMcpGatewayCatalogRuntime>();
+
+        var firstBuild = await gateway.BuildIndexAsync();
+
+        var replacement = new McpGatewayOptions().AddTool(
+            "runtime",
+            TestFunctionFactory.CreateFunction(
+                SearchWeather,
+                "weather_search_forecast",
+                "Search weather forecast and temperature information by city name."
+            )
+        );
+
+        await catalogRuntime.ReconfigureAsync(replacement);
+        var secondBuild = await gateway.BuildIndexAsync();
+        var tools = await gateway.ListToolsAsync();
+
+        await Assert.That(firstBuild.ToolCount).IsEqualTo(1);
+        await Assert.That(secondBuild.ToolCount).IsEqualTo(1);
+        await Assert.That(tools.Select(static tool => tool.ToolName).ToArray()).IsEquivalentTo(
+            ["weather_search_forecast"]
+        );
+    }
+
+    [TUnit.Core.Test]
+    public async Task McpGatewayFactory_CreatesCustomGatewayFromRegisteredFactoryService()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMcpGateway();
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var factory = serviceProvider.GetRequiredService<IMcpGatewayFactory>();
+
+        await using var gatewayHost = factory.Create(options =>
+        {
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHub,
+                    "github_search_repositories",
+                    "Search GitHub repositories by user query."
+                )
+            );
+        });
+
+        var buildResult = await gatewayHost.Gateway.BuildIndexAsync();
+        var searchResult = await gatewayHost.Gateway.SearchAsync("find github repositories", 1);
+
+        await Assert.That(buildResult.ToolCount).IsEqualTo(1);
+        await Assert.That(searchResult.Matches.Count).IsEqualTo(1);
+        await Assert.That(searchResult.Matches[0].ToolName).IsEqualTo("github_search_repositories");
+        await Assert.That(gatewayHost.CatalogRuntime).IsNotNull();
+    }
+
+    [TUnit.Core.Test]
+    public async Task AddMcpGateway_ResolvesCatalogRuntimeAsAdvancedService()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
+
+        var registry = serviceProvider.GetRequiredService<IMcpGatewayRegistry>();
+        var catalogRuntime = serviceProvider.GetRequiredService<IMcpGatewayCatalogRuntime>();
+
+        await Assert.That(ReferenceEquals(registry, catalogRuntime)).IsTrue();
+    }
+
+    [TUnit.Core.Test]
     public async Task Registry_ConcurrentToolRegistrationRetainsAllTools()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });

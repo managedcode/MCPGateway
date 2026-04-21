@@ -3,6 +3,7 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway;
 
@@ -19,6 +20,13 @@ internal sealed record McpGatewayLoadedTool(
     McpGatewayToolSearchHints? SearchHints = null
 );
 
+internal sealed record McpGatewayLoadedPrompt(
+    string Name,
+    string? Title,
+    string? Description,
+    IReadOnlyList<PromptArgument> Arguments
+);
+
 internal abstract class McpGatewayToolSourceRegistration(string sourceId, string? displayName)
     : IAsyncDisposable
 {
@@ -32,6 +40,18 @@ internal abstract class McpGatewayToolSourceRegistration(string sourceId, string
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
     );
+
+    public virtual ValueTask<IReadOnlyList<McpGatewayLoadedPrompt>> LoadPromptsAsync(
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedPrompt>>([]);
+
+    public virtual ValueTask<GetPromptResult?> GetPromptAsync(
+        string promptName,
+        IReadOnlyDictionary<string, object?>? arguments,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<GetPromptResult?>(null);
 
     public virtual ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
@@ -169,6 +189,50 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         var client = await GetClientAsync(loggerFactory, cancellationToken);
         var tools = await client.ListToolsAsync(new RequestOptions(), cancellationToken);
         return tools.Cast<AITool>().Select(static tool => new McpGatewayLoadedTool(tool)).ToList();
+    }
+
+    public override async ValueTask<IReadOnlyList<McpGatewayLoadedPrompt>> LoadPromptsAsync(
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Prompts is null)
+        {
+            return [];
+        }
+
+        var prompts = await client.ListPromptsAsync(new RequestOptions(), cancellationToken);
+        return prompts
+            .Where(static prompt => !string.IsNullOrWhiteSpace(prompt.Name))
+            .Select(static prompt => new McpGatewayLoadedPrompt(
+                Name: prompt.Name.Trim(),
+                Title: prompt.Title,
+                Description: prompt.Description,
+                Arguments: prompt.ProtocolPrompt.Arguments?.ToList() ?? []
+            ))
+            .ToList();
+    }
+
+    public override async ValueTask<GetPromptResult?> GetPromptAsync(
+        string promptName,
+        IReadOnlyDictionary<string, object?>? arguments,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Prompts is null)
+        {
+            return null;
+        }
+
+        return await client.GetPromptAsync(
+            promptName,
+            arguments ?? new Dictionary<string, object?>(StringComparer.Ordinal),
+            new RequestOptions(),
+            cancellationToken
+        );
     }
 
     protected abstract ValueTask<McpClient> CreateClientAsync(

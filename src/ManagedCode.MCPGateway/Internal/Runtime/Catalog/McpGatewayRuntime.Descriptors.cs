@@ -19,14 +19,7 @@ internal sealed partial class McpGatewayRuntime
         }
 
         var toolName = tool.Name.Trim();
-        var sourceKind = registration.Kind switch
-        {
-            McpGatewaySourceRegistrationKind.Http => McpGatewaySourceKind.HttpMcp,
-            McpGatewaySourceRegistrationKind.Stdio => McpGatewaySourceKind.StdioMcp,
-            McpGatewaySourceRegistrationKind.CustomMcpClient =>
-                McpGatewaySourceKind.CustomMcpClient,
-            _ => McpGatewaySourceKind.Local,
-        };
+        var sourceKind = McpGatewaySourceKindMapper.Map(registration.Kind);
 
         var inputSchema = ResolveInputSchema(tool);
         var searchHints = ResolveSearchHints(tool, loadedTool.SearchHints);

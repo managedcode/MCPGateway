@@ -23,6 +23,16 @@ public static class McpGatewayServiceCollectionExtensions
         services.TryAddSingleton<IMcpGatewaySearchCache, McpGatewayNoOpSearchCache>();
         services.TryAddSingleton<IMcpGateway, McpGateway>();
         services.TryAddSingleton<IMcpGatewayRegistry, McpGatewayRegistry>();
+        services.TryAddSingleton<IMcpGatewayCatalogSource>(
+            static serviceProvider =>
+                (IMcpGatewayCatalogSource)serviceProvider.GetRequiredService<IMcpGatewayRegistry>()
+        );
+        services.TryAddSingleton<IMcpGatewayCatalogRuntime>(
+            static serviceProvider =>
+                (IMcpGatewayCatalogRuntime)serviceProvider.GetRequiredService<IMcpGatewayRegistry>()
+        );
+        services.TryAddSingleton<IMcpGatewayPromptCatalog, McpGatewayPromptCatalog>();
+        services.TryAddSingleton<IMcpGatewayFactory, McpGatewayFactory>();
         services.TryAddSingleton<McpGatewayToolSet>();
 
         return services;

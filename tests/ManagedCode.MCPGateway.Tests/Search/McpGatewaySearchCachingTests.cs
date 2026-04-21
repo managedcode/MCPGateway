@@ -64,6 +64,8 @@ public sealed partial class McpGatewaySearchTests
         measurements.Clear();
         activities.Clear();
 
+        using var parentActivity = new Activity("ManagedCode.MCPGateway.Tests.SearchCache").Start();
+        var parentTraceId = parentActivity.TraceId;
         var cachedSearch = await gateway.SearchAsync("а що у мен з нотіфікешенми", maxResults: 2);
 
         await Assert
@@ -73,7 +75,8 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(embeddingGenerator.Calls.Count).IsEqualTo(2);
 
         var cachedSearchActivity = activities.Single(activity =>
-            activity.OperationName == "ManagedCode.MCPGateway.Search"
+            activity.TraceId == parentTraceId
+            && activity.OperationName == "ManagedCode.MCPGateway.Search"
         );
         await Assert
             .That((bool?)cachedSearchActivity.GetTagItem("mcpgateway.search.cache_hit") == true)
@@ -100,6 +103,7 @@ public sealed partial class McpGatewaySearchTests
             .That(
                 measurements.Any(static measurement =>
                     measurement.InstrumentName == "mcpgateway.search.vector.duration"
+                    && (bool?)measurement.Tags["mcpgateway.search.cache_hit"] == true
                 )
             )
             .IsFalse();
@@ -107,6 +111,7 @@ public sealed partial class McpGatewaySearchTests
             .That(
                 measurements.Any(static measurement =>
                     measurement.InstrumentName == "mcpgateway.search.vector.tokens"
+                    && (bool?)measurement.Tags["mcpgateway.search.cache_hit"] == true
                 )
             )
             .IsFalse();
@@ -114,6 +119,7 @@ public sealed partial class McpGatewaySearchTests
             .That(
                 measurements.Any(static measurement =>
                     measurement.InstrumentName == "mcpgateway.search.graph.duration"
+                    && (bool?)measurement.Tags["mcpgateway.search.cache_hit"] == true
                 )
             )
             .IsFalse();

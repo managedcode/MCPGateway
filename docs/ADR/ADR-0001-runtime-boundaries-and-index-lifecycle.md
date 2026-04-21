@@ -8,6 +8,10 @@
 - mutable catalog registration for local tools, stdio/HTTP MCP servers, and deferred `McpClient` factories
 - index lifecycle management for lazy builds, hosted warmup, and rebuilds after registry mutations
 
+The package also needs a first-class MCP prompt surface. MCP prompts are not a single system-prompt string; they are a catalog of prompt definitions exposed by individual MCP servers. Hosts that aggregate multiple MCP servers need one place to list and retrieve those prompts without bypassing the gateway package and talking to each `McpClient` directly.
+
+The package also needs a supported downstream interoperability path: if one gateway already aggregates multiple upstream MCP servers, hosts should be able to expose that aggregate back out as one MCP server without hand-writing list/call/get handlers around the package contracts.
+
 Recent changes also made index construction cancellation-aware and single-flight, so startup warmup, shutdown, and concurrent callers do not keep issuing duplicate MCP loads or continue rebuilding after a canceled operation should stop.
 
 Hosts also need explicit control over index timing and graph-input authoring without replacing the whole runtime. That means the lifecycle must stay visible through manual build and warmup entry points, while graph source customization stays an explicit option rather than hidden runtime behavior.
@@ -16,7 +20,7 @@ The repository needs an explicit record for these boundaries so the public packa
 
 ## Decision
 
-`ManagedCode.MCPGateway` will keep a thin public runtime facade, a separate DI-managed registry mutation surface, and an internal runtime orchestrator with lazy, cancellation-aware single-flight index builds plus optional eager warmup integration.
+`ManagedCode.MCPGateway` will keep a thin public runtime facade, a separate additive-registry surface, a separate advanced runtime-catalog control surface, a separate MCP prompt-catalog surface, and an internal runtime orchestrator with lazy, cancellation-aware single-flight index builds plus optional eager warmup integration. DI remains the primary host path, the package exposes a DI-owned factory service for isolated custom gateway instances, and hosts may re-export the aggregated catalog as one downstream MCP server through `WithMcpGatewayCatalog()`.
 
 ## Diagram
 
@@ -25,10 +29,18 @@ flowchart LR
     Host["Host application"] --> DI["AddMcpGateway(...)"]
     DI --> Gateway["IMcpGateway / McpGateway"]
     DI --> Registry["IMcpGatewayRegistry / McpGatewayRegistry"]
+    DI --> CatalogRuntime["IMcpGatewayCatalogRuntime / McpGatewayRegistry"]
+    DI --> PromptCatalog["IMcpGatewayPromptCatalog / McpGatewayPromptCatalog"]
+    DI --> Factory["IMcpGatewayFactory / McpGatewayFactory"]
     DI --> ToolSet["McpGatewayToolSet"]
+    DI --> McpServerExport["WithMcpGatewayCatalog()"]
     DI --> Warmup["AddMcpGatewayIndexWarmup()"]
+    Factory --> Gateway
+    Factory --> Registry
     Gateway --> Runtime["McpGatewayRuntime"]
     Registry --> Snapshot["Catalog snapshots"]
+    PromptCatalog --> Snapshot
+    McpServerExport --> Snapshot
     Runtime --> Snapshot
     Warmup --> Runtime
     Runtime --> Search["Search / invoke / index build"]
@@ -79,9 +91,12 @@ Cons:
 
 Positive:
 
-- public DI wiring is explicit: `IMcpGateway` for runtime work, `IMcpGatewayRegistry` for catalog mutation, `McpGatewayToolSet` for meta-tools
+- public DI wiring is explicit: `IMcpGateway` for runtime work, `IMcpGatewayRegistry` for additive registration, `IMcpGatewayCatalogRuntime` for full in-memory catalog control, `IMcpGatewayPromptCatalog` for aggregated MCP prompts, and `McpGatewayToolSet` for meta-tools
+- advanced consumers get a supported custom-gateway path through the DI-owned `IMcpGatewayFactory`
+- hosts can expose the aggregated catalog back out as one downstream MCP server without bypassing package contracts
 - hosts get lazy behavior by default and optional eager warmup through `InitializeMcpGatewayAsync()` or `AddMcpGatewayIndexWarmup()`
 - hosts can control graph input authoring through `McpGatewayOptions.UseMarkdownLdGraphDocuments(...)` without taking over runtime orchestration
+- prompt-capable MCP sources remain accessible through one package-owned catalog instead of forcing hosts to fan out over raw `McpClient` instances
 - cancellation now propagates into source loading, embedding generation, and embedding-store I/O during index builds
 - runtime rebuilds after registry mutations remain automatic without forcing every host into startup code
 
@@ -100,8 +115,12 @@ Mitigations:
 ## Invariants
 
 - `IMcpGateway` MUST remain the public runtime facade for build, list, search, invoke, and meta-tool creation.
-- `IMcpGatewayRegistry` MUST remain the public mutation surface for adding tools and MCP sources after container build.
-- `AddMcpGateway(...)` MUST register `IMcpGateway`, `IMcpGatewayRegistry`, and `McpGatewayToolSet`.
+- `IMcpGatewayRegistry` MUST remain the public additive mutation surface for adding tools and MCP sources after container build.
+- `IMcpGatewayCatalogRuntime` MUST own supported full-catalog in-memory clear and reconfiguration operations without reflection.
+- `IMcpGatewayPromptCatalog` MUST own aggregated MCP prompt listing and source-aware prompt retrieval without forcing direct `McpClient` access on consumers.
+- `AddMcpGateway(...)` MUST register `IMcpGateway`, `IMcpGatewayRegistry`, `IMcpGatewayCatalogRuntime`, `IMcpGatewayPromptCatalog`, and `McpGatewayToolSet`.
+- `IMcpGatewayFactory` MUST create the same supported runtime facade and registry contracts while resolving shared host services from DI instead of smuggling them through options bags.
+- `WithMcpGatewayCatalog()` MUST export the current aggregated tool and prompt catalog through official MCP server handlers instead of a parallel app-specific adapter layer.
 - Index builds MUST be lazy by default and MUST rebuild automatically after registry mutations invalidate the snapshot.
 - Hosted warmup MUST stay optional and MUST use the same runtime/index path as normal gateway operations.
 - Graph-input customization MUST stay explicit in options and MUST still flow through the same runtime build path as generated/file-backed graph sources.

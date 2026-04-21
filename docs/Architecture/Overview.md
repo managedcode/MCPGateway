@@ -18,15 +18,20 @@ Out of scope:
 
 ## Summary
 
-`ManagedCode.MCPGateway` exposes three public DI surfaces:
+`ManagedCode.MCPGateway` exposes five public DI surfaces and one reusable tool-set surface:
 
 - `IMcpGateway` for list/search/invoke
-- `IMcpGatewayRegistry` for catalog mutation
+- `IMcpGatewayRegistry` for additive catalog registration
+- `IMcpGatewayCatalogRuntime` for full in-memory catalog reset and reconfiguration
+- `IMcpGatewayPromptCatalog` for aggregated MCP prompt listing and retrieval
+- `IMcpGatewayFactory` for isolated custom gateway instances created from host DI
 - `McpGatewayToolSet` for reusable meta-tools
 
 `McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default Markdown-LD graph search, vector-first `Auto` search with bounded Markdown-LD supplementation, or explicit embedding-first search, optionally rewrites queries through a keyed `IChatClient`, emits built-in .NET telemetry for build/search operations including vector token usage, calibrates user-facing search confidence before returning matches, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
 
 The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` meta-tools and discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with two meta-tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
+
+For MCP interoperability in the other direction, the package also exposes `WithMcpGatewayCatalog()` as a server-builder extension. Hosts can take one aggregated gateway catalog and re-export it as a downstream MCP server that exposes the combined tools and prompts from multiple upstream MCP sources.
 
 ## Governance Map
 
@@ -51,9 +56,16 @@ flowchart LR
     Host["Host application"] --> DI["DI registration"]
     DI --> Facade["IMcpGateway / McpGateway"]
     DI --> Registry["IMcpGatewayRegistry / McpGatewayRegistry"]
+    DI --> CatalogRuntime["IMcpGatewayCatalogRuntime / McpGatewayRegistry"]
+    DI --> PromptCatalog["IMcpGatewayPromptCatalog / McpGatewayPromptCatalog"]
+    DI --> Factory["IMcpGatewayFactory / McpGatewayFactory"]
     DI --> ToolSet["McpGatewayToolSet"]
+    DI --> McpServerExport["WithMcpGatewayCatalog()"]
     DI --> AutoDiscovery["Auto-discovery chat client bridge"]
     DI --> Warmup["Optional warmup hooks"]
+    Factory --> Facade
+    Factory --> Registry
+    Factory --> ToolSet
     ToolSet --> Facade
     AutoDiscovery --> ToolSet
     AutoDiscovery --> HostChat["Host IChatClient / Agent host"]
@@ -64,6 +76,7 @@ flowchart LR
     Catalog --> Sources["Catalog source registrations"]
     Sources --> Local["Local AITool instances"]
     Sources --> MCP["HTTP, stdio, and provided MCP clients"]
+    McpServerExport --> ExportedMcp["Downstream MCP server"]
     Runtime --> Embedder["Optional embedding generator"]
     Runtime --> Store["Optional embedding store"]
     Runtime --> Graph["Markdown-LD graph index"]
@@ -76,6 +89,13 @@ flowchart LR
 flowchart LR
     IMcpGateway["IMcpGateway"] --> McpGateway["McpGateway"]
     IMcpGatewayRegistry["IMcpGatewayRegistry"] --> Registry["McpGatewayRegistry"]
+    CatalogRuntime["IMcpGatewayCatalogRuntime"] --> Registry["McpGatewayRegistry"]
+    PromptCatalog["IMcpGatewayPromptCatalog"] --> PromptCatalogImpl["McpGatewayPromptCatalog"]
+    Factory["IMcpGatewayFactory"] --> IMcpGateway
+    Factory --> PromptCatalog
+    Factory --> IMcpGatewayRegistry
+    Factory --> CatalogRuntime
+    Factory --> Instance["IMcpGatewayInstance"]
     ToolSet["McpGatewayToolSet"] --> IMcpGateway
     ToolSet --> ToolList["IList<AITool> composition"]
     ToolSet --> DiscoveredTools["CreateDiscoveredTools(...)"]
@@ -91,6 +111,7 @@ flowchart LR
     Runtime --> EmbeddingStore["IMcpGatewayToolEmbeddingStore"]
     Runtime --> ChatClient["IChatClient (keyed)"]
     Registry --> CatalogSource["IMcpGatewayCatalogSource"]
+    PromptCatalogImpl --> CatalogSource
 ```
 
 ## Key Classes And Types
@@ -123,6 +144,10 @@ flowchart LR
 ## Module Index
 
 - Public facade: [`src/ManagedCode.MCPGateway/McpGateway.cs`](../../src/ManagedCode.MCPGateway/McpGateway.cs) exposes the package runtime API and delegates work to the internal runtime.
+- Factory service: [`src/ManagedCode.MCPGateway/McpGatewayFactory.cs`](../../src/ManagedCode.MCPGateway/McpGatewayFactory.cs) creates isolated gateway bundles from the host DI container so consumers pass only gateway-specific configuration at creation time.
+- Runtime catalog control: [`src/ManagedCode.MCPGateway/Abstractions/Catalog/IMcpGatewayCatalogRuntime.cs`](../../src/ManagedCode.MCPGateway/Abstractions/Catalog/IMcpGatewayCatalogRuntime.cs) owns full in-memory catalog clear and reconfiguration operations distinct from additive registration.
+- Prompt catalog surface: [`src/ManagedCode.MCPGateway/Abstractions/IMcpGatewayPromptCatalog.cs`](../../src/ManagedCode.MCPGateway/Abstractions/IMcpGatewayPromptCatalog.cs) owns aggregated prompt listing and source-aware prompt retrieval for registered MCP sources.
+- Factory-created instance contract: [`src/ManagedCode.MCPGateway/Abstractions/IMcpGatewayInstance.cs`](../../src/ManagedCode.MCPGateway/Abstractions/IMcpGatewayInstance.cs) exposes the custom gateway, prompt catalog, registry, runtime-catalog control, tool set, and disposal ownership as one stable surface.
 - Public abstractions: [`src/ManagedCode.MCPGateway/Abstractions/`](../../src/ManagedCode.MCPGateway/Abstractions/) defines the stable interfaces consumers resolve from DI.
 - Public configuration: [`src/ManagedCode.MCPGateway/Configuration/`](../../src/ManagedCode.MCPGateway/Configuration/) contains options and service keys that shape host integration.
 - Public models: [`src/ManagedCode.MCPGateway/Models/`](../../src/ManagedCode.MCPGateway/Models/) contains request/result contracts and enums grouped by search, invocation, catalog, and embeddings behavior, including explicit tool search hints for alias/keyword enrichment.
@@ -132,6 +157,7 @@ flowchart LR
 - Public chat-options bridge: [`src/ManagedCode.MCPGateway/Registration/McpGatewayChatOptionsExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayChatOptionsExtensions.cs) attaches the gateway meta-tools to `ChatOptions` without replacing existing tools.
 - Public auto-discovery wrapper: [`src/ManagedCode.MCPGateway/McpGatewayAutoDiscoveryChatClient.cs`](../../src/ManagedCode.MCPGateway/McpGatewayAutoDiscoveryChatClient.cs) stages model-visible tools as `2 meta-tools -> latest discovered proxies -> replace on next search`.
 - Public chat-client extensions: [`src/ManagedCode.MCPGateway/Registration/McpGatewayChatClientExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayChatClientExtensions.cs) wraps any `IChatClient` with the recommended staged auto-discovery flow.
+- Public MCP server export: [`src/ManagedCode.MCPGateway/Registration/McpGatewayMcpServerBuilderExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayMcpServerBuilderExtensions.cs) re-exports the aggregated gateway catalog as downstream MCP `list_tools` / `call_tool` / `list_prompts` / `prompts/get` handlers.
 - Internal catalog module: [`src/ManagedCode.MCPGateway/Internal/Catalog/`](../../src/ManagedCode.MCPGateway/Internal/Catalog/) owns mutable tool-source registration state and read-only snapshots for indexing.
 - Internal catalog sources: [`src/ManagedCode.MCPGateway/Internal/Catalog/Sources/`](../../src/ManagedCode.MCPGateway/Internal/Catalog/Sources/) owns transport-specific source registrations and MCP client creation.
 - Internal runtime module: [`src/ManagedCode.MCPGateway/Internal/Runtime/`](../../src/ManagedCode.MCPGateway/Internal/Runtime/) owns orchestration and is split by core, catalog, search, graph, invocation, and embeddings concerns.
@@ -141,6 +167,8 @@ flowchart LR
 - Internal serialization: [`src/ManagedCode.MCPGateway/Internal/Serialization/`](../../src/ManagedCode.MCPGateway/Internal/Serialization/) contains the canonical JSON materialization path used by runtime features.
 - Warmup hooks: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceProviderExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceProviderExtensions.cs) and [`src/ManagedCode.MCPGateway/Internal/Warmup/McpGatewayIndexWarmupService.cs`](../../src/ManagedCode.MCPGateway/Internal/Warmup/McpGatewayIndexWarmupService.cs) provide optional eager index-building integration.
 - DI registration: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs) wires facade, registry, meta-tools, warmup support, the default no-op runtime search cache, and the optional `IMemoryCache`-backed cache/store implementations into the container.
+- Prompt catalog implementation: [`src/ManagedCode.MCPGateway/Internal/Prompts/McpGatewayPromptCatalog.cs`](../../src/ManagedCode.MCPGateway/Internal/Prompts/McpGatewayPromptCatalog.cs) enumerates prompt-capable MCP sources and renders prompts through the official MCP client APIs.
+- MCP server export handlers: [`src/ManagedCode.MCPGateway/Internal/Server/`](../../src/ManagedCode.MCPGateway/Internal/Server/) translates gateway tool and prompt contracts into official MCP server handlers so one gateway can be exposed as one downstream MCP server.
 
 ## Dependency Rules
 

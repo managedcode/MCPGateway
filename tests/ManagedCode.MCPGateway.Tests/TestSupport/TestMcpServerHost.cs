@@ -28,7 +28,10 @@ internal sealed class TestMcpServerHost(
         CancellationToken cancellationToken = default
     ) =>
         await StartAsync(
-            static builder => builder.WithToolsFromAssembly(typeof(TestMcpTools).Assembly),
+            static builder =>
+                builder
+                    .WithTools<TestMcpTools>()
+                    .WithPrompts<TestMcpPrompts>(),
             cancellationToken
         );
 
@@ -36,7 +39,19 @@ internal sealed class TestMcpServerHost(
         CancellationToken cancellationToken = default
     ) =>
         await StartAsync(
-            static builder => builder.WithTools<TestMcpGraphTools>(),
+            static builder =>
+                builder.WithTools<TestMcpGraphTools>().WithPrompts<TestMcpGraphPrompts>(),
+            cancellationToken
+        );
+
+    public static async Task<TestMcpServerHost> StartOperationsAsync(
+        CancellationToken cancellationToken = default
+    ) =>
+        await StartAsync(
+            static builder =>
+                builder
+                    .WithTools<TestMcpOperationsTools>()
+                    .WithPrompts<TestMcpOperationsPrompts>(),
             cancellationToken
         );
 
@@ -225,6 +240,131 @@ internal sealed class TestMcpServerHost(
         public static TestMcpSearchResult SearchPeople(
             [Description("People profile search query.")] string query
         ) => new(query, "people-search");
+    }
+
+    [McpServerPromptType]
+    private sealed class TestMcpGraphPrompts
+    {
+        [McpServerPrompt(Name = "story_triage_system_prompt", Title = "Story triage")]
+        [Description("Builds a story triage prompt for a story feed item.")]
+        public static GetPromptResult BuildStoryTriagePrompt(
+            [Description("Story title.")] string storyTitle
+        ) =>
+            new()
+            {
+                Description = "Story triage system prompt.",
+                Messages =
+                [
+                    new PromptMessage
+                    {
+                        Role = Role.User,
+                        Content = new TextContentBlock
+                        {
+                            Text = $"Review story '{storyTitle}' and summarize key risks.",
+                        },
+                    },
+                ],
+            };
+    }
+
+    [McpServerToolType]
+    private sealed class TestMcpOperationsTools
+    {
+        [McpServerTool(
+            Name = "incident_status_lookup",
+            Title = "Lookup incident status",
+            Idempotent = true,
+            ReadOnly = true,
+            UseStructuredContent = true
+        )]
+        [Description("Lookup incident status by incident identifier.")]
+        public static TestMcpSearchResult LookupIncidentStatus(
+            [Description("Incident identifier.")] string incidentId
+        ) => new(incidentId, "incident-status");
+
+        [McpServerTool(
+            Name = "deployment_status_lookup",
+            Title = "Lookup deployment status",
+            Idempotent = true,
+            ReadOnly = true,
+            UseStructuredContent = true
+        )]
+        [Description("Lookup deployment status by environment name.")]
+        public static TestMcpSearchResult LookupDeploymentStatus(
+            [Description("Environment name.")] string environment
+        ) => new(environment, "deployment-status");
+    }
+
+    [McpServerPromptType]
+    private sealed class TestMcpPrompts
+    {
+        [McpServerPrompt(Name = "repository_triage_system_prompt", Title = "Repository triage")]
+        [Description("Builds a repository triage system prompt for the selected repository.")]
+        public static GetPromptResult BuildRepositoryTriagePrompt(
+            [Description("Repository name.")] string repository,
+            [Description("Preferred locale.")] string locale = "en"
+        ) =>
+            new()
+            {
+                Description = "Repository triage system prompt.",
+                Messages =
+                [
+                    new PromptMessage
+                    {
+                        Role = Role.User,
+                        Content = new TextContentBlock
+                        {
+                            Text = $"Review repository '{repository}' using locale '{locale}'.",
+                        },
+                    },
+                ],
+            };
+
+        [McpServerPrompt(Name = "incident_response_system_prompt", Title = "Incident response")]
+        [Description("Builds an incident response system prompt for an active incident.")]
+        public static GetPromptResult BuildIncidentResponsePrompt(
+            [Description("Incident title.")] string incidentTitle
+        ) =>
+            new()
+            {
+                Description = "Incident response system prompt.",
+                Messages =
+                [
+                    new PromptMessage
+                    {
+                        Role = Role.User,
+                        Content = new TextContentBlock
+                        {
+                            Text = $"Prepare an incident response plan for '{incidentTitle}'.",
+                        },
+                    },
+                ],
+            };
+    }
+
+    [McpServerPromptType]
+    private sealed class TestMcpOperationsPrompts
+    {
+        [McpServerPrompt(Name = "deployment_review_system_prompt", Title = "Deployment review")]
+        [Description("Builds a deployment review system prompt for a target environment.")]
+        public static GetPromptResult BuildDeploymentReviewPrompt(
+            [Description("Target environment.")] string environment
+        ) =>
+            new()
+            {
+                Description = "Deployment review system prompt.",
+                Messages =
+                [
+                    new PromptMessage
+                    {
+                        Role = Role.User,
+                        Content = new TextContentBlock
+                        {
+                            Text = $"Review the deployment readiness for '{environment}'.",
+                        },
+                    },
+                ],
+            };
     }
 
     private sealed record TestMcpSearchResult(string Query, string Source);
