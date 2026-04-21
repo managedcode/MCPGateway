@@ -2,7 +2,7 @@
 
 ## Context
 
-`ManagedCode.MCPGateway` already exposes the gateway as two reusable meta-tools through `McpGatewayToolSet` and `IMcpGateway.CreateMetaTools(...)`.
+`ManagedCode.MCPGateway` already exposes the gateway as reusable meta-tools through `McpGatewayToolSet` and `IMcpGateway.CreateMetaTools(...)`.
 
 The package now also needs to prove that these tools integrate cleanly with two host-side consumption patterns:
 
@@ -14,7 +14,7 @@ The user explicitly asked for:
 - very lightweight host integration
 - deterministic scenario-driven tests
 - coverage both without embeddings and with embeddings
-- a staged auto-discovery flow where the model starts with only two gateway tools, then receives only the currently needed direct tools, and then sees those discovered tools replaced when a new search result arrives
+- a staged auto-discovery flow where the model starts with the gateway search, route, and invoke tools, then receives only the currently needed direct tools, and then sees those discovered tools replaced when a new search result arrives
 
 At the same time, the repository still wants to keep the core package generic, library-first, and free from unnecessary host-framework dependencies.
 
@@ -30,8 +30,8 @@ At the same time, the repository still wants to keep the core package generic, l
 
 The recommended host flow is:
 
-1. expose only `gateway_tools_search` and `gateway_tool_invoke`
-2. let the model search the gateway
+1. expose only `gateway_tools_search`, `gateway_tools_route`, and `gateway_tool_invoke`
+2. let the model search or route the gateway first
 3. project only the latest search matches as direct proxy tools
 4. replace that discovered proxy set when a new search result arrives
 
@@ -42,7 +42,7 @@ The core package will not take a hard runtime dependency on Microsoft Agent Fram
 ```mermaid
 flowchart LR
     Gateway["IMcpGateway / McpGateway"] --> ToolSet["McpGatewayToolSet"]
-    ToolSet --> MetaTools["gateway_tools_search + gateway_tool_invoke"]
+    ToolSet --> MetaTools["gateway_tools_search + gateway_tools_route + gateway_tool_invoke"]
     ToolSet --> Discovered["CreateDiscoveredTools(...)"]
     MetaTools --> ChatOptions["ChatOptions.AddMcpGatewayTools(...)"]
     MetaTools --> AutoDiscovery["McpGatewayAutoDiscoveryChatClient"]
@@ -117,7 +117,7 @@ Mitigations:
 - `McpGatewayToolSet.CreateTools(...)` MUST remain the canonical source of gateway meta-tools.
 - `McpGatewayToolSet.AddTools(...)` MUST preserve existing tool entries and MUST avoid duplicate names.
 - `ChatOptions.AddMcpGatewayTools(...)` MUST preserve existing `ChatOptions.Tools` entries and MUST avoid duplicate names.
-- `McpGatewayAutoDiscoveryChatClient` MUST start each host loop with only the two gateway meta-tools visible unless the host already supplied other non-gateway tools.
+- `McpGatewayAutoDiscoveryChatClient` MUST start each host loop with only the gateway search, route, and invoke meta-tools visible unless the host already supplied other non-gateway tools.
 - `McpGatewayAutoDiscoveryChatClient` MUST replace the discovered proxy-tool set when a newer gateway search result is present instead of accumulating old discovered tools forever.
 - The core package MUST stay generic around `AITool` composition and MUST NOT require Microsoft Agent Framework for normal package use.
 - Chat-client and agent integration tests MUST prove the staged auto-discovery lifecycle against a realistic multi-tool catalog in both default graph mode and opt-in vector mode.

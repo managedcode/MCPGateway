@@ -8,16 +8,18 @@ Parent: `../../AGENTS.md`
 ## Purpose
 
 - This project verifies the shipped behavior of `ManagedCode.MCPGateway` through integration-style tests.
-- It owns regression coverage for local tools, MCP tools, search, invocation, embeddings, meta-tools, and chat-client integration.
+- It owns regression coverage for catalog, discovery, search, invocation, prompts, hosting, and deterministic test support.
 
 ## Entry Points
 
+- `Catalog/`
+- `Discovery/`
+- `Gateway/`
+- `Hosting/`
 - `Search/`
 - `Invocation/`
-- `MetaTools/`
-- `ChatClient/`
-- `Agents/`
-- `TestSupport/`
+- `Prompts/`
+- `Support/`
 
 ## Boundaries
 
@@ -29,7 +31,7 @@ Parent: `../../AGENTS.md`
 
 - `build`: `dotnet build tests/ManagedCode.MCPGateway.Tests/ManagedCode.MCPGateway.Tests.csproj -c Release --no-restore`
 - `test`: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build`
-- `coverage`: `dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "dotnet" --targetargs "test --solution ManagedCode.MCPGateway.slnx -c Release --no-build" --format cobertura --output artifacts/coverage/coverage.cobertura.xml`
+- `coverage`: `dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml`
 - `coverage-report`: `dotnet tool run reportgenerator -reports:"artifacts/coverage/coverage.cobertura.xml" -targetdir:"artifacts/coverage-report" -reporttypes:"HtmlSummary;MarkdownSummaryGithub"`
 - `format`: `dotnet format ManagedCode.MCPGateway.slnx`
 - `analyze`: `dotnet build tests/ManagedCode.MCPGateway.Tests/ManagedCode.MCPGateway.Tests.csproj -c Release --no-restore -p:RunAnalyzers=true`

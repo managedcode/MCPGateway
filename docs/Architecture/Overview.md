@@ -25,13 +25,15 @@ Out of scope:
 - `IMcpGatewayCatalogRuntime` for full in-memory catalog reset and reconfiguration
 - `IMcpGatewayPromptCatalog` for aggregated MCP prompt listing and retrieval
 - `IMcpGatewayFactory` for isolated custom gateway instances created from host DI
-- `McpGatewayToolSet` for reusable meta-tools
+- `McpGatewayToolSet` for reusable search, route, and invoke meta-tools
 
 `McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default Markdown-LD graph search, vector-first `Auto` search with bounded Markdown-LD supplementation, or explicit embedding-first search, optionally rewrites queries through a keyed `IChatClient`, emits built-in .NET telemetry for build/search operations including vector token usage, calibrates user-facing search confidence before returning matches, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
 
-The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` meta-tools and discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with two meta-tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
+The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` search, route, and invoke meta-tools plus discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with those three gateway tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
 
 For MCP interoperability in the other direction, the package also exposes `WithMcpGatewayCatalog()` as a server-builder extension. Hosts can take one aggregated gateway catalog and re-export it as a downstream MCP server that exposes the combined tools and prompts from multiple upstream MCP sources.
+
+The repository now uses feature-first package slices for `Gateway`, `Discovery`, `Catalog`, `Search`, `Invocation`, `Prompts`, and `Hosting`. The durable policy decision behind that structure is captured in [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md).
 
 ## Governance Map
 
@@ -99,6 +101,7 @@ flowchart LR
     ToolSet["McpGatewayToolSet"] --> IMcpGateway
     ToolSet --> ToolList["IList<AITool> composition"]
     ToolSet --> DiscoveredTools["CreateDiscoveredTools(...)"]
+    ToolSet --> Route["gateway_tools_route / RouteToolsAsync(...)"]
     ChatOptions["ChatOptions.AddMcpGatewayTools(...)"] --> ToolSet
     AutoDiscovery["McpGatewayAutoDiscoveryChatClient / UseMcpGatewayAutoDiscovery(...)"] --> ToolSet
     AutoDiscovery --> ChatClient
@@ -121,67 +124,48 @@ flowchart LR
     McpGateway["McpGateway"] --> McpGatewayRuntime["McpGatewayRuntime"]
     AutoDiscovery["McpGatewayAutoDiscoveryChatClient"] --> ToolSet["McpGatewayToolSet"]
     AutoDiscovery --> RequestWrapper["AutoDiscoveryRequestChatClient"]
-    RequestWrapper --> RuntimeTools["gateway_tools_search + discovered proxy tools"]
-    McpGatewayRuntime --> RuntimeCore["Internal/Runtime/Core/*"]
-    McpGatewayRuntime --> RuntimeCatalog["Internal/Runtime/Catalog/*"]
-    McpGatewayRuntime --> RuntimeSearch["Internal/Runtime/Search/*"]
-    McpGatewayRuntime --> RuntimeGraph["Internal/Runtime/Graph/*"]
-    McpGatewayRuntime --> RuntimeInvocation["Internal/Runtime/Invocation/*"]
-    McpGatewayRuntime --> RuntimeEmbeddings["Internal/Runtime/Embeddings/*"]
+    RequestWrapper --> RuntimeTools["gateway_tools_search + gateway_tools_route + discovered proxy tools"]
+    McpGatewayRuntime --> RuntimeCore["Gateway/Internal/Runtime/*"]
+    McpGatewayRuntime --> RuntimeCatalog["Catalog/Internal/*"]
+    McpGatewayRuntime --> RuntimeSearch["Search/Internal/*"]
+    McpGatewayRuntime --> RuntimeInvocation["Invocation/Internal/*"]
     Registry["McpGatewayRegistry"] --> RegistrationCollection["McpGatewayRegistrationCollection"]
     Registry --> OperationGate["McpGatewayOperationGate"]
     RegistrationCollection --> SourceRegistrations["McpGatewayToolSourceRegistration*"]
-    RuntimeSearch --> Json["McpGatewayJsonSerializer"]
+    RuntimeSearch --> Json["Gateway/Internal/Serialization/*"]
     RuntimeSearch --> SearchCache["IMcpGatewaySearchCache"]
     SearchCache --> NoOpCache["McpGatewayNoOpSearchCache"]
     SearchCache --> InMemorySearchCache["McpGatewayInMemorySearchCache"]
     InMemorySearchCache --> MemoryCache["IMemoryCache"]
-    RuntimeGraph --> MarkdownLd["ManagedCode.MarkdownLd.Kb"]
-    Warmup["McpGatewayIndexWarmupService"] --> McpGateway
+    RuntimeSearch --> MarkdownLd["ManagedCode.MarkdownLd.Kb"]
+    Warmup["Hosting/Internal/Warmup/*"] --> McpGateway
     InMemoryStore["McpGatewayInMemoryToolEmbeddingStore"] --> MemoryCache["IMemoryCache"]
 ```
 
 ## Module Index
 
-- Public facade: [`src/ManagedCode.MCPGateway/McpGateway.cs`](../../src/ManagedCode.MCPGateway/McpGateway.cs) exposes the package runtime API and delegates work to the internal runtime.
-- Factory service: [`src/ManagedCode.MCPGateway/McpGatewayFactory.cs`](../../src/ManagedCode.MCPGateway/McpGatewayFactory.cs) creates isolated gateway bundles from the host DI container so consumers pass only gateway-specific configuration at creation time.
-- Runtime catalog control: [`src/ManagedCode.MCPGateway/Abstractions/Catalog/IMcpGatewayCatalogRuntime.cs`](../../src/ManagedCode.MCPGateway/Abstractions/Catalog/IMcpGatewayCatalogRuntime.cs) owns full in-memory catalog clear and reconfiguration operations distinct from additive registration.
-- Prompt catalog surface: [`src/ManagedCode.MCPGateway/Abstractions/IMcpGatewayPromptCatalog.cs`](../../src/ManagedCode.MCPGateway/Abstractions/IMcpGatewayPromptCatalog.cs) owns aggregated prompt listing and source-aware prompt retrieval for registered MCP sources.
-- Factory-created instance contract: [`src/ManagedCode.MCPGateway/Abstractions/IMcpGatewayInstance.cs`](../../src/ManagedCode.MCPGateway/Abstractions/IMcpGatewayInstance.cs) exposes the custom gateway, prompt catalog, registry, runtime-catalog control, tool set, and disposal ownership as one stable surface.
-- Public abstractions: [`src/ManagedCode.MCPGateway/Abstractions/`](../../src/ManagedCode.MCPGateway/Abstractions/) defines the stable interfaces consumers resolve from DI.
-- Public configuration: [`src/ManagedCode.MCPGateway/Configuration/`](../../src/ManagedCode.MCPGateway/Configuration/) contains options and service keys that shape host integration.
-- Public models: [`src/ManagedCode.MCPGateway/Models/`](../../src/ManagedCode.MCPGateway/Models/) contains request/result contracts and enums grouped by search, invocation, catalog, and embeddings behavior, including explicit tool search hints for alias/keyword enrichment.
-- Public caching: [`src/ManagedCode.MCPGateway/Caching/`](../../src/ManagedCode.MCPGateway/Caching/) provides the built-in `IMemoryCache`-backed runtime search cache that hosts can opt into explicitly.
-- Public embeddings: [`src/ManagedCode.MCPGateway/Embeddings/`](../../src/ManagedCode.MCPGateway/Embeddings/) provides optional embedding-store implementations, including the built-in `IMemoryCache`-backed process-local store.
-- Public meta-tools: [`src/ManagedCode.MCPGateway/McpGatewayToolSet.cs`](../../src/ManagedCode.MCPGateway/McpGatewayToolSet.cs) exposes the gateway as reusable `AITool` instances for model-driven search and invoke flows.
-- Public chat-options bridge: [`src/ManagedCode.MCPGateway/Registration/McpGatewayChatOptionsExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayChatOptionsExtensions.cs) attaches the gateway meta-tools to `ChatOptions` without replacing existing tools.
-- Public auto-discovery wrapper: [`src/ManagedCode.MCPGateway/McpGatewayAutoDiscoveryChatClient.cs`](../../src/ManagedCode.MCPGateway/McpGatewayAutoDiscoveryChatClient.cs) stages model-visible tools as `2 meta-tools -> latest discovered proxies -> replace on next search`.
-- Public chat-client extensions: [`src/ManagedCode.MCPGateway/Registration/McpGatewayChatClientExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayChatClientExtensions.cs) wraps any `IChatClient` with the recommended staged auto-discovery flow.
-- Public MCP server export: [`src/ManagedCode.MCPGateway/Registration/McpGatewayMcpServerBuilderExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayMcpServerBuilderExtensions.cs) re-exports the aggregated gateway catalog as downstream MCP `list_tools` / `call_tool` / `list_prompts` / `prompts/get` handlers.
-- Internal catalog module: [`src/ManagedCode.MCPGateway/Internal/Catalog/`](../../src/ManagedCode.MCPGateway/Internal/Catalog/) owns mutable tool-source registration state and read-only snapshots for indexing.
-- Internal catalog sources: [`src/ManagedCode.MCPGateway/Internal/Catalog/Sources/`](../../src/ManagedCode.MCPGateway/Internal/Catalog/Sources/) owns transport-specific source registrations and MCP client creation.
-- Internal runtime module: [`src/ManagedCode.MCPGateway/Internal/Runtime/`](../../src/ManagedCode.MCPGateway/Internal/Runtime/) owns orchestration and is split by core, catalog, search, graph, invocation, and embeddings concerns.
-- Internal cache fallbacks: [`src/ManagedCode.MCPGateway/Internal/Caching/`](../../src/ManagedCode.MCPGateway/Internal/Caching/) owns the default no-op search-cache implementation used when the host does not opt into process-local runtime caching.
-- Internal graph search module: [`src/ManagedCode.MCPGateway/Internal/Runtime/Graph/`](../../src/ManagedCode.MCPGateway/Internal/Runtime/Graph/) builds generated Markdown-LD tool documents, loads file-system Markdown-LD sources, or consumes host-supplied Markdown-LD documents, then rebuilds the focused token-distance graph index back to gateway tool entries.
-- Internal telemetry module: [`src/ManagedCode.MCPGateway/Internal/Telemetry/`](../../src/ManagedCode.MCPGateway/Internal/Telemetry/) emits first-party .NET `ActivitySource` and `Meter` signals for search and index operations, including vector token-cost telemetry.
-- Internal serialization: [`src/ManagedCode.MCPGateway/Internal/Serialization/`](../../src/ManagedCode.MCPGateway/Internal/Serialization/) contains the canonical JSON materialization path used by runtime features.
-- Warmup hooks: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceProviderExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceProviderExtensions.cs) and [`src/ManagedCode.MCPGateway/Internal/Warmup/McpGatewayIndexWarmupService.cs`](../../src/ManagedCode.MCPGateway/Internal/Warmup/McpGatewayIndexWarmupService.cs) provide optional eager index-building integration.
-- DI registration: [`src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs`](../../src/ManagedCode.MCPGateway/Registration/McpGatewayServiceCollectionExtensions.cs) wires facade, registry, meta-tools, warmup support, the default no-op runtime search cache, and the optional `IMemoryCache`-backed cache/store implementations into the container.
-- Prompt catalog implementation: [`src/ManagedCode.MCPGateway/Internal/Prompts/McpGatewayPromptCatalog.cs`](../../src/ManagedCode.MCPGateway/Internal/Prompts/McpGatewayPromptCatalog.cs) enumerates prompt-capable MCP sources and renders prompts through the official MCP client APIs.
-- MCP server export handlers: [`src/ManagedCode.MCPGateway/Internal/Server/`](../../src/ManagedCode.MCPGateway/Internal/Server/) translates gateway tool and prompt contracts into official MCP server handlers so one gateway can be exposed as one downstream MCP server.
+- Gateway slice: [`src/ManagedCode.MCPGateway/Gateway/`](../../src/ManagedCode.MCPGateway/Gateway/) owns the public facade, factory, instance contracts, options, DI registration, runtime core, telemetry, and shared serialization helpers.
+- Discovery slice: [`src/ManagedCode.MCPGateway/Discovery/`](../../src/ManagedCode.MCPGateway/Discovery/) owns reusable meta-tools, category-first routing, discovered-tool projection, auto-discovery chat integration, and discovery-specific registration/configuration.
+- Catalog slice: [`src/ManagedCode.MCPGateway/Catalog/`](../../src/ManagedCode.MCPGateway/Catalog/) owns catalog contracts, models, mutable registration state, source adapters, descriptor creation, and index-building logic.
+- Search slice: [`src/ManagedCode.MCPGateway/Search/`](../../src/ManagedCode.MCPGateway/Search/) owns search contracts, models, runtime cache/store abstractions, process-local cache/store implementations, query normalization, graph retrieval, vector ranking, and search confidence logic.
+- Invocation slice: [`src/ManagedCode.MCPGateway/Invocation/`](../../src/ManagedCode.MCPGateway/Invocation/) owns invocation request/result contracts and runtime execution helpers.
+- Prompts slice: [`src/ManagedCode.MCPGateway/Prompts/`](../../src/ManagedCode.MCPGateway/Prompts/) owns prompt contracts and the aggregated prompt catalog implementation.
+- Hosting slice: [`src/ManagedCode.MCPGateway/Hosting/`](../../src/ManagedCode.MCPGateway/Hosting/) owns MCP server export and warmup integration.
 
 ## Dependency Rules
 
-- Public code may depend on `Models`, `Configuration`, and `Abstractions`, but internal modules must not depend on tests or docs.
-- `McpGateway` is a thin facade only. It may delegate to `McpGatewayRuntime`, but it must not own registry mutation logic.
-- `Internal/Catalog` owns mutable source registration state. `Internal/Runtime` may read snapshots from it, but must not mutate registrations directly.
-- `Internal/Catalog/Sources` owns MCP transport-specific creation and caching. Transport setup must not leak into `Internal/Runtime`, `Models`, or `Configuration`.
-- `Internal/Runtime` may depend on `Internal/Catalog`, `Embeddings`, `Models`, `Configuration`, and `Abstractions`.
+- Public contracts stay explicit, but each feature slice owns the contracts and internal helpers for its own behavior.
+- `Gateway` is the orchestration slice only. It may delegate to catalog, search, invocation, prompts, discovery, and hosting collaborators, but it must not absorb their internal state or transport logic.
+- `Catalog` owns mutable source registration state, source adapters, descriptor creation, and index-building orchestration.
+- `Search` owns query shaping, ranking, graph retrieval, vector retrieval, confidence calibration, and process-local cache/store implementations.
+- `Invocation` owns tool-target resolution, argument preparation, invocation, and result normalization.
+- `Prompts` owns prompt listing and prompt retrieval behavior for registered MCP sources.
+- `Discovery` owns model-visible gateway tool exposure, category-first routing, and staged auto-discovery chat flow.
+- `Hosting` owns downstream MCP server export and optional warmup integration.
 - Optional AI services such as embedding generators and query-normalization chat clients must stay outside the package core and be resolved through DI service keys rather than hardwired provider code.
 - Chat-client and agent integrations must stay `AITool`-centric in the core package. Host-specific frameworks may consume those tools, but the base package should not take a hard dependency on a specific agent host unless that becomes an explicit product decision.
 - `McpGatewayAutoDiscoveryChatClient` may orchestrate tool visibility for host chat loops, but it must stay generic over `IChatClient` and must not take a dependency on Microsoft Agent Framework.
-- The recommended staged host flow is: advertise only the two gateway meta-tools first, then project only the latest search matches as direct proxy tools, then replace that discovered set on the next search result.
-- `Models` should stay contract-first. Internal transport, registry, or lifecycle helpers do not belong there.
+- The recommended staged host flow is: advertise the gateway search, route, and invoke meta-tools first, then project only the latest search matches as direct proxy tools, then replace that discovered set on the next search result.
 - Embedding support must stay optional and isolated behind `IMcpGatewayToolEmbeddingStore` and embedding-generator abstractions.
 - Process-local runtime search caching must stay behind `IMcpGatewaySearchCache`, with a no-op default and an explicit opt-in `IMemoryCache` implementation for hosts that want local reuse.
 - The built-in process-local embedding store may depend on `IMemoryCache`, but cross-instance persistence and cache replication must stay behind host-provided `IMcpGatewayToolEmbeddingStore` implementations.
@@ -198,6 +182,7 @@ flowchart LR
 - [`docs/ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md`](../ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md): documents why the built-in process-local embedding cache uses `IMemoryCache` and why durable/distributed caching remains a host responsibility.
 - [`docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md`](../ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md): documents the default Markdown-LD graph retrieval path, file-system graph sources, and opt-in vector fallback behavior.
 - [`docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md`](../ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md): documents vector-first `Auto`, bounded graph supplementation, runtime telemetry, and performance-smoke coverage.
+- [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md): documents the feature-first foldering policy and the incremental migration away from large technical buckets.
 
 ## Related Docs
 
@@ -208,6 +193,7 @@ flowchart LR
 - [`docs/ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md`](../ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md)
 - [`docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md`](../ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md)
 - [`docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md`](../ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md)
+- [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md)
 - [`docs/Features/SearchQueryNormalizationAndRanking.md`](../Features/SearchQueryNormalizationAndRanking.md)
 - [`docs/Features/AutoVectorFirstSearchAndPerformance.md`](../Features/AutoVectorFirstSearchAndPerformance.md)
 - [`AGENTS.md`](../../AGENTS.md)

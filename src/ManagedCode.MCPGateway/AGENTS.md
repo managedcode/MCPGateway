@@ -8,16 +8,17 @@ Parent: `../../AGENTS.md`
 ## Purpose
 
 - This project ships the reusable `ManagedCode.MCPGateway` NuGet library.
-- It owns the public gateway facade, DI registration, tool catalog/runtime orchestration, and optional embedding and warmup integrations.
+- It owns the feature-first package slices for gateway orchestration, discovery, catalog, search, invocation, prompts, and hosting integrations.
 
 ## Entry Points
 
-- `McpGateway.cs`
-- `McpGatewayToolSet.cs`
-- `McpGatewayAutoDiscoveryChatClient.cs`
-- `Registration/`
-- `Internal/Runtime/`
-- `Internal/Catalog/`
+- `Gateway/`
+- `Discovery/`
+- `Catalog/`
+- `Search/`
+- `Invocation/`
+- `Prompts/`
+- `Hosting/`
 
 ## Boundaries
 

@@ -25,6 +25,7 @@ dotnet add package ManagedCode.MCPGateway
 - one prompt catalog for MCP prompts aggregated across registered MCP sources
 - one downstream MCP server export path over the aggregated tool and prompt catalog
 - one search API with default Markdown-LD graph ranking, opt-in vector ranking, and vector-first `Auto`
+- one category-first routing API for advanced tool discovery flows
 - one invocation API for both local tools and MCP tools
 - additive catalog registration through `IMcpGatewayRegistry`
 - full in-memory catalog control through `IMcpGatewayCatalogRuntime`
@@ -74,6 +75,10 @@ await using var serviceProvider = services.BuildServiceProvider();
 var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
 var search = await gateway.SearchAsync("find github repositories");
+var route = await gateway.RouteToolsAsync(new McpGatewayToolRouteRequest(
+    Query: "find github repositories",
+    MaxCategories: 3,
+    MaxToolsPerCategory: 2));
 var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
     ToolId: search.Matches[0].ToolId,
     Query: "managedcode"));
@@ -244,7 +249,7 @@ var prompts = await gatewayHost.PromptCatalog.ListPromptsAsync();
 
 Use the package surfaces like this:
 
-- `IMcpGateway`: build, list, search, invoke
+- `IMcpGateway`: build, list, search, route, invoke
 - `IMcpGatewayRegistry`: additive tool and source registration
 - `IMcpGatewayCatalogRuntime`: full in-memory catalog clear or reconfiguration
 - `IMcpGatewayPromptCatalog`: list and render aggregated MCP prompts
@@ -315,7 +320,7 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
 
 ## Search Hints
 
-If a tool should be easier to find through multilingual aliases or stable domain keywords, register explicit search hints:
+If a tool should be easier to find through multilingual aliases, stable domain keywords, category-first routing, or execution-aware discovery, register explicit search hints:
 
 ```csharp
 services.AddMcpGateway(options =>
@@ -340,11 +345,35 @@ services.AddMcpGateway(options =>
                 "alerts",
                 "inbox",
                 "mentions"
-            ]));
+            ],
+            Categories: ["communications"],
+            Tags: ["notifications", "activity-feed"],
+            DataSources: ["inbox-api"],
+            UsageExamples:
+            [
+                new McpGatewayToolExample(
+                    "show unread alerts",
+                    "{\"count\":3}",
+                    "Check whether the user has pending notifications."),
+                new McpGatewayToolExample(
+                    "summarize mentions from the last release thread",
+                    "{\"mentions\":[\"alice\",\"bob\"]}",
+                    "Triage release-thread mentions before replying."),
+                new McpGatewayToolExample(
+                    "list urgent notifications for the mobile workspace",
+                    "{\"alerts\":[{\"severity\":\"high\"}]}",
+                    "Filter alerts for a specific workspace and urgency level.")
+            ],
+            ReadOnly: true,
+            Idempotent: true,
+            CostTier: McpGatewayToolCostTier.Low,
+            LatencyTier: McpGatewayToolLatencyTier.Low));
 });
 ```
 
-Hints are included in descriptors, Markdown-LD graph documents, vector documents, and lexical boosts. They are the preferred way to improve multilingual discovery without hardcoded ranking exceptions.
+Hints are included in descriptors, Markdown-LD graph documents, vector documents, exported MCP metadata, and lexical boosts. They are the preferred way to improve multilingual discovery and category-aware routing without hardcoded ranking exceptions.
+
+If a tool should stay out of default discovery until a host explicitly opts into it, set `EnabledByDefault: false`. Standard `SearchAsync(...)` and `RouteToolsAsync(...)` hide those tools unless the request sets `IncludeDisabledTools = true`.
 
 ## Search Strategies
 
@@ -525,11 +554,33 @@ services.AddMcpGateway(options =>
 });
 ```
 
-## Meta-Tools And Chat Integration
+## Routing, Meta-Tools, And Chat Integration
 
-The gateway can expose itself as two reusable tools:
+For category-first discovery:
+
+```csharp
+var route = await gateway.RouteToolsAsync(new McpGatewayToolRouteRequest(
+    Query: "open a bridge and prepare a failover plan for incident 42",
+    MaxCategories: 2,
+    MaxToolsPerCategory: 2,
+    ContextSummary: "incident already confirmed; the next step is an action tool",
+    PreferReadOnly: false,
+    IncludeDisabledTools: true));
+```
+
+`McpGatewayToolRouteResult` returns:
+
+- `Categories` with grouped tool candidates
+- `SuggestedMatches` with the flattened recommended tools
+- `Diagnostics` from the underlying search path
+- `RankingMode` from the underlying graph/vector/hybrid search
+
+The router prefers safe read-only tools for discovery/inspection-style requests and uses cost and latency tiers as tie-breakers when tool quality is otherwise similar.
+
+The gateway can expose itself as three reusable tools:
 
 - `gateway_tools_search`
+- `gateway_tools_route`
 - `gateway_tool_invoke`
 
 From the gateway:
@@ -575,7 +626,7 @@ var response = await chatClient.GetResponseAsync(
     });
 ```
 
-This flow starts with the two gateway meta-tools and only projects the latest matching tools as direct proxy tools after search.
+This flow starts with the three gateway meta-tools and only projects the latest matching tools as direct proxy tools after search.
 
 If the host already has search results and only wants the discovered proxy tools:
 
@@ -655,6 +706,7 @@ Search telemetry includes configured strategy, ranking mode, graph/vector usage,
 - [ADR-0004: Process-local embedding store uses IMemoryCache](docs/ADR/ADR-0004-process-local-embedding-store-uses-imemorycache.md)
 - [ADR-0005: Markdown-LD graph search for tool retrieval](docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md)
 - [ADR-0006: Vector-first auto search and runtime telemetry](docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md)
+- [ADR-0007: Vertical-slice package organization](docs/ADR/ADR-0007-vertical-slice-package-organization.md)
 - [Feature spec: Search query normalization and ranking](docs/Features/SearchQueryNormalizationAndRanking.md)
 - [Feature spec: Auto vector-first search and performance](docs/Features/AutoVectorFirstSearchAndPerformance.md)
 
@@ -684,6 +736,6 @@ dotnet csharpier check .
 Coverage:
 
 ```bash
-dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "dotnet" --targetargs "test --solution ManagedCode.MCPGateway.slnx -c Release --no-build" --format cobertura --output artifacts/coverage/coverage.cobertura.xml
+dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml
 dotnet tool run reportgenerator -reports:"artifacts/coverage/coverage.cobertura.xml" -targetdir:"artifacts/coverage-report" -reporttypes:"HtmlSummary;MarkdownSummaryGithub"
 ```

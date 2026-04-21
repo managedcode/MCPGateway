@@ -91,7 +91,7 @@ If no new rule is detected -> do not update the file.
 - format: `dotnet format ManagedCode.MCPGateway.slnx`
 - format-check: `dotnet format ManagedCode.MCPGateway.slnx --verify-no-changes`
 - roslynator-analyze: `dotnet tool run roslynator analyze src/ManagedCode.MCPGateway/ManagedCode.MCPGateway.csproj tests/ManagedCode.MCPGateway.Tests/ManagedCode.MCPGateway.Tests.csproj`
-- coverage: `dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "dotnet" --targetargs "test --solution ManagedCode.MCPGateway.slnx -c Release --no-build" --format cobertura --output artifacts/coverage/coverage.cobertura.xml`
+- coverage: `dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml`
 - coverage-report: `dotnet tool run reportgenerator -reports:"artifacts/coverage/coverage.cobertura.xml" -targetdir:"artifacts/coverage-report" -reporttypes:"HtmlSummary;MarkdownSummaryGithub"`
 
 ### Rule Precedence
@@ -164,17 +164,16 @@ If no new rule is detected -> do not update the file.
 
 - `src/ManagedCode.MCPGateway/` contains the package source.
 - `tests/ManagedCode.MCPGateway.Tests/` contains integration-style package tests.
-- `src/ManagedCode.MCPGateway/Abstractions/` contains public interfaces, grouped by concern when needed.
-- `src/ManagedCode.MCPGateway/Configuration/` contains public configuration types and service keys.
-- `src/ManagedCode.MCPGateway/Models/` contains public contracts grouped by behavior such as search, invocation, catalog, and embeddings.
-- `src/ManagedCode.MCPGateway/Embeddings/` contains public embedding-store implementations.
-- `src/ManagedCode.MCPGateway/Internal/` contains internal catalog, runtime, and helper implementation details.
-- `src/ManagedCode.MCPGateway/Registration/` contains DI registration extensions.
-- `src/ManagedCode.MCPGateway/McpGateway.cs` is the public gateway facade.
-- `src/ManagedCode.MCPGateway/Internal/Runtime/` contains the internal runtime orchestration implementation, grouped by core, catalog, search, invocation, and embeddings responsibilities.
-- `src/ManagedCode.MCPGateway/McpGatewayToolSet.cs` exposes the gateway as reusable `AITool` meta-tools.
+- `src/ManagedCode.MCPGateway/Gateway/` contains the public gateway facade, factory, options, DI entry points, runtime core, telemetry, and serialization.
+- `src/ManagedCode.MCPGateway/Discovery/` contains reusable `AITool` meta-tools, auto-discovery chat integration, and discovery-specific registration/configuration.
+- `src/ManagedCode.MCPGateway/Catalog/` contains catalog contracts, models, registration state, descriptors, source adapters, and index-building logic.
+- `src/ManagedCode.MCPGateway/Search/` contains search contracts, models, caching, embeddings, and internal ranking/graph/normalization/context logic.
+- `src/ManagedCode.MCPGateway/Invocation/` contains invocation models and runtime execution helpers.
+- `src/ManagedCode.MCPGateway/Prompts/` contains prompt contracts, models, and prompt catalog implementation.
+- `src/ManagedCode.MCPGateway/Hosting/` contains MCP server export and warmup integration.
 - `.codex/skills/` contains repo-local MCAF skills for Codex.
 - Keep the source tree explicitly modular: separate public API folders from `Internal/` implementation folders, and group runtime classes by responsibility in dedicated folders instead of dumping search, indexing, invocation, registry, and infrastructure files into the package root, because flat structure hides boundaries and invites god-object design.
+- Prefer vertical-slice package structure for non-trivial areas: group code by feature and subfeature with isolated supporting types nearby instead of accumulating broad cross-cutting buckets that mix unrelated behaviors in one folder, because feature-local structure keeps boundaries auditable.
 
 ### Skills (ALL TASKS)
 
@@ -211,7 +210,7 @@ If no new rule is detected -> do not update the file.
 - Test framework in this repository is TUnit. Never add or keep xUnit here.
 - This repository uses `TUnit` on `Microsoft.Testing.Platform`; never use VSTest-only flags such as `--filter` or `--logger`, because they are not supported here.
 - For TUnit solution runs, always invoke `dotnet test --solution ...`; do not pass the solution path positionally.
-- Coverage in this repository uses the local `coverlet.console` tool against the built test assembly, then renders human-readable output with the local `reportgenerator` tool.
+- Coverage in this repository uses the local `coverlet.console` tool against the built test assembly and must target the built `ManagedCode.MCPGateway.Tests` TUnit application directly; routing coverage through `dotnet test --solution ...` under `Microsoft.Testing.Platform` reports zero hits in this repo.
 - Every behavior change must include or update tests in `tests/ManagedCode.MCPGateway.Tests/`.
 - Add tests only when they close a meaningful behavior or regression gap; avoid low-signal tests that only increase count without improving confidence.
 - Keep tests focused on real gateway behavior:
@@ -219,6 +218,8 @@ If no new rule is detected -> do not update the file.
   - MCP tool indexing and invocation
   - vector search behavior
   - Markdown-LD graph search and vector-to-graph fallback behavior
+- For MCP protocol coverage, prefer end-to-end integration tests that use the official `ModelContextProtocol` C# SDK on both client and server paths instead of test doubles when the behavior depends on real protocol contracts, because MCP regressions often hide outside mocked flows.
+- When changing MCP discovery, routing, search, or invocation behavior, add multi-step integration cases with realistic tool metadata, side-effect boundaries, and client-driven execution so retrieval and invocation are verified under production-like conditions.
 - Keep embedding-based search covered with deterministic local tests by using a fake or test-only embedding generator.
 - Keep request context behavior covered when search or invocation consumes contextual inputs.
 - Do not remove tests to get green builds.
@@ -307,6 +308,7 @@ If no new rule is detected -> do not update the file.
 ### Likes
 
 - Explicit package structure
+- Vertical-slice structure with feature and subfeature isolation
 - Reusable library design over app-specific glue
 - Search + execute flows covered by automated tests
 - Clean root packaging and CI setup

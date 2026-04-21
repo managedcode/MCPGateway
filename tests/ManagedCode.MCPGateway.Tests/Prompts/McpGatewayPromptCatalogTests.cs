@@ -25,7 +25,8 @@ public sealed class McpGatewayPromptCatalogTests
         await Assert.That(descriptor.DisplayName).IsEqualTo("Repository triage");
         await Assert.That(descriptor.Description).Contains("triage system prompt");
         await Assert.That(descriptor.RequiredArguments).IsEquivalentTo(["repository"]);
-        await Assert.That(descriptor.Arguments.Select(static argument => argument.Name).ToArray())
+        await Assert
+            .That(descriptor.Arguments.Select(static argument => argument.Name).ToArray())
             .IsEquivalentTo(["repository", "locale"]);
     }
 
@@ -74,9 +75,12 @@ public sealed class McpGatewayPromptCatalogTests
 
         var prompts = await gatewayHost.PromptCatalog.ListPromptsAsync();
 
-        await Assert.That(prompts.Any(static prompt =>
-                prompt.PromptId == "factory-mcp:repository_triage_system_prompt"
-            ))
+        await Assert
+            .That(
+                prompts.Any(static prompt =>
+                    prompt.PromptId == "factory-mcp:repository_triage_system_prompt"
+                )
+            )
             .IsTrue();
     }
 }
