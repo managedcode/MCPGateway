@@ -1,4 +1,7 @@
+#pragma warning disable MCPEXP001
+
 using System.Collections.Concurrent;
+using System.Text.Json;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
@@ -17,7 +20,8 @@ internal enum McpGatewaySourceRegistrationKind
 
 internal sealed record McpGatewayLoadedTool(
     AITool Tool,
-    McpGatewayToolSearchHints? SearchHints = null
+    McpGatewayToolSearchHints? SearchHints = null,
+    ToolTaskSupport? TaskSupport = null
 );
 
 internal sealed record McpGatewayLoadedPrompt(
@@ -26,6 +30,10 @@ internal sealed record McpGatewayLoadedPrompt(
     string? Description,
     IReadOnlyList<PromptArgument> Arguments
 );
+
+internal sealed record McpGatewayLoadedResource(Resource Resource);
+
+internal sealed record McpGatewayLoadedResourceTemplate(ResourceTemplate ResourceTemplate);
 
 internal abstract class McpGatewayToolSourceRegistration(string sourceId, string? displayName)
     : IAsyncDisposable
@@ -41,17 +49,108 @@ internal abstract class McpGatewayToolSourceRegistration(string sourceId, string
         CancellationToken cancellationToken
     );
 
+    public virtual async ValueTask<McpGatewayLoadedTool?> GetToolAsync(
+        string toolName,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        if (string.IsNullOrWhiteSpace(toolName))
+        {
+            return null;
+        }
+
+        var requestedToolName = toolName.Trim();
+        var tools = await LoadToolsAsync(loggerFactory, cancellationToken);
+        return tools.FirstOrDefault(candidate =>
+            string.Equals(candidate.Tool.Name, requestedToolName, StringComparison.Ordinal)
+        );
+    }
+
     public virtual ValueTask<IReadOnlyList<McpGatewayLoadedPrompt>> LoadPromptsAsync(
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
     ) => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedPrompt>>([]);
 
+    public virtual ValueTask<IReadOnlyList<McpGatewayLoadedResource>> LoadResourcesAsync(
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedResource>>([]);
+
+    public virtual ValueTask<IReadOnlyList<McpGatewayLoadedResourceTemplate>> LoadResourceTemplatesAsync(
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedResourceTemplate>>([]);
+
     public virtual ValueTask<GetPromptResult?> GetPromptAsync(
         string promptName,
         IReadOnlyDictionary<string, object?>? arguments,
+        McpGatewayPromptInvocationContext? promptContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
     ) => ValueTask.FromResult<GetPromptResult?>(null);
+
+    public virtual ValueTask<ReadResourceResult?> ReadResourceAsync(
+        string resourceUri,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<ReadResourceResult?>(null);
+
+    public virtual ValueTask<CompleteResult?> CompleteAsync(
+        Reference reference,
+        Argument argument,
+        CompleteContext? context,
+        IServiceProvider? serviceProvider,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<CompleteResult?>(null);
+
+    public virtual Task<IAsyncDisposable?> SubscribeToPromptListChangesAsync(
+        Func<PromptListChangedNotificationParams, CancellationToken, ValueTask> onChanged,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => Task.FromResult<IAsyncDisposable?>(null);
+
+    public virtual ValueTask<McpTask?> CallToolAsTaskAsync(
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments,
+        McpTaskMetadata taskMetadata,
+        IProgress<ProgressNotificationValue>? progress,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<McpTask?>(null);
+
+    public virtual ValueTask<McpTask?> GetTaskAsync(
+        string taskId,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<McpTask?>(null);
+
+    public virtual ValueTask<JsonElement?> GetTaskResultAsync(
+        string taskId,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<JsonElement?>(null);
+
+    public virtual ValueTask<McpTask?> CancelTaskAsync(
+        string taskId,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => ValueTask.FromResult<McpTask?>(null);
+
+    public virtual Task<IAsyncDisposable?> SubscribeToResourceAsync(
+        string resourceUri,
+        Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => Task.FromResult<IAsyncDisposable?>(null);
+
+    public virtual Task<IAsyncDisposable?> SubscribeToTaskStatusAsync(
+        string taskId,
+        Func<McpTaskStatusNotificationParams, CancellationToken, ValueTask> onUpdated,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) => Task.FromResult<IAsyncDisposable?>(null);
 
     public virtual ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }
@@ -60,16 +159,137 @@ internal sealed class McpGatewayLocalToolSourceRegistration(string sourceId, str
     : McpGatewayToolSourceRegistration(sourceId, displayName)
 {
     private readonly ConcurrentQueue<McpGatewayLoadedTool> _tools = new();
+    private readonly ConcurrentDictionary<string, McpGatewayPrompt> _prompts = new(
+        StringComparer.Ordinal
+    );
 
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Local;
 
     public void AddTool(AITool tool, McpGatewayToolSearchHints? searchHints = null) =>
-        _tools.Enqueue(new McpGatewayLoadedTool(tool, searchHints));
+        _tools.Enqueue(
+            new McpGatewayLoadedTool(
+                tool,
+                searchHints,
+                McpGatewayToolTaskSupportResolver.Resolve(tool)
+            )
+        );
+
+    public void AddPrompt(McpGatewayPrompt prompt)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+
+        if (!_prompts.TryAdd(prompt.Name, prompt))
+        {
+            throw new InvalidOperationException(
+                $"Prompt '{prompt.Name}' is already registered for source '{SourceId}'."
+            );
+        }
+    }
 
     public override ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
     ) => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedTool>>(_tools.ToArray());
+
+    public override ValueTask<IReadOnlyList<McpGatewayLoadedPrompt>> LoadPromptsAsync(
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    ) =>
+        ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedPrompt>>(
+            _prompts
+                .Values.OrderBy(static prompt => prompt.Name, StringComparer.Ordinal)
+                .Select(static prompt => new McpGatewayLoadedPrompt(
+                    prompt.Name,
+                    prompt.DisplayName,
+                    prompt.Description,
+                    prompt
+                        .Arguments.Select(static argument => new PromptArgument
+                        {
+                            Name = argument.Name,
+                            Title = argument.DisplayName,
+                            Description = argument.Description,
+                            Required = argument.IsRequired,
+                        })
+                        .ToList()
+                ))
+                .ToList()
+        );
+
+    public override async ValueTask<GetPromptResult?> GetPromptAsync(
+        string promptName,
+        IReadOnlyDictionary<string, object?>? arguments,
+        McpGatewayPromptInvocationContext? promptContext,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        if (string.IsNullOrWhiteSpace(promptName))
+        {
+            return null;
+        }
+
+        if (!_prompts.TryGetValue(promptName.Trim(), out var prompt))
+        {
+            return null;
+        }
+
+        var renderContext = new McpGatewayPromptRenderContext(
+            SourceId,
+            prompt.Name,
+            arguments ?? new Dictionary<string, object?>(StringComparer.Ordinal),
+            promptContext?.Services ?? EmptyServiceProvider.Instance,
+            (request, token) =>
+                promptContext?.RenderPromptAsync(request, token)
+                ?? ValueTask.FromResult<GetPromptResult?>(null)
+        );
+        var result = await prompt.RenderAsync(renderContext, cancellationToken);
+        ArgumentNullException.ThrowIfNull(result);
+
+        result.Description = string.IsNullOrWhiteSpace(result.Description)
+            ? prompt.Description
+            : result.Description;
+        return result;
+    }
+
+    public override async ValueTask<CompleteResult?> CompleteAsync(
+        Reference reference,
+        Argument argument,
+        CompleteContext? context,
+        IServiceProvider? serviceProvider,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        if (
+            reference is not PromptReference promptReference
+            || string.IsNullOrWhiteSpace(promptReference.Name)
+        )
+        {
+            return null;
+        }
+
+        if (!_prompts.TryGetValue(promptReference.Name.Trim(), out var prompt))
+        {
+            return null;
+        }
+
+        if (prompt.CompleteAsync is null || string.IsNullOrWhiteSpace(argument.Name))
+        {
+            return null;
+        }
+
+        return await prompt.CompleteAsync(
+            new McpGatewayPromptCompletionContext(
+                SourceId,
+                prompt.Name,
+                argument.Name.Trim(),
+                argument.Value ?? string.Empty,
+                context,
+                serviceProvider ?? EmptyServiceProvider.Instance
+            ),
+            cancellationToken
+        );
+    }
 }
 
 internal sealed class McpGatewayHttpToolSourceRegistration(
@@ -188,7 +408,16 @@ internal abstract class McpGatewayClientToolSourceRegistration(
     {
         var client = await GetClientAsync(loggerFactory, cancellationToken);
         var tools = await client.ListToolsAsync(new RequestOptions(), cancellationToken);
-        return tools.Cast<AITool>().Select(static tool => new McpGatewayLoadedTool(tool)).ToList();
+        return tools
+            .Cast<McpClientTool>()
+            .Select(static tool =>
+                new McpGatewayLoadedTool(
+                    tool,
+                    TaskSupport: McpGatewayToolTaskSupportResolver.Resolve(tool)
+                )
+            )
+            .Cast<McpGatewayLoadedTool>()
+            .ToList();
     }
 
     public override async ValueTask<IReadOnlyList<McpGatewayLoadedPrompt>> LoadPromptsAsync(
@@ -214,9 +443,51 @@ internal abstract class McpGatewayClientToolSourceRegistration(
             .ToList();
     }
 
+    public override async ValueTask<IReadOnlyList<McpGatewayLoadedResource>> LoadResourcesAsync(
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Resources is null)
+        {
+            return [];
+        }
+
+        var resources = await client.ListResourcesAsync(new RequestOptions(), cancellationToken);
+        return resources
+            .Where(static resource => !string.IsNullOrWhiteSpace(resource.Uri))
+            .Select(static resource => new McpGatewayLoadedResource(resource.ProtocolResource))
+            .ToList();
+    }
+
+    public override async ValueTask<IReadOnlyList<McpGatewayLoadedResourceTemplate>> LoadResourceTemplatesAsync(
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Resources is null)
+        {
+            return [];
+        }
+
+        var templates = await client.ListResourceTemplatesAsync(
+            new RequestOptions(),
+            cancellationToken
+        );
+        return templates
+            .Where(static template => !string.IsNullOrWhiteSpace(template.UriTemplate))
+            .Select(static template => new McpGatewayLoadedResourceTemplate(
+                template.ProtocolResourceTemplate
+            ))
+            .ToList();
+    }
+
     public override async ValueTask<GetPromptResult?> GetPromptAsync(
         string promptName,
         IReadOnlyDictionary<string, object?>? arguments,
+        McpGatewayPromptInvocationContext? promptContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
     )
@@ -233,6 +504,197 @@ internal abstract class McpGatewayClientToolSourceRegistration(
             new RequestOptions(),
             cancellationToken
         );
+    }
+
+    public override async ValueTask<ReadResourceResult?> ReadResourceAsync(
+        string resourceUri,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Resources is null)
+        {
+            return null;
+        }
+
+        return await client.ReadResourceAsync(resourceUri, new RequestOptions(), cancellationToken);
+    }
+
+    public override async ValueTask<CompleteResult?> CompleteAsync(
+        Reference reference,
+        Argument argument,
+        CompleteContext? context,
+        IServiceProvider? serviceProvider,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Completions is null)
+        {
+            return null;
+        }
+
+        return await client.CompleteAsync(
+            new CompleteRequestParams
+            {
+                Ref = reference,
+                Argument = argument,
+                Context = context,
+            },
+            cancellationToken
+        );
+    }
+
+    public override async Task<IAsyncDisposable?> SubscribeToPromptListChangesAsync(
+        Func<PromptListChangedNotificationParams, CancellationToken, ValueTask> onChanged,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        ArgumentNullException.ThrowIfNull(onChanged);
+
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Prompts?.ListChanged != true)
+        {
+            return null;
+        }
+
+        return client.RegisterNotificationHandler(
+            NotificationMethods.PromptListChangedNotification,
+            (notification, token) =>
+            {
+                var payload = notification.Params?.Deserialize<PromptListChangedNotificationParams>()
+                    ?? new PromptListChangedNotificationParams();
+                return onChanged(payload, token);
+            }
+        );
+    }
+
+    public override async ValueTask<McpTask?> CallToolAsTaskAsync(
+        string toolName,
+        IReadOnlyDictionary<string, object?>? arguments,
+        McpTaskMetadata taskMetadata,
+        IProgress<ProgressNotificationValue>? progress,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Tasks?.Requests?.Tools?.Call is null)
+        {
+            return null;
+        }
+
+        return await client.CallToolAsTaskAsync(
+            toolName,
+            arguments,
+            taskMetadata,
+            progress,
+            new RequestOptions(),
+            cancellationToken
+        );
+    }
+
+    public override async ValueTask<McpTask?> GetTaskAsync(
+        string taskId,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Tasks is null)
+        {
+            return null;
+        }
+
+        return await client.GetTaskAsync(taskId, new RequestOptions(), cancellationToken);
+    }
+
+    public override async ValueTask<JsonElement?> GetTaskResultAsync(
+        string taskId,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Tasks is null)
+        {
+            return null;
+        }
+
+        return await client.GetTaskResultAsync(taskId, new RequestOptions(), cancellationToken);
+    }
+
+    public override async ValueTask<McpTask?> CancelTaskAsync(
+        string taskId,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Tasks?.Cancel is null)
+        {
+            return null;
+        }
+
+        return await client.CancelTaskAsync(taskId, new RequestOptions(), cancellationToken);
+    }
+
+    public override async Task<IAsyncDisposable?> SubscribeToResourceAsync(
+        string resourceUri,
+        Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Resources?.Subscribe != true)
+        {
+            return null;
+        }
+
+        return await client.SubscribeToResourceAsync(
+            resourceUri,
+            onUpdated,
+            new RequestOptions(),
+            cancellationToken
+        );
+    }
+
+    public override async Task<IAsyncDisposable?> SubscribeToTaskStatusAsync(
+        string taskId,
+        Func<McpTaskStatusNotificationParams, CancellationToken, ValueTask> onUpdated,
+        ILoggerFactory loggerFactory,
+        CancellationToken cancellationToken
+    )
+    {
+        var client = await GetClientAsync(loggerFactory, cancellationToken);
+        if (client.ServerCapabilities.Tasks is null)
+        {
+            return null;
+        }
+
+        var registration = client.RegisterNotificationHandler(
+            NotificationMethods.TaskStatusNotification,
+            (notification, token) =>
+            {
+                var payload = notification.Params?.Deserialize<McpTaskStatusNotificationParams>();
+                if (
+                    payload is null
+                    || !string.Equals(payload.TaskId, taskId, StringComparison.Ordinal)
+                )
+                {
+                    return ValueTask.CompletedTask;
+                }
+
+                return onUpdated(payload, token);
+            }
+        );
+
+        cancellationToken.ThrowIfCancellationRequested();
+        return registration;
     }
 
     protected abstract ValueTask<McpClient> CreateClientAsync(
@@ -386,3 +848,15 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         CancellationToken CancellationToken
     );
 }
+
+#pragma warning disable MCPEXP001
+
+internal static class McpGatewayToolTaskSupportResolver
+{
+    public static ToolTaskSupport Resolve(AITool tool) =>
+        tool is McpClientTool clientTool
+            ? clientTool.ProtocolTool.Execution?.TaskSupport ?? ToolTaskSupport.Forbidden
+            : ToolTaskSupport.Optional;
+}
+
+#pragma warning restore MCPEXP001

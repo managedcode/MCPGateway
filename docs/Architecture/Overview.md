@@ -18,12 +18,13 @@ Out of scope:
 
 ## Summary
 
-`ManagedCode.MCPGateway` exposes five public DI surfaces and one reusable tool-set surface:
+`ManagedCode.MCPGateway` exposes six public DI surfaces and one reusable tool-set surface:
 
 - `IMcpGateway` for list/search/invoke
 - `IMcpGatewayRegistry` for additive catalog registration
 - `IMcpGatewayCatalogRuntime` for full in-memory catalog reset and reconfiguration
-- `IMcpGatewayPromptCatalog` for aggregated MCP prompt listing and retrieval
+- `IMcpGatewayPromptCatalog` for aggregated MCP prompt listing, retrieval, and gateway-owned prompt composition
+- `IMcpGatewayResourceCatalog` for aggregated MCP resource listing, template listing, and source-aware reads
 - `IMcpGatewayFactory` for isolated custom gateway instances created from host DI
 - `McpGatewayToolSet` for reusable search, route, and invoke meta-tools
 
@@ -31,9 +32,9 @@ Out of scope:
 
 The package also keeps chat-client and agent integration generic: `McpGatewayToolSet` is the source of reusable `AITool` search, route, and invoke meta-tools plus discovered proxy tools, `ChatOptions.AddMcpGatewayTools(...)` remains the low-level bridge, and `McpGatewayAutoDiscoveryChatClient` plus `UseMcpGatewayAutoDiscovery(...)` provide the recommended staged host wrapper that starts with those three gateway tools and replaces the discovered proxy set on each new search result without introducing a hard Agent Framework dependency into the core package.
 
-For MCP interoperability in the other direction, the package also exposes `WithMcpGatewayCatalog()` as a server-builder extension. Hosts can take one aggregated gateway catalog and re-export it as a downstream MCP server that exposes the combined tools and prompts from multiple upstream MCP sources.
+For MCP interoperability in the other direction, the package also exposes `WithMcpGatewayCatalog()` as a server-builder extension. Hosts can take one aggregated gateway catalog and re-export it as a downstream MCP server that exposes the combined tools, prompts, and resources from multiple upstream MCP sources plus gateway-owned prompts. That export also proxies MCP completions, forwarded prompt list-change notifications, resource subscriptions, forwarded resource-updated notifications, logging level changes, and task-backed tool execution through the MCP tasks surface. Resource URIs are rewritten into gateway-owned source-qualified URIs during export so downstream reads, completions, and forwarded update notifications stay unambiguous even when upstream servers reuse the same URI spaces.
 
-The repository now uses feature-first package slices for `Gateway`, `Discovery`, `Catalog`, `Search`, `Invocation`, `Prompts`, and `Hosting`. The durable policy decision behind that structure is captured in [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md).
+The repository now uses feature-first package slices for `Gateway`, `Discovery`, `Catalog`, `Search`, `Invocation`, `Prompts`, `Resources`, and `Hosting`. The durable policy decision behind that structure is captured in [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md).
 
 ## Governance Map
 
@@ -60,6 +61,7 @@ flowchart LR
     DI --> Registry["IMcpGatewayRegistry / McpGatewayRegistry"]
     DI --> CatalogRuntime["IMcpGatewayCatalogRuntime / McpGatewayRegistry"]
     DI --> PromptCatalog["IMcpGatewayPromptCatalog / McpGatewayPromptCatalog"]
+    DI --> ResourceCatalog["IMcpGatewayResourceCatalog / McpGatewayResourceCatalog"]
     DI --> Factory["IMcpGatewayFactory / McpGatewayFactory"]
     DI --> ToolSet["McpGatewayToolSet"]
     DI --> McpServerExport["WithMcpGatewayCatalog()"]
@@ -67,6 +69,7 @@ flowchart LR
     DI --> Warmup["Optional warmup hooks"]
     Factory --> Facade
     Factory --> Registry
+    Factory --> ResourceCatalog
     Factory --> ToolSet
     ToolSet --> Facade
     AutoDiscovery --> ToolSet
@@ -93,8 +96,10 @@ flowchart LR
     IMcpGatewayRegistry["IMcpGatewayRegistry"] --> Registry["McpGatewayRegistry"]
     CatalogRuntime["IMcpGatewayCatalogRuntime"] --> Registry["McpGatewayRegistry"]
     PromptCatalog["IMcpGatewayPromptCatalog"] --> PromptCatalogImpl["McpGatewayPromptCatalog"]
+    ResourceCatalog["IMcpGatewayResourceCatalog"] --> ResourceCatalogImpl["McpGatewayResourceCatalog"]
     Factory["IMcpGatewayFactory"] --> IMcpGateway
     Factory --> PromptCatalog
+    Factory --> ResourceCatalog
     Factory --> IMcpGatewayRegistry
     Factory --> CatalogRuntime
     Factory --> Instance["IMcpGatewayInstance"]
@@ -115,6 +120,7 @@ flowchart LR
     Runtime --> ChatClient["IChatClient (keyed)"]
     Registry --> CatalogSource["IMcpGatewayCatalogSource"]
     PromptCatalogImpl --> CatalogSource
+    ResourceCatalogImpl --> CatalogSource
 ```
 
 ## Key Classes And Types
@@ -131,6 +137,7 @@ flowchart LR
     McpGatewayRuntime --> RuntimeInvocation["Invocation/Internal/*"]
     Registry["McpGatewayRegistry"] --> RegistrationCollection["McpGatewayRegistrationCollection"]
     Registry --> OperationGate["McpGatewayOperationGate"]
+    ResourceCatalog["McpGatewayResourceCatalog"] --> RegistrationCollection
     RegistrationCollection --> SourceRegistrations["McpGatewayToolSourceRegistration*"]
     RuntimeSearch --> Json["Gateway/Internal/Serialization/*"]
     RuntimeSearch --> SearchCache["IMcpGatewaySearchCache"]
@@ -149,8 +156,9 @@ flowchart LR
 - Catalog slice: [`src/ManagedCode.MCPGateway/Catalog/`](../../src/ManagedCode.MCPGateway/Catalog/) owns catalog contracts, models, mutable registration state, source adapters, descriptor creation, and index-building logic.
 - Search slice: [`src/ManagedCode.MCPGateway/Search/`](../../src/ManagedCode.MCPGateway/Search/) owns search contracts, models, runtime cache/store abstractions, process-local cache/store implementations, query normalization, graph retrieval, vector ranking, and search confidence logic.
 - Invocation slice: [`src/ManagedCode.MCPGateway/Invocation/`](../../src/ManagedCode.MCPGateway/Invocation/) owns invocation request/result contracts and runtime execution helpers.
-- Prompts slice: [`src/ManagedCode.MCPGateway/Prompts/`](../../src/ManagedCode.MCPGateway/Prompts/) owns prompt contracts and the aggregated prompt catalog implementation.
-- Hosting slice: [`src/ManagedCode.MCPGateway/Hosting/`](../../src/ManagedCode.MCPGateway/Hosting/) owns MCP server export and warmup integration.
+- Prompts slice: [`src/ManagedCode.MCPGateway/Prompts/`](../../src/ManagedCode.MCPGateway/Prompts/) owns prompt contracts, gateway-owned prompt composition, prompt completion metadata, and the aggregated prompt catalog implementation.
+- Resources slice: [`src/ManagedCode.MCPGateway/Resources/`](../../src/ManagedCode.MCPGateway/Resources/) owns resource contracts and the aggregated resource catalog implementation.
+- Hosting slice: [`src/ManagedCode.MCPGateway/Hosting/`](../../src/ManagedCode.MCPGateway/Hosting/) owns MCP server export, completion and subscription proxying, forwarded resource-update notifications, and warmup integration.
 
 ## Dependency Rules
 
@@ -159,9 +167,10 @@ flowchart LR
 - `Catalog` owns mutable source registration state, source adapters, descriptor creation, and index-building orchestration.
 - `Search` owns query shaping, ranking, graph retrieval, vector retrieval, confidence calibration, and process-local cache/store implementations.
 - `Invocation` owns tool-target resolution, argument preparation, invocation, and result normalization.
-- `Prompts` owns prompt listing and prompt retrieval behavior for registered MCP sources.
+- `Prompts` owns prompt listing, prompt retrieval, gateway-owned prompt composition, and explicit prompt-overlay behavior for registered MCP sources.
+- `Resources` owns resource listing, resource-template listing, resource reads, and gateway-owned URI rewriting for downstream MCP export.
 - `Discovery` owns model-visible gateway tool exposure, category-first routing, and staged auto-discovery chat flow.
-- `Hosting` owns downstream MCP server export and optional warmup integration.
+- `Hosting` owns downstream MCP server export, completion proxying, resource subscription forwarding, task-backed tool execution, task-status forwarding, logging-level negotiation, and optional warmup integration.
 - Optional AI services such as embedding generators and query-normalization chat clients must stay outside the package core and be resolved through DI service keys rather than hardwired provider code.
 - Chat-client and agent integrations must stay `AITool`-centric in the core package. Host-specific frameworks may consume those tools, but the base package should not take a hard dependency on a specific agent host unless that becomes an explicit product decision.
 - `McpGatewayAutoDiscoveryChatClient` may orchestrate tool visibility for host chat loops, but it must stay generic over `IChatClient` and must not take a dependency on Microsoft Agent Framework.
@@ -183,6 +192,10 @@ flowchart LR
 - [`docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md`](../ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md): documents the default Markdown-LD graph retrieval path, file-system graph sources, and opt-in vector fallback behavior.
 - [`docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md`](../ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md): documents vector-first `Auto`, bounded graph supplementation, runtime telemetry, and performance-smoke coverage.
 - [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md): documents the feature-first foldering policy and the incremental migration away from large technical buckets.
+- [`docs/ADR/ADR-0008-aggregated-resource-catalog-and-gateway-uri-rewriting.md`](../ADR/ADR-0008-aggregated-resource-catalog-and-gateway-uri-rewriting.md): documents the aggregated MCP resource catalog and the gateway-owned URI rewrite required for unambiguous downstream resource reads.
+- [`docs/ADR/ADR-0009-mcp-export-completion-subscriptions-and-logging-parity.md`](../ADR/ADR-0009-mcp-export-completion-subscriptions-and-logging-parity.md): documents completion proxying, resource subscription forwarding, and logging-level parity for downstream MCP export.
+- [`docs/ADR/ADR-0010-mcp-export-task-surface-parity.md`](../ADR/ADR-0010-mcp-export-task-surface-parity.md): documents task-backed MCP tool execution, exported tool task-support metadata, downstream task storage, and forwarded task-status notifications.
+- [`docs/ADR/ADR-0011-gateway-owned-prompt-composition-and-list-change-forwarding.md`](../ADR/ADR-0011-gateway-owned-prompt-composition-and-list-change-forwarding.md): documents explicit gateway-owned prompt composition, prompt overlays, prompt argument completion, and forwarded prompt list-change notifications.
 
 ## Related Docs
 
@@ -194,6 +207,10 @@ flowchart LR
 - [`docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md`](../ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md)
 - [`docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md`](../ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md)
 - [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md)
+- [`docs/ADR/ADR-0008-aggregated-resource-catalog-and-gateway-uri-rewriting.md`](../ADR/ADR-0008-aggregated-resource-catalog-and-gateway-uri-rewriting.md)
+- [`docs/ADR/ADR-0009-mcp-export-completion-subscriptions-and-logging-parity.md`](../ADR/ADR-0009-mcp-export-completion-subscriptions-and-logging-parity.md)
+- [`docs/ADR/ADR-0010-mcp-export-task-surface-parity.md`](../ADR/ADR-0010-mcp-export-task-surface-parity.md)
+- [`docs/ADR/ADR-0011-gateway-owned-prompt-composition-and-list-change-forwarding.md`](../ADR/ADR-0011-gateway-owned-prompt-composition-and-list-change-forwarding.md)
 - [`docs/Features/SearchQueryNormalizationAndRanking.md`](../Features/SearchQueryNormalizationAndRanking.md)
 - [`docs/Features/AutoVectorFirstSearchAndPerformance.md`](../Features/AutoVectorFirstSearchAndPerformance.md)
 - [`AGENTS.md`](../../AGENTS.md)

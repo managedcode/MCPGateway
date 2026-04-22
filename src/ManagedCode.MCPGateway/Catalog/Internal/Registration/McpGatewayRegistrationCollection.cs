@@ -70,6 +70,44 @@ internal sealed class McpGatewayRegistrationCollection(
         }
     }
 
+    public void AddPrompt(
+        string sourceId,
+        McpGatewayPrompt prompt,
+        string? displayName = null
+    ) => AddPrompt(prompt, sourceId, displayName);
+
+    public void AddPrompt(
+        McpGatewayPrompt prompt,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+        GetOrAddLocalRegistration(sourceId, displayName).AddPrompt(prompt);
+    }
+
+    public void AddPrompts(
+        string sourceId,
+        IEnumerable<McpGatewayPrompt> prompts,
+        string? displayName = null
+    ) => AddPrompts(prompts, sourceId, displayName);
+
+    public void AddPrompts(
+        IEnumerable<McpGatewayPrompt> prompts,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    )
+    {
+        ArgumentNullException.ThrowIfNull(prompts);
+
+        var registration = GetOrAddLocalRegistration(sourceId, displayName);
+        foreach (var prompt in prompts)
+        {
+            ArgumentNullException.ThrowIfNull(prompt);
+            registration.AddPrompt(prompt);
+        }
+    }
+
     public void AddHttpServer(
         string sourceId,
         Uri endpoint,

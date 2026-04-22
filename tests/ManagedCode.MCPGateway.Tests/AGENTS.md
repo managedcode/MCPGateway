@@ -8,7 +8,7 @@ Parent: `../../AGENTS.md`
 ## Purpose
 
 - This project verifies the shipped behavior of `ManagedCode.MCPGateway` through integration-style tests.
-- It owns regression coverage for catalog, discovery, search, invocation, prompts, hosting, and deterministic test support.
+- It owns regression coverage for catalog, discovery, search, invocation, prompts, resources, hosting, and deterministic test support.
 
 ## Entry Points
 
@@ -19,6 +19,7 @@ Parent: `../../AGENTS.md`
 - `Search/`
 - `Invocation/`
 - `Prompts/`
+- `Resources/`
 - `Support/`
 
 ## Boundaries

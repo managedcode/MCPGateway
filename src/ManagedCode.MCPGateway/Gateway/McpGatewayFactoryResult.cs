@@ -6,6 +6,7 @@ internal sealed class McpGatewayFactoryResult(
     Func<IMcpGateway, IMcpGatewayRegistry, IMcpGatewayCatalogRuntime, ValueTask> releaseAsync,
     IMcpGateway gateway,
     IMcpGatewayPromptCatalog promptCatalog,
+    IMcpGatewayResourceCatalog resourceCatalog,
     IMcpGatewayRegistry registry,
     IMcpGatewayCatalogRuntime catalogRuntime,
     McpGatewayToolSet toolSet
@@ -14,6 +15,8 @@ internal sealed class McpGatewayFactoryResult(
     public IMcpGateway Gateway { get; } = gateway;
 
     public IMcpGatewayPromptCatalog PromptCatalog { get; } = promptCatalog;
+
+    public IMcpGatewayResourceCatalog ResourceCatalog { get; } = resourceCatalog;
 
     public IMcpGatewayRegistry Registry { get; } = registry;
 

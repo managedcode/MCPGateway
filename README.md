@@ -13,6 +13,8 @@ It is built on:
 - `Microsoft.Extensions.AI`
 - the official `ModelContextProtocol` .NET SDK
 
+`ManagedCode.MCPGateway` treats the official [`modelcontextprotocol/csharp-sdk`](https://github.com/modelcontextprotocol/csharp-sdk) as its MCP protocol baseline. The package builds on top of that SDK rather than replacing it with a narrower custom protocol layer, and the shipped gateway surface now includes aggregated MCP `tools`, gateway-owned and upstream MCP `prompts`, and MCP `resources` plus downstream MCP export support for `completion`, `prompt list-change notifications`, `resource subscriptions`, `logging/setLevel`, and task-backed MCP tool execution.
+
 ## Install
 
 ```bash
@@ -22,14 +24,16 @@ dotnet add package ManagedCode.MCPGateway
 ## What You Get
 
 - one gateway for local `AITool` instances and MCP tools
-- one prompt catalog for MCP prompts aggregated across registered MCP sources
-- one downstream MCP server export path over the aggregated tool and prompt catalog
+- one prompt catalog for source-aware MCP prompts plus gateway-owned custom and composite prompts
+- one resource catalog for MCP resources and resource templates aggregated across registered MCP sources
+- one downstream MCP server export path over the aggregated tool, prompt, and resource catalogs with stable MCP protocol parity for completions, prompt list-change notifications, resource subscriptions, logging level changes, and task-backed tool execution
 - one search API with default Markdown-LD graph ranking, opt-in vector ranking, and vector-first `Auto`
 - one category-first routing API for advanced tool discovery flows
 - one invocation API for both local tools and MCP tools
 - additive catalog registration through `IMcpGatewayRegistry`
 - full in-memory catalog control through `IMcpGatewayCatalogRuntime`
 - prompt inspection and rendering through `IMcpGatewayPromptCatalog`
+- resource inspection and reading through `IMcpGatewayResourceCatalog`
 - DI-owned factory creation for isolated custom gateway instances
 - reusable gateway meta-tools for chat loops
 - optional warmup, caching, query normalization, and embedding reuse
@@ -40,6 +44,7 @@ After `services.AddMcpGateway(...)`, the container exposes:
 - `IMcpGatewayRegistry`
 - `IMcpGatewayCatalogRuntime`
 - `IMcpGatewayPromptCatalog`
+- `IMcpGatewayResourceCatalog`
 - `IMcpGatewayFactory`
 - `McpGatewayToolSet`
 
@@ -173,7 +178,114 @@ var prompt = await promptCatalog.GetPromptAsync(new McpGatewayPromptRequest(
     }));
 ```
 
-Prompt retrieval is source-aware on purpose. Different MCP servers may expose prompts with the same name, so callers should use the `SourceId` plus `PromptName` pair returned by `ListPromptsAsync()`.
+Prompt retrieval is source-aware on purpose. Different MCP servers may expose prompts with the same name, so callers should use the `SourceId` plus `PromptName` pair returned by `ListPromptsAsync()`. Identically named prompts are not merged implicitly by the gateway. If you want one higher-level prompt that combines or modifies multiple upstream prompts, register an explicit gateway-owned prompt instead.
+
+## Create Gateway-Owned Prompts
+
+You can register custom prompts directly on the gateway and compose them from multiple upstream prompt sources:
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.AddMcpClient("repo", repositoryClient, disposeClient: false);
+    options.AddMcpClient("ops", operationsClient, disposeClient: false);
+
+    options.AddPrompt(
+        new McpGatewayPrompt("release_review_bundle", async (context, cancellationToken) =>
+        {
+            var repositoryPrompt = await context.GetPromptAsync(
+                "repo",
+                "repository_triage_system_prompt",
+                new Dictionary<string, object?>
+                {
+                    ["repository"] = context.Arguments["repository"],
+                    ["locale"] = context.Arguments["locale"]
+                },
+                cancellationToken);
+
+            var deploymentPrompt = await context.GetPromptAsync(
+                "ops",
+                "deployment_review_system_prompt",
+                new Dictionary<string, object?>
+                {
+                    ["environment"] = context.Arguments["environment"]
+                },
+                cancellationToken);
+
+            return new GetPromptResult
+            {
+                Description = "Release review bundle prompt.",
+                Messages =
+                [
+                    new PromptMessage
+                    {
+                        Role = Role.User,
+                        Content = new TextContentBlock
+                        {
+                            Text = "Combine repository and deployment guidance into one review plan."
+                        }
+                    },
+                    ..repositoryPrompt!.Messages,
+                    ..deploymentPrompt!.Messages
+                ]
+            };
+        })
+        {
+            DisplayName = "Release review bundle",
+            Description = "Combines repository and deployment review guidance into one prompt.",
+            Arguments =
+            [
+                new McpGatewayPromptArgumentDescriptor("repository", "Repository", "Repository name.", true),
+                new McpGatewayPromptArgumentDescriptor("environment", "Environment", "Deployment environment.", true),
+                new McpGatewayPromptArgumentDescriptor("locale", "Locale", "Preferred locale.", false)
+            ],
+            CompleteAsync = static (context, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var values = context.ArgumentName == "repository"
+                    ? new[] { "ManagedCode/MCPGateway", "ManagedCode/AIBase" }
+                    : Array.Empty<string>();
+
+                var matches = values
+                    .Where(value => value.StartsWith(context.ArgumentValue, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                return ValueTask.FromResult<CompleteResult?>(new CompleteResult
+                {
+                    Completion = new Completion
+                    {
+                        Values = matches,
+                        Total = matches.Count,
+                        HasMore = false
+                    }
+                });
+            }
+        });
+});
+```
+
+Use gateway-owned prompts when you need:
+
+- one prompt that combines several upstream prompts
+- a modified or opinionated overlay on top of an upstream prompt
+- custom prompt argument completion values exposed through downstream MCP `completion/complete`
+
+## List And Read MCP Resources
+
+If registered MCP sources expose resources, resolve `IMcpGatewayResourceCatalog` from DI and use it as the aggregated MCP resource surface:
+
+```csharp
+var resourceCatalog = serviceProvider.GetRequiredService<IMcpGatewayResourceCatalog>();
+
+var resources = await resourceCatalog.ListResourcesAsync();
+var templates = await resourceCatalog.ListResourceTemplatesAsync();
+var issue = await resourceCatalog.ReadResourceAsync(new McpGatewayResourceRequest(
+    SourceId: templates[0].SourceId,
+    ResourceUri: "docs://issues/42"));
+```
+
+Resource reads are source-aware on purpose. Different MCP servers may expose the same URI scheme or URI shape, so callers should use the `SourceId` returned by `ListResourcesAsync()` or `ListResourceTemplatesAsync()`. For templated resources, expand the template to a concrete resource URI before calling `ReadResourceAsync(...)`.
 
 ## Export The Gateway As An MCP Server
 
@@ -195,10 +307,17 @@ services.AddMcpServer()
 
 `WithMcpGatewayCatalog()` exports:
 
-- aggregated tools through MCP `list_tools` and `call_tool`
-- aggregated prompts through MCP `list_prompts` and `prompts/get`
+- aggregated tools through MCP `tools/list` and `tools/call`
+- aggregated prompts through MCP `prompts/list` and `prompts/get`
+- aggregated resources through MCP `resources/list`, `resources/templates/list`, and `resources/read`
+- prompt and resource completions through MCP `completion/complete`
+- forwarded `notifications/prompts/list_changed` when upstream or gateway-owned prompts change
+- resource subscriptions through MCP `resources/subscribe` and `resources/unsubscribe`, including forwarded `notifications/resources/updated`
+- logging level changes through MCP `logging/setLevel`
+- task-backed tool execution through MCP `tools/call` with `task` metadata plus MCP `tasks/list`, `tasks/get`, `tasks/result`, and `tasks/cancel`
+- forwarded `notifications/tasks/status` for exported gateway tasks
 
-Exported MCP tool and prompt names are source-qualified gateway ids such as `docs:search_repository` or `ops:deployment_review_system_prompt`, so multiple upstream servers can be combined without name collisions.
+Exported MCP tool and prompt names are source-qualified gateway ids such as `docs:search_repository`, `ops:deployment_review_system_prompt`, or `local:release_review_bundle`, so multiple upstream servers and gateway-owned prompts can be combined without name collisions. Exported MCP resource URIs and URI templates are rewritten into gateway-owned opaque URIs so downstream `resources/read` calls route back to the correct upstream source even when multiple servers expose overlapping URI spaces. The same source-aware rewrite is also used for `completion/complete`, forwarded prompt list changes, and forwarded resource update notifications, so downstream clients always talk in terms of gateway-owned prompt names and resource URIs while the gateway proxies the corresponding upstream MCP operations. When an upstream MCP tool already advertises task support, the gateway preserves that contract on the exported tool and proxies the corresponding upstream task flow. Local gateway tools are exported as optional task-capable tools and are executed through the gateway-owned task store.
 
 If you need to fully reconfigure the in-memory runtime catalog, use `IMcpGatewayCatalogRuntime` instead of internal reflection:
 
@@ -252,7 +371,8 @@ Use the package surfaces like this:
 - `IMcpGateway`: build, list, search, route, invoke
 - `IMcpGatewayRegistry`: additive tool and source registration
 - `IMcpGatewayCatalogRuntime`: full in-memory catalog clear or reconfiguration
-- `IMcpGatewayPromptCatalog`: list and render aggregated MCP prompts
+- `IMcpGatewayPromptCatalog`: list and render aggregated upstream plus gateway-owned prompts
+- `IMcpGatewayResourceCatalog`: list direct resources, list resource templates, and read concrete resource URIs
 - `IMcpGatewayFactory`: create isolated custom gateway instances
 - `McpGatewayToolSet`: reusable meta-tools
 

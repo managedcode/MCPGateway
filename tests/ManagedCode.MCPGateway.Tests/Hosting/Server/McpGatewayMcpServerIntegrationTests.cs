@@ -140,4 +140,104 @@ public sealed class McpGatewayMcpServerIntegrationTests
         await Assert.That(prompt.Messages[0].Content).IsTypeOf<TextContentBlock>();
         await Assert.That(((TextContentBlock)prompt.Messages[0].Content).Text).Contains("prod");
     }
+
+    [TUnit.Core.Test]
+    public async Task ListResourcesAsync_ExposesAggregatedResourcesFromMultipleUpstreamServers()
+    {
+        await using var primaryServer = await TestMcpServerHost.StartAsync();
+        await using var graphServer = await TestMcpServerHost.StartGraphAsync();
+        await using var operationsServer = await TestMcpServerHost.StartOperationsAsync();
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
+        {
+            options.AddMcpClient("source-a", primaryServer.Client, disposeClient: false);
+            options.AddMcpClient("source-b", graphServer.Client, disposeClient: false);
+            options.AddMcpClient("source-c", operationsServer.Client, disposeClient: false);
+        });
+
+        var resources = await gatewayServer.Client.ListResourcesAsync();
+
+        await Assert.That(gatewayServer.Client.ServerCapabilities.Resources).IsNotNull();
+        await Assert.That(resources.Count).IsEqualTo(3);
+        await Assert
+            .That(resources.Any(static resource => resource.Name == "source-a:repository_overview"))
+            .IsTrue();
+        await Assert
+            .That(resources.Any(static resource => resource.Name == "source-a:repository_archive"))
+            .IsTrue();
+        await Assert
+            .That(resources.Any(static resource => resource.Name == "source-c:deployment_summary"))
+            .IsTrue();
+    }
+
+    [TUnit.Core.Test]
+    public async Task ListResourceTemplatesAsync_ExposesAggregatedResourceTemplatesFromMultipleUpstreamServers()
+    {
+        await using var primaryServer = await TestMcpServerHost.StartAsync();
+        await using var graphServer = await TestMcpServerHost.StartGraphAsync();
+        await using var operationsServer = await TestMcpServerHost.StartOperationsAsync();
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
+        {
+            options.AddMcpClient("source-a", primaryServer.Client, disposeClient: false);
+            options.AddMcpClient("source-b", graphServer.Client, disposeClient: false);
+            options.AddMcpClient("source-c", operationsServer.Client, disposeClient: false);
+        });
+
+        var templates = await gatewayServer.Client.ListResourceTemplatesAsync();
+
+        await Assert.That(templates.Count).IsEqualTo(3);
+        await Assert
+            .That(templates.Any(static template => template.Name == "source-a:issue_detail"))
+            .IsTrue();
+        await Assert
+            .That(templates.Any(static template => template.Name == "source-b:story_context"))
+            .IsTrue();
+        await Assert
+            .That(templates.Any(static template => template.Name == "source-c:runbook_detail"))
+            .IsTrue();
+    }
+
+    [TUnit.Core.Test]
+    public async Task ReadResourceAsync_ReadsBinaryResourceFromAggregatedUpstreamServer()
+    {
+        await using var primaryServer = await TestMcpServerHost.StartAsync();
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
+        {
+            options.AddMcpClient("source-a", primaryServer.Client, disposeClient: false);
+        });
+
+        var resource = (await gatewayServer.Client.ListResourcesAsync()).Single(static candidate =>
+            candidate.Name == "source-a:repository_archive"
+        );
+        var readResult = await gatewayServer.Client.ReadResourceAsync(resource.Uri);
+
+        await Assert.That(readResult.Contents.Count).IsEqualTo(1);
+        await Assert.That(readResult.Contents[0]).IsTypeOf<BlobResourceContents>();
+        await Assert
+            .That(((BlobResourceContents)readResult.Contents[0]).DecodedData.ToArray())
+            .IsEquivalentTo(new byte[] { 1, 2, 3, 4 });
+    }
+
+    [TUnit.Core.Test]
+    public async Task ReadResourceAsync_ReadsTemplatedResourceFromAggregatedUpstreamServer()
+    {
+        await using var primaryServer = await TestMcpServerHost.StartAsync();
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
+        {
+            options.AddMcpClient("source-a", primaryServer.Client, disposeClient: false);
+        });
+
+        var template = (await gatewayServer.Client.ListResourceTemplatesAsync()).Single(
+            static candidate => candidate.Name == "source-a:issue_detail"
+        );
+        var readResult = await gatewayServer.Client.ReadResourceAsync(
+            template.UriTemplate,
+            new Dictionary<string, object?>(StringComparer.Ordinal) { ["id"] = "42" }
+        );
+
+        await Assert.That(readResult.Contents.Count).IsEqualTo(1);
+        await Assert.That(readResult.Contents[0]).IsTypeOf<TextResourceContents>();
+        await Assert
+            .That(((TextResourceContents)readResult.Contents[0]).Text)
+            .Contains("\"id\":\"42\"");
+    }
 }

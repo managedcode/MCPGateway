@@ -11,6 +11,10 @@ public static class McpGatewayMcpServerBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
+        builder.Services.TryAddSingleton<McpGatewayMcpServerRequestResolver>();
+        builder.Services.TryAddSingleton<McpGatewayResourceSubscriptionManager>();
+        builder.Services.TryAddSingleton<McpGatewayPromptListNotificationManager>();
+        builder.Services.TryAddSingleton<McpGatewayMcpServerTaskStore>();
         builder.Services.TryAddSingleton<McpGatewayMcpServerHandlers>();
         builder.Services.TryAddEnumerable(
             ServiceDescriptor.Singleton<

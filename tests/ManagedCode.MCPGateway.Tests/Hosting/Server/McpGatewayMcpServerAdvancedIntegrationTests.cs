@@ -96,6 +96,33 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
     }
 
     [Test]
+    public async Task ListResourcesAsync_ExportsSourceQualifiedUrisAndMetadataToSdkClients()
+    {
+        await using var primaryServer = await TestMcpServerHost.StartAsync();
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
+        {
+            options.AddMcpClient("source-a", primaryServer.Client, disposeClient: false);
+        });
+
+        var resources = await gatewayServer.Client.ListResourcesAsync();
+        var resource = resources.Single(static candidate =>
+            candidate.Name == "source-a:repository_overview"
+        );
+
+        await Assert.That(resource.Uri).IsNotEqualTo("docs://repository/overview");
+        await Assert.That(resource.ProtocolResource?.Meta).IsTypeOf<JsonObject>();
+
+        var meta = (JsonObject)resource.ProtocolResource!.Meta!;
+        await Assert.That(meta["sourceId"]!.GetValue<string>()).IsEqualTo("source-a");
+        await Assert
+            .That(meta["originalUri"]!.GetValue<string>())
+            .IsEqualTo("docs://repository/overview");
+        await Assert
+            .That(meta["resourceName"]!.GetValue<string>())
+            .IsEqualTo("repository_overview");
+    }
+
+    [Test]
     public async Task SdkClient_CanExecuteMixedWorkflowAgainstGatewayExport()
     {
         await using var primaryServer = await TestMcpServerHost.StartAsync();
@@ -144,6 +171,11 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
                 ["repository"] = "ManagedCode/MCPGateway",
             }
         );
+        var resources = await gatewayServer.Client.ListResourcesAsync();
+        var repositoryOverview = resources.Single(static resource =>
+            resource.Name == "source-a:repository_overview"
+        );
+        var resourceRead = await gatewayServer.Client.ReadResourceAsync(repositoryOverview.Uri);
 
         await Assert.That(localResult.IsError).IsFalse();
         await Assert.That(localResult.Content.Count).IsEqualTo(1);
@@ -159,6 +191,8 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
                 )
             )
             .IsTrue();
+        await Assert.That(resourceRead.Contents.Count).IsEqualTo(1);
+        await Assert.That(resourceRead.Contents[0]).IsTypeOf<TextResourceContents>();
         await Assert.That(prompt.Messages.Count).IsEqualTo(1);
         await Assert.That(prompt.Messages[0].Content).IsTypeOf<TextContentBlock>();
     }

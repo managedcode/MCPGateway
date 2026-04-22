@@ -8,7 +8,7 @@ Parent: `../../AGENTS.md`
 ## Purpose
 
 - This project ships the reusable `ManagedCode.MCPGateway` NuGet library.
-- It owns the feature-first package slices for gateway orchestration, discovery, catalog, search, invocation, prompts, and hosting integrations.
+- It owns the feature-first package slices for gateway orchestration, discovery, catalog, search, invocation, prompts, resources, and hosting integrations.
 
 ## Entry Points
 
@@ -18,6 +18,7 @@ Parent: `../../AGENTS.md`
 - `Search/`
 - `Invocation/`
 - `Prompts/`
+- `Resources/`
 - `Hosting/`
 
 ## Boundaries

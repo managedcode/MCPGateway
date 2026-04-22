@@ -134,6 +134,9 @@ If no new rule is detected -> do not update the file.
 - Start from `docs/Architecture/Overview.md` and the nearest project-local `AGENTS.md` for every non-trivial task.
 - Treat `docs/Architecture/Overview.md` as the architecture map for this solution; if it becomes stale for the changed area, update it in the same task.
 - Always keep package and project identity as `ManagedCode.MCPGateway`.
+- Treat the official `modelcontextprotocol/csharp-sdk` repository and shipped feature surface as the MCP baseline for this package, because `ManagedCode.MCPGateway` is built on top of that SDK rather than on a narrower custom protocol layer.
+- When the SDK already supports an MCP capability, prefer exposing and integrating that capability in `ManagedCode.MCPGateway` instead of assuming the missing surface is intentionally unsupported, unless the user explicitly excludes it.
+- When the user asks for parity with the official `modelcontextprotocol/csharp-sdk`, treat the entire SDK feature surface as in scope for `ManagedCode.MCPGateway`, including capabilities that the SDK currently marks experimental, unless the user explicitly narrows that scope.
 - Always use `Microsoft.Extensions.AI` and the official `ModelContextProtocol` .NET SDK as the integration foundation.
 - Never introduce Microsoft Agentic Framework into this repository unless the user explicitly re-opens that requirement.
 - Start from the root docs and packaging files before making structural changes:
@@ -212,6 +215,11 @@ If no new rule is detected -> do not update the file.
 - For TUnit solution runs, always invoke `dotnet test --solution ...`; do not pass the solution path positionally.
 - Coverage in this repository uses the local `coverlet.console` tool against the built test assembly and must target the built `ManagedCode.MCPGateway.Tests` TUnit application directly; routing coverage through `dotnet test --solution ...` under `Microsoft.Testing.Platform` reports zero hits in this repo.
 - Every behavior change must include or update tests in `tests/ManagedCode.MCPGateway.Tests/`.
+- Treat parity work against the official `modelcontextprotocol/csharp-sdk` as incomplete until every newly exposed MCP capability is covered by automated tests, because unsupported or unverified protocol surface is explicitly rejected in this repository.
+- Do not stop a `modelcontextprotocol/csharp-sdk` parity task at the stable subset when the user asked for full parity; either ship the remaining SDK-backed capabilities with tests or report a concrete technical blocker, because silent scope cuts are treated as missed delivery here.
+- When adding or expanding MCP resource support, cover direct resources, templated resources, exported downstream resource URIs, and end-to-end read behavior with integration tests instead of narrow smoke checks.
+- When coverage is reviewed or increased in this repository, prioritize stronger integration coverage for complex cross-source and protocol-heavy flows instead of adding shallow low-signal tests, because the user explicitly values hardening the difficult paths over inflating test count.
+- When raising coverage in this repository, target at least mid-80s coverage for the important production files you touch or audit, because the user explicitly asked for 85-90 style coverage across the real code rather than a good-looking aggregate only.
 - Add tests only when they close a meaningful behavior or regression gap; avoid low-signal tests that only increase count without improving confidence.
 - Keep tests focused on real gateway behavior:
   - local tool indexing and invocation

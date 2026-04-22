@@ -1,4 +1,5 @@
 using System.IO.Pipelines;
+using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -8,15 +9,33 @@ using ModelContextProtocol.Server;
 
 namespace ManagedCode.MCPGateway.Tests;
 
-internal sealed class GatewayMcpServerHost(
-    ServiceProvider serviceProvider,
-    McpClient client,
-    ModelContextProtocol.Server.McpServer server,
-    CancellationTokenSource cancellationTokenSource,
-    Task serverTask
-) : IAsyncDisposable
+internal sealed class GatewayMcpServerHost : IAsyncDisposable
 {
-    public McpClient Client { get; } = client;
+    private readonly ServiceProvider _serviceProvider;
+    private readonly CancellationTokenSource _cancellationTokenSource;
+    private readonly Task _serverTask;
+
+    private GatewayMcpServerHost(
+        ServiceProvider serviceProvider,
+        McpClient client,
+        ModelContextProtocol.Server.McpServer server,
+        CancellationTokenSource cancellationTokenSource,
+        Task serverTask
+    )
+    {
+        _serviceProvider = serviceProvider;
+        Client = client;
+        Server = server;
+        _cancellationTokenSource = cancellationTokenSource;
+        _serverTask = serverTask;
+    }
+
+    public McpClient Client { get; }
+
+    public ModelContextProtocol.Server.McpServer Server { get; }
+
+    public IMcpGatewayRegistry Registry =>
+        _serviceProvider.GetRequiredService<IMcpGatewayRegistry>();
 
     public static async Task<GatewayMcpServerHost> StartAsync(
         Action<McpGatewayOptions> configureGateway,
@@ -81,17 +100,17 @@ internal sealed class GatewayMcpServerHost(
 
     public async ValueTask DisposeAsync()
     {
-        cancellationTokenSource.Cancel();
+        _cancellationTokenSource.Cancel();
 
         try
         {
-            await serverTask;
+            await _serverTask;
         }
         catch (OperationCanceledException) { }
 
         await Client.DisposeAsync();
-        await server.DisposeAsync();
-        cancellationTokenSource.Dispose();
-        await serviceProvider.DisposeAsync();
+        await Server.DisposeAsync();
+        _cancellationTokenSource.Dispose();
+        await _serviceProvider.DisposeAsync();
     }
 }

@@ -28,7 +28,11 @@ internal sealed class TestMcpServerHost(
         CancellationToken cancellationToken = default
     ) =>
         await StartAsync(
-            static builder => builder.WithTools<TestMcpTools>().WithPrompts<TestMcpPrompts>(),
+            static builder =>
+                builder
+                    .WithTools<TestMcpTools>()
+                    .WithPrompts<TestMcpPrompts>()
+                    .WithResources<TestMcpResources>(),
             cancellationToken
         );
 
@@ -37,7 +41,10 @@ internal sealed class TestMcpServerHost(
     ) =>
         await StartAsync(
             static builder =>
-                builder.WithTools<TestMcpGraphTools>().WithPrompts<TestMcpGraphPrompts>(),
+                builder
+                    .WithTools<TestMcpGraphTools>()
+                    .WithPrompts<TestMcpGraphPrompts>()
+                    .WithResources<TestMcpGraphResources>(),
             cancellationToken
         );
 
@@ -46,7 +53,10 @@ internal sealed class TestMcpServerHost(
     ) =>
         await StartAsync(
             static builder =>
-                builder.WithTools<TestMcpOperationsTools>().WithPrompts<TestMcpOperationsPrompts>(),
+                builder
+                    .WithTools<TestMcpOperationsTools>()
+                    .WithPrompts<TestMcpOperationsPrompts>()
+                    .WithResources<TestMcpOperationsResources>(),
             cancellationToken
         );
 
@@ -337,6 +347,64 @@ internal sealed class TestMcpServerHost(
             };
     }
 
+    [McpServerResourceType]
+    private sealed class TestMcpResources
+    {
+        [McpServerResource(
+            UriTemplate = "docs://repository/overview",
+            Name = "repository_overview",
+            Title = "Repository overview",
+            MimeType = "text/markdown"
+        )]
+        [Description("Returns repository overview markdown.")]
+        public static TextResourceContents GetRepositoryOverview() =>
+            new()
+            {
+                Uri = "docs://repository/overview",
+                MimeType = "text/markdown",
+                Text =
+                    "# ManagedCode.MCPGateway\n\nThis repository aggregates MCP tools, prompts, and resources.",
+            };
+
+        [McpServerResource(
+            UriTemplate = "docs://repository/archive",
+            Name = "repository_archive",
+            Title = "Repository archive",
+            MimeType = "application/octet-stream"
+        )]
+        [Description("Returns a small binary repository archive sample.")]
+        public static BlobResourceContents GetRepositoryArchive() =>
+            BlobResourceContents.FromBytes(
+                new byte[] { 1, 2, 3, 4 },
+                "docs://repository/archive",
+                "application/octet-stream"
+            );
+
+        [McpServerResource(
+            UriTemplate = "docs://issues/{id}",
+            Name = "issue_detail",
+            Title = "Issue detail",
+            MimeType = "application/json"
+        )]
+        [Description("Returns issue detail by issue identifier.")]
+        public static TextResourceContents GetIssueDetail(
+            [Description("Issue identifier.")] string id
+        ) =>
+            new()
+            {
+                Uri = $"docs://issues/{id}",
+                MimeType = "application/json",
+                Text = JsonSerializer.Serialize(
+                    new
+                    {
+                        id,
+                        status = "open",
+                        area = "gateway-runtime",
+                    }
+                ),
+            };
+    }
+
     [McpServerPromptType]
     private sealed class TestMcpOperationsPrompts
     {
@@ -359,6 +427,70 @@ internal sealed class TestMcpServerHost(
                         },
                     },
                 ],
+            };
+    }
+
+    [McpServerResourceType]
+    private sealed class TestMcpGraphResources
+    {
+        [McpServerResource(
+            UriTemplate = "graph://stories/{storyId}",
+            Name = "story_context",
+            Title = "Story context",
+            MimeType = "text/markdown"
+        )]
+        [Description("Returns graph-backed story context for a story item.")]
+        public static TextResourceContents GetStoryContext(
+            [Description("Story identifier.")] string storyId
+        ) =>
+            new()
+            {
+                Uri = $"graph://stories/{storyId}",
+                MimeType = "text/markdown",
+                Text = $"# Story {storyId}\n\nRelated nodes: comments, owner, deployment.",
+            };
+    }
+
+    [McpServerResourceType]
+    private sealed class TestMcpOperationsResources
+    {
+        [McpServerResource(
+            UriTemplate = "ops://deployments/summary",
+            Name = "deployment_summary",
+            Title = "Deployment summary",
+            MimeType = "application/json"
+        )]
+        [Description("Returns a deployment summary resource.")]
+        public static TextResourceContents GetDeploymentSummary() =>
+            new()
+            {
+                Uri = "ops://deployments/summary",
+                MimeType = "application/json",
+                Text = JsonSerializer.Serialize(
+                    new
+                    {
+                        active = 3,
+                        healthy = true,
+                    }
+                ),
+            };
+
+        [McpServerResource(
+            UriTemplate = "ops://runbooks/{environment}",
+            Name = "runbook_detail",
+            Title = "Runbook detail",
+            MimeType = "text/markdown"
+        )]
+        [Description("Returns the runbook for a deployment environment.")]
+        public static TextResourceContents GetRunbook(
+            [Description("Deployment environment.")] string environment
+        ) =>
+            new()
+            {
+                Uri = $"ops://runbooks/{environment}",
+                MimeType = "text/markdown",
+                Text =
+                    $"# Runbook for {environment}\n\n1. Validate health checks.\n2. Confirm rollback target.",
             };
     }
 

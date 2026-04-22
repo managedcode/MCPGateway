@@ -26,13 +26,19 @@ public sealed class McpGatewayFactory(
         ArgumentNullException.ThrowIfNull(options);
 
         var gatewayOptions = Options.Create(options);
-        var registry = new McpGatewayRegistry(gatewayOptions);
+        var promptChangeHub = new McpGatewayPromptChangeHub();
+        var registry = new McpGatewayRegistry(gatewayOptions, promptChangeHub);
         var catalogRuntime = (IMcpGatewayCatalogRuntime)registry;
         var runtimeServiceProvider = new McpGatewayFactoryServiceProvider(
             serviceProvider,
             registry
         );
-        var promptCatalog = new McpGatewayPromptCatalog(registry, loggerFactory);
+        var promptCatalog = new McpGatewayPromptCatalog(
+            registry,
+            runtimeServiceProvider,
+            loggerFactory
+        );
+        var resourceCatalog = new McpGatewayResourceCatalog(registry, loggerFactory);
         var gateway = new McpGateway(
             runtimeServiceProvider,
             gatewayOptions,
@@ -60,6 +66,7 @@ public sealed class McpGatewayFactory(
             },
             gateway,
             promptCatalog,
+            resourceCatalog,
             registry,
             catalogRuntime,
             new McpGatewayToolSet(gateway)

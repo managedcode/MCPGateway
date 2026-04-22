@@ -10,6 +10,8 @@
 
 The package also needs a first-class MCP prompt surface. MCP prompts are not a single system-prompt string; they are a catalog of prompt definitions exposed by individual MCP servers. Hosts that aggregate multiple MCP servers need one place to list and retrieve those prompts without bypassing the gateway package and talking to each `McpClient` directly.
 
+The package also needs a first-class MCP resource surface. The official `modelcontextprotocol/csharp-sdk` supports direct resources, templated resources, and reads, and this repository now treats that SDK as the MCP baseline. Hosts that aggregate multiple MCP servers need one place to list direct resources, list resource templates, and read concrete resource URIs without bypassing the gateway package and talking to each `McpClient` directly.
+
 The package also needs a supported downstream interoperability path: if one gateway already aggregates multiple upstream MCP servers, hosts should be able to expose that aggregate back out as one MCP server without hand-writing list/call/get handlers around the package contracts.
 
 Recent changes also made index construction cancellation-aware and single-flight, so startup warmup, shutdown, and concurrent callers do not keep issuing duplicate MCP loads or continue rebuilding after a canceled operation should stop.
@@ -20,7 +22,7 @@ The repository needs an explicit record for these boundaries so the public packa
 
 ## Decision
 
-`ManagedCode.MCPGateway` will keep a thin public runtime facade, a separate additive-registry surface, a separate advanced runtime-catalog control surface, a separate MCP prompt-catalog surface, and an internal runtime orchestrator with lazy, cancellation-aware single-flight index builds plus optional eager warmup integration. DI remains the primary host path, the package exposes a DI-owned factory service for isolated custom gateway instances, and hosts may re-export the aggregated catalog as one downstream MCP server through `WithMcpGatewayCatalog()`.
+`ManagedCode.MCPGateway` will keep a thin public runtime facade, a separate additive-registry surface, a separate advanced runtime-catalog control surface, separate MCP prompt-catalog and resource-catalog surfaces, and an internal runtime orchestrator with lazy, cancellation-aware single-flight index builds plus optional eager warmup integration. DI remains the primary host path, the package exposes a DI-owned factory service for isolated custom gateway instances, and hosts may re-export the aggregated catalog as one downstream MCP server through `WithMcpGatewayCatalog()`.
 
 ## Diagram
 
@@ -31,6 +33,7 @@ flowchart LR
     DI --> Registry["IMcpGatewayRegistry / McpGatewayRegistry"]
     DI --> CatalogRuntime["IMcpGatewayCatalogRuntime / McpGatewayRegistry"]
     DI --> PromptCatalog["IMcpGatewayPromptCatalog / McpGatewayPromptCatalog"]
+    DI --> ResourceCatalog["IMcpGatewayResourceCatalog / McpGatewayResourceCatalog"]
     DI --> Factory["IMcpGatewayFactory / McpGatewayFactory"]
     DI --> ToolSet["McpGatewayToolSet"]
     DI --> McpServerExport["WithMcpGatewayCatalog()"]
@@ -40,6 +43,7 @@ flowchart LR
     Gateway --> Runtime["McpGatewayRuntime"]
     Registry --> Snapshot["Catalog snapshots"]
     PromptCatalog --> Snapshot
+    ResourceCatalog --> Snapshot
     McpServerExport --> Snapshot
     Runtime --> Snapshot
     Warmup --> Runtime
@@ -91,9 +95,10 @@ Cons:
 
 Positive:
 
-- public DI wiring is explicit: `IMcpGateway` for runtime work, `IMcpGatewayRegistry` for additive registration, `IMcpGatewayCatalogRuntime` for full in-memory catalog control, `IMcpGatewayPromptCatalog` for aggregated MCP prompts, and `McpGatewayToolSet` for meta-tools
+- public DI wiring is explicit: `IMcpGateway` for runtime work, `IMcpGatewayRegistry` for additive registration, `IMcpGatewayCatalogRuntime` for full in-memory catalog control, `IMcpGatewayPromptCatalog` for aggregated MCP prompts, `IMcpGatewayResourceCatalog` for aggregated MCP resources, and `McpGatewayToolSet` for meta-tools
 - advanced consumers get a supported custom-gateway path through the DI-owned `IMcpGatewayFactory`
 - hosts can expose the aggregated catalog back out as one downstream MCP server without bypassing package contracts
+- resource-capable MCP sources remain accessible through one package-owned catalog instead of forcing hosts to fan out over raw `McpClient` instances
 - hosts get lazy behavior by default and optional eager warmup through `InitializeMcpGatewayAsync()` or `AddMcpGatewayIndexWarmup()`
 - hosts can control graph input authoring through `McpGatewayOptions.UseMarkdownLdGraphDocuments(...)` without taking over runtime orchestration
 - prompt-capable MCP sources remain accessible through one package-owned catalog instead of forcing hosts to fan out over raw `McpClient` instances
@@ -118,9 +123,10 @@ Mitigations:
 - `IMcpGatewayRegistry` MUST remain the public additive mutation surface for adding tools and MCP sources after container build.
 - `IMcpGatewayCatalogRuntime` MUST own supported full-catalog in-memory clear and reconfiguration operations without reflection.
 - `IMcpGatewayPromptCatalog` MUST own aggregated MCP prompt listing and source-aware prompt retrieval without forcing direct `McpClient` access on consumers.
-- `AddMcpGateway(...)` MUST register `IMcpGateway`, `IMcpGatewayRegistry`, `IMcpGatewayCatalogRuntime`, `IMcpGatewayPromptCatalog`, and `McpGatewayToolSet`.
+- `IMcpGatewayResourceCatalog` MUST own aggregated MCP resource listing, resource-template listing, and source-aware reads without forcing direct `McpClient` access on consumers.
+- `AddMcpGateway(...)` MUST register `IMcpGateway`, `IMcpGatewayRegistry`, `IMcpGatewayCatalogRuntime`, `IMcpGatewayPromptCatalog`, `IMcpGatewayResourceCatalog`, and `McpGatewayToolSet`.
 - `IMcpGatewayFactory` MUST create the same supported runtime facade and registry contracts while resolving shared host services from DI instead of smuggling them through options bags.
-- `WithMcpGatewayCatalog()` MUST export the current aggregated tool and prompt catalog through official MCP server handlers instead of a parallel app-specific adapter layer.
+- `WithMcpGatewayCatalog()` MUST export the current aggregated tool, prompt, and resource catalog through official MCP server handlers instead of a parallel app-specific adapter layer.
 - Index builds MUST be lazy by default and MUST rebuild automatically after registry mutations invalidate the snapshot.
 - Hosted warmup MUST stay optional and MUST use the same runtime/index path as normal gateway operations.
 - Graph-input customization MUST stay explicit in options and MUST still flow through the same runtime build path as generated/file-backed graph sources.

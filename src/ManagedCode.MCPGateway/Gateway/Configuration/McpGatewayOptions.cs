@@ -82,6 +82,36 @@ public sealed class McpGatewayOptions
             registrations.AddTools(tools, sourceId, displayName)
         );
 
+    public McpGatewayOptions AddPrompt(
+        string sourceId,
+        McpGatewayPrompt prompt,
+        string? displayName = null
+    ) => ConfigureRegistrations(registrations => registrations.AddPrompt(sourceId, prompt, displayName));
+
+    public McpGatewayOptions AddPrompt(
+        McpGatewayPrompt prompt,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    ) => ConfigureRegistrations(registrations => registrations.AddPrompt(prompt, sourceId, displayName));
+
+    public McpGatewayOptions AddPrompts(
+        string sourceId,
+        IEnumerable<McpGatewayPrompt> prompts,
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddPrompts(sourceId, prompts, displayName)
+        );
+
+    public McpGatewayOptions AddPrompts(
+        IEnumerable<McpGatewayPrompt> prompts,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    ) =>
+        ConfigureRegistrations(registrations =>
+            registrations.AddPrompts(prompts, sourceId, displayName)
+        );
+
     public McpGatewayOptions AddHttpServer(
         string sourceId,
         Uri endpoint,

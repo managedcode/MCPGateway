@@ -6,6 +6,8 @@ public interface IMcpGatewayInstance : IAsyncDisposable
 
     IMcpGatewayPromptCatalog PromptCatalog { get; }
 
+    IMcpGatewayResourceCatalog ResourceCatalog { get; }
+
     IMcpGatewayRegistry Registry { get; }
 
     IMcpGatewayCatalogRuntime CatalogRuntime { get; }

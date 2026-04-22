@@ -6,6 +6,7 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayPromptCatalog(
     IMcpGatewayCatalogSource catalogSource,
+    IServiceProvider serviceProvider,
     ILoggerFactory loggerFactory
 ) : IMcpGatewayPromptCatalog
 {
@@ -49,40 +50,89 @@ internal sealed class McpGatewayPromptCatalog(
 
         var sourceId = request.SourceId.Trim();
         var promptName = request.PromptName.Trim();
+        var registration = FindRegistration(sourceId);
+        if (registration is null)
+        {
+            return null;
+        }
+
+        var promptResult = await RenderPromptProtocolAsync(
+            new McpGatewayPromptRequest(sourceId, promptName, request.Arguments),
+            new HashSet<string>(StringComparer.Ordinal),
+            cancellationToken
+        );
+
+        return ConvertPromptResult(promptResult, sourceId, promptName, registration.Kind);
+    }
+
+    internal Task<GetPromptResult?> RenderPromptProtocolAsync(
+        McpGatewayPromptRequest request,
+        CancellationToken cancellationToken = default
+    ) =>
+        RenderPromptProtocolAsync(
+            request,
+            new HashSet<string>(StringComparer.Ordinal),
+            cancellationToken
+        );
+
+    private async Task<GetPromptResult?> RenderPromptProtocolAsync(
+        McpGatewayPromptRequest request,
+        HashSet<string> activePromptIds,
+        CancellationToken cancellationToken
+    )
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (string.IsNullOrWhiteSpace(request.SourceId))
+        {
+            throw new ArgumentException("A source id is required.", nameof(request));
+        }
+
+        if (string.IsNullOrWhiteSpace(request.PromptName))
+        {
+            throw new ArgumentException("A prompt name is required.", nameof(request));
+        }
+
+        var sourceId = request.SourceId.Trim();
+        var promptName = request.PromptName.Trim();
+        var promptId = $"{sourceId}:{promptName}";
+        if (!activePromptIds.Add(promptId))
+        {
+            throw new InvalidOperationException(
+                $"Prompt '{promptId}' recursively references itself."
+            );
+        }
+
         var snapshot = catalogSource.CreateSnapshot();
         var registration = snapshot.Registrations.FirstOrDefault(candidate =>
             string.Equals(candidate.SourceId, sourceId, StringComparison.Ordinal)
         );
         if (registration is null)
         {
+            activePromptIds.Remove(promptId);
             return null;
         }
 
-        var promptResult = await registration.GetPromptAsync(
-            promptName,
-            request.Arguments,
-            loggerFactory,
-            cancellationToken
-        );
-        if (promptResult is null)
+        try
         {
-            return null;
+            return await registration.GetPromptAsync(
+                promptName,
+                request.Arguments,
+                new McpGatewayPromptInvocationContext(
+                    serviceProvider,
+                    (nestedRequest, token) =>
+                        new ValueTask<GetPromptResult?>(
+                            RenderPromptProtocolAsync(nestedRequest, activePromptIds, token)
+                        )
+                ),
+                loggerFactory,
+                cancellationToken
+            );
         }
-
-        return new McpGatewayPromptResult(
-            PromptId: $"{registration.SourceId}:{promptName}",
-            SourceId: registration.SourceId,
-            SourceKind: McpGatewaySourceKindMapper.Map(registration.Kind),
-            PromptName: promptName,
-            Description: promptResult.Description ?? string.Empty,
-            Messages: promptResult
-                .Messages.Select(static message => new McpGatewayPromptMessage(
-                    Role: message.Role.ToString(),
-                    Content: McpGatewayJsonSerializer.TrySerializeToNode(message.Content),
-                    Text: message.Content is TextContentBlock textContent ? textContent.Text : null
-                ))
-                .ToList()
-        );
+        finally
+        {
+            activePromptIds.Remove(promptId);
+        }
     }
 
     private static McpGatewayPromptDescriptor BuildDescriptor(
@@ -117,5 +167,41 @@ internal sealed class McpGatewayPromptCatalog(
                 .Select(static argument => argument.Name)
                 .ToList(),
         };
+    }
+
+    private McpGatewayToolSourceRegistration? FindRegistration(string sourceId)
+    {
+        var snapshot = catalogSource.CreateSnapshot();
+        return snapshot.Registrations.FirstOrDefault(candidate =>
+            string.Equals(candidate.SourceId, sourceId, StringComparison.Ordinal)
+        );
+    }
+
+    private static McpGatewayPromptResult? ConvertPromptResult(
+        GetPromptResult? promptResult,
+        string sourceId,
+        string promptName,
+        McpGatewaySourceRegistrationKind sourceKind
+    )
+    {
+        if (promptResult is null)
+        {
+            return null;
+        }
+
+        return new McpGatewayPromptResult(
+            PromptId: $"{sourceId}:{promptName}",
+            SourceId: sourceId,
+            SourceKind: McpGatewaySourceKindMapper.Map(sourceKind),
+            PromptName: promptName,
+            Description: promptResult.Description ?? string.Empty,
+            Messages: promptResult
+                .Messages.Select(static message => new McpGatewayPromptMessage(
+                    Role: message.Role.ToString(),
+                    Content: McpGatewayJsonSerializer.TrySerializeToNode(message.Content),
+                    Text: message.Content is TextContentBlock textContent ? textContent.Text : null
+                ))
+                .ToList()
+        );
     }
 }

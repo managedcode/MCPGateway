@@ -21,6 +21,7 @@ public static class McpGatewayServiceCollectionExtensions
         }
 
         services.TryAddSingleton<IMcpGatewaySearchCache, McpGatewayNoOpSearchCache>();
+        services.TryAddSingleton<McpGatewayPromptChangeHub>();
         services.TryAddSingleton<IMcpGateway, McpGateway>();
         services.TryAddSingleton<IMcpGatewayRegistry, McpGatewayRegistry>();
         services.TryAddSingleton<IMcpGatewayCatalogSource>(static serviceProvider =>
@@ -30,6 +31,7 @@ public static class McpGatewayServiceCollectionExtensions
             (IMcpGatewayCatalogRuntime)serviceProvider.GetRequiredService<IMcpGatewayRegistry>()
         );
         services.TryAddSingleton<IMcpGatewayPromptCatalog, McpGatewayPromptCatalog>();
+        services.TryAddSingleton<IMcpGatewayResourceCatalog, McpGatewayResourceCatalog>();
         services.TryAddSingleton<IMcpGatewayFactory, McpGatewayFactory>();
         services.TryAddSingleton<McpGatewayToolSet>();
 

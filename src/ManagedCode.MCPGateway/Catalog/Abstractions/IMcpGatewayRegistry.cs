@@ -27,6 +27,26 @@ public interface IMcpGatewayRegistry
 
     void AddTools(IEnumerable<AITool> tools, string sourceId = "local", string? displayName = null);
 
+    void AddPrompt(string sourceId, McpGatewayPrompt prompt, string? displayName = null);
+
+    void AddPrompt(
+        McpGatewayPrompt prompt,
+        string sourceId = "local",
+        string? displayName = null
+    );
+
+    void AddPrompts(
+        string sourceId,
+        IEnumerable<McpGatewayPrompt> prompts,
+        string? displayName = null
+    );
+
+    void AddPrompts(
+        IEnumerable<McpGatewayPrompt> prompts,
+        string sourceId = "local",
+        string? displayName = null
+    );
+
     void AddHttpServer(
         string sourceId,
         Uri endpoint,

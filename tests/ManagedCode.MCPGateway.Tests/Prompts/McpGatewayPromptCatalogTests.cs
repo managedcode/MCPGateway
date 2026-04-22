@@ -1,5 +1,6 @@
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
 
@@ -82,5 +83,201 @@ public sealed class McpGatewayPromptCatalogTests
                 )
             )
             .IsTrue();
+    }
+
+    [TUnit.Core.Test]
+    public async Task ListPromptsAsync_IncludesGatewayOwnedPromptDescriptors()
+    {
+        await using var repositoryServer = await TestMcpServerHost.StartAsync();
+        await using var operationsServer = await TestMcpServerHost.StartOperationsAsync();
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            ConfigureCompositePromptCatalog(options, repositoryServer, operationsServer);
+        });
+        var promptCatalog = serviceProvider.GetRequiredService<IMcpGatewayPromptCatalog>();
+
+        var prompts = await promptCatalog.ListPromptsAsync();
+        var descriptor = prompts.Single(static prompt =>
+            prompt.PromptId == "local:release_review_bundle"
+        );
+
+        await Assert.That(descriptor.SourceKind).IsEqualTo(McpGatewaySourceKind.Local);
+        await Assert.That(descriptor.DisplayName).IsEqualTo("Release review bundle");
+        await Assert.That(descriptor.RequiredArguments).IsEquivalentTo(["repository", "environment"]);
+        await Assert
+            .That(descriptor.Arguments.Select(static argument => argument.Name).ToArray())
+            .IsEquivalentTo(["repository", "environment", "locale"]);
+    }
+
+    [TUnit.Core.Test]
+    public async Task GetPromptAsync_ComposesGatewayOwnedPromptAcrossMultipleSources()
+    {
+        await using var repositoryServer = await TestMcpServerHost.StartAsync();
+        await using var operationsServer = await TestMcpServerHost.StartOperationsAsync();
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            ConfigureCompositePromptCatalog(options, repositoryServer, operationsServer);
+        });
+        var promptCatalog = serviceProvider.GetRequiredService<IMcpGatewayPromptCatalog>();
+
+        var prompt = await promptCatalog.GetPromptAsync(
+            new McpGatewayPromptRequest(
+                SourceId: "local",
+                PromptName: "release_review_bundle",
+                Arguments: new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["repository"] = "ManagedCode/MCPGateway",
+                    ["environment"] = "prod-eu",
+                    ["locale"] = "uk-UA",
+                }
+            )
+        );
+
+        await Assert.That(prompt).IsNotNull();
+        await Assert.That(prompt!.PromptId).IsEqualTo("local:release_review_bundle");
+        await Assert.That(prompt.Messages.Count).IsEqualTo(4);
+        await Assert.That(prompt.Messages[0].Text).Contains("Combine repository and deployment guidance");
+        await Assert.That(prompt.Messages[1].Text).Contains("ManagedCode/MCPGateway");
+        await Assert.That(prompt.Messages[2].Text).Contains("prod-eu");
+        await Assert.That(prompt.Messages[3].Text).Contains("uk-UA");
+    }
+
+    private static void ConfigureCompositePromptCatalog(
+        McpGatewayOptions options,
+        TestMcpServerHost repositoryServer,
+        TestMcpServerHost operationsServer
+    )
+    {
+        options.AddMcpClient("repo", repositoryServer.Client, disposeClient: false);
+        options.AddMcpClient("ops", operationsServer.Client, disposeClient: false);
+        options.AddPrompt(
+            new McpGatewayPrompt("release_review_bundle", BuildCompositePromptAsync)
+            {
+                DisplayName = "Release review bundle",
+                Description =
+                    "Combines repository triage and deployment review guidance into one prompt.",
+                Arguments =
+                [
+                    new McpGatewayPromptArgumentDescriptor(
+                        "repository",
+                        "Repository",
+                        "Repository name.",
+                        true
+                    ),
+                    new McpGatewayPromptArgumentDescriptor(
+                        "environment",
+                        "Environment",
+                        "Deployment environment.",
+                        true
+                    ),
+                    new McpGatewayPromptArgumentDescriptor(
+                        "locale",
+                        "Locale",
+                        "Preferred review locale.",
+                        false
+                    ),
+                ],
+                CompleteAsync = CompleteCompositePromptAsync,
+            }
+        );
+    }
+
+    private static async ValueTask<GetPromptResult> BuildCompositePromptAsync(
+        McpGatewayPromptRenderContext context,
+        CancellationToken cancellationToken
+    )
+    {
+        var repository = context.Arguments["repository"]?.ToString() ?? string.Empty;
+        var environment = context.Arguments["environment"]?.ToString() ?? string.Empty;
+        var locale = context.Arguments.TryGetValue("locale", out var rawLocale)
+            ? rawLocale?.ToString() ?? "en-US"
+            : "en-US";
+
+        var repositoryPrompt =
+            await context.GetPromptAsync(
+                "repo",
+                "repository_triage_system_prompt",
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["repository"] = repository,
+                    ["locale"] = locale,
+                },
+                cancellationToken
+            ) ?? throw new InvalidOperationException("Repository prompt was not found.");
+
+        var deploymentPrompt =
+            await context.GetPromptAsync(
+                "ops",
+                "deployment_review_system_prompt",
+                new Dictionary<string, object?>(StringComparer.Ordinal)
+                {
+                    ["environment"] = environment,
+                },
+                cancellationToken
+            ) ?? throw new InvalidOperationException("Deployment prompt was not found.");
+
+        return new GetPromptResult
+        {
+            Description = "Release review bundle prompt.",
+            Messages =
+            [
+                new PromptMessage
+                {
+                    Role = Role.User,
+                    Content = new TextContentBlock
+                    {
+                        Text = "Combine repository and deployment guidance into one review plan.",
+                    },
+                },
+                ..repositoryPrompt.Messages,
+                ..deploymentPrompt.Messages,
+                new PromptMessage
+                {
+                    Role = Role.User,
+                    Content = new TextContentBlock
+                    {
+                        Text = $"Finalize the review in locale '{locale}'.",
+                    },
+                },
+            ],
+        };
+    }
+
+    private static ValueTask<CompleteResult?> CompleteCompositePromptAsync(
+        McpGatewayPromptCompletionContext context,
+        CancellationToken cancellationToken
+    )
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var values = context.ArgumentName switch
+        {
+            "repository" => new[]
+            {
+                "ManagedCode/MCPGateway",
+                "ManagedCode/AIBase",
+                "ModelContextProtocol/csharp-sdk",
+            },
+            "environment" => new[] { "prod-eu", "prod-us", "staging" },
+            _ => [],
+        };
+
+        var matches = values
+            .Where(value =>
+                value.StartsWith(context.ArgumentValue, StringComparison.OrdinalIgnoreCase)
+            )
+            .ToList();
+
+        return ValueTask.FromResult<CompleteResult?>(
+            new CompleteResult
+            {
+                Completion = new Completion
+                {
+                    Values = matches,
+                    Total = matches.Count,
+                    HasMore = false,
+                },
+            }
+        );
     }
 }

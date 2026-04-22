@@ -5,7 +5,10 @@ using ModelContextProtocol.Client;
 
 namespace ManagedCode.MCPGateway;
 
-internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
+internal sealed class McpGatewayRegistry(
+    IOptions<McpGatewayOptions> options,
+    McpGatewayPromptChangeHub promptChangeHub
+)
     : IMcpGatewayRegistry,
         IMcpGatewayCatalogRuntime,
         IMcpGatewayCatalogSource,
@@ -48,6 +51,8 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
         {
             await registration.DisposeAsync();
         }
+
+        promptChangeHub.NotifyChanged();
     }
 
     public void AddTool(string sourceId, AITool tool, string? displayName = null) =>
@@ -82,6 +87,46 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
         string? displayName = null
     ) => Mutate(registrations => registrations.AddTools(tools, sourceId, displayName));
 
+    public void AddPrompt(
+        string sourceId,
+        McpGatewayPrompt prompt,
+        string? displayName = null
+    ) =>
+        Mutate(
+            registrations => registrations.AddPrompt(sourceId, prompt, displayName),
+            notifyPromptChanges: true
+        );
+
+    public void AddPrompt(
+        McpGatewayPrompt prompt,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    ) =>
+        Mutate(
+            registrations => registrations.AddPrompt(prompt, sourceId, displayName),
+            notifyPromptChanges: true
+        );
+
+    public void AddPrompts(
+        string sourceId,
+        IEnumerable<McpGatewayPrompt> prompts,
+        string? displayName = null
+    ) =>
+        Mutate(
+            registrations => registrations.AddPrompts(sourceId, prompts, displayName),
+            notifyPromptChanges: true
+        );
+
+    public void AddPrompts(
+        IEnumerable<McpGatewayPrompt> prompts,
+        string sourceId = McpGatewayDefaults.DefaultSourceId,
+        string? displayName = null
+    ) =>
+        Mutate(
+            registrations => registrations.AddPrompts(prompts, sourceId, displayName),
+            notifyPromptChanges: true
+        );
+
     public void AddHttpServer(
         string sourceId,
         Uri endpoint,
@@ -89,7 +134,8 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
         string? displayName = null
     ) =>
         Mutate(registrations =>
-            registrations.AddHttpServer(sourceId, endpoint, headers, displayName)
+            registrations.AddHttpServer(sourceId, endpoint, headers, displayName),
+            notifyPromptChanges: true
         );
 
     public void AddStdioServer(
@@ -108,7 +154,8 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
                 workingDirectory,
                 environmentVariables,
                 displayName
-            )
+            ),
+            notifyPromptChanges: true
         );
 
     public void AddMcpClient(
@@ -118,7 +165,8 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
         string? displayName = null
     ) =>
         Mutate(registrations =>
-            registrations.AddMcpClient(sourceId, client, disposeClient, displayName)
+            registrations.AddMcpClient(sourceId, client, disposeClient, displayName),
+            notifyPromptChanges: true
         );
 
     public void AddMcpClientFactory(
@@ -128,7 +176,13 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
         string? displayName = null
     ) =>
         Mutate(registrations =>
-            registrations.AddMcpClientFactory(sourceId, clientFactory, disposeClient, displayName)
+            registrations.AddMcpClientFactory(
+                sourceId,
+                clientFactory,
+                disposeClient,
+                displayName
+            ),
+            notifyPromptChanges: true
         );
 
     public McpGatewayCatalogSourceSnapshot CreateSnapshot()
@@ -165,7 +219,10 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
         }
     }
 
-    private void Mutate(Action<McpGatewayRegistrationCollection> mutation)
+    private void Mutate(
+        Action<McpGatewayRegistrationCollection> mutation,
+        bool notifyPromptChanges = false
+    )
     {
         _operationGate.Enter(this);
         try
@@ -177,6 +234,11 @@ internal sealed class McpGatewayRegistry(IOptions<McpGatewayOptions> options)
         finally
         {
             _operationGate.Exit();
+        }
+
+        if (notifyPromptChanges)
+        {
+            promptChangeHub.NotifyChanged();
         }
     }
 
