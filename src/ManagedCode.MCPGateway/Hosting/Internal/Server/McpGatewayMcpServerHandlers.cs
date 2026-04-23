@@ -1,6 +1,5 @@
 #pragma warning disable MCPEXP001
 
-using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -9,9 +8,7 @@ using ModelContextProtocol.Server;
 namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayMcpServerHandlers(
-    IMcpGateway gateway,
-    IMcpGatewayPromptCatalog promptCatalog,
-    IMcpGatewayResourceCatalog resourceCatalog,
+    McpGatewayMcpServerBindingManager bindingManager,
     McpGatewayMcpServerRequestResolver requestResolver,
     McpGatewayResourceSubscriptionManager subscriptionManager,
     McpGatewayPromptListNotificationManager promptNotificationManager,
@@ -21,12 +18,22 @@ internal sealed class McpGatewayMcpServerHandlers(
 )
 {
     public async ValueTask<ListToolsResult> ListToolsAsync(
-        RequestContext<ListToolsRequestParams> _,
+        RequestContext<ListToolsRequestParams> request,
         CancellationToken cancellationToken
     )
     {
-        var descriptors = await gateway.ListToolsAsync(cancellationToken);
-        var taskSupports = await requestResolver.LoadToolTaskSupportsAsync(cancellationToken);
+        await using var binding = await bindingManager.AcquireAsync(
+            request.Services,
+            serviceProvider,
+            request.Server,
+            cancellationToken
+        );
+
+        var descriptors = await binding.Binding.Gateway.ListToolsAsync(cancellationToken);
+        var taskSupports = await requestResolver.LoadToolTaskSupportsAsync(
+            binding.Binding,
+            cancellationToken
+        );
         return new ListToolsResult
         {
             Tools = descriptors
@@ -55,7 +62,18 @@ internal sealed class McpGatewayMcpServerHandlers(
             );
         }
 
-        var resolvedTool = await requestResolver.ResolveToolAsync(toolId, cancellationToken);
+        await using var binding = await bindingManager.AcquireAsync(
+            request.Services,
+            serviceProvider,
+            request.Server,
+            cancellationToken
+        );
+
+        var resolvedTool = await requestResolver.ResolveToolAsync(
+            binding.Binding,
+            toolId,
+            cancellationToken
+        );
         if (resolvedTool is null)
         {
             return McpGatewayMcpServerProtocolMapper.CreateErrorToolResult(
@@ -79,7 +97,7 @@ internal sealed class McpGatewayMcpServerHandlers(
             throw new McpException($"Tool '{resolvedTool.ToolId}' requires task augmentation.");
         }
 
-        var invokeResult = await gateway.InvokeAsync(
+        var invokeResult = await binding.Binding.Gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
                 ToolId: resolvedTool.ToolId,
                 Arguments: arguments
@@ -96,11 +114,19 @@ internal sealed class McpGatewayMcpServerHandlers(
     )
     {
         await promptNotificationManager.RegisterDownstreamServerAsync(
+            request.Services,
             request.Server,
             cancellationToken
         );
 
-        var descriptors = await promptCatalog.ListPromptsAsync(cancellationToken);
+        await using var binding = await bindingManager.AcquireAsync(
+            request.Services,
+            serviceProvider,
+            request.Server,
+            cancellationToken
+        );
+
+        var descriptors = await binding.Binding.PromptCatalog.ListPromptsAsync(cancellationToken);
         return new ListPromptsResult
         {
             Prompts = descriptors
@@ -115,6 +141,7 @@ internal sealed class McpGatewayMcpServerHandlers(
     )
     {
         await promptNotificationManager.RegisterDownstreamServerAsync(
+            request.Services,
             request.Server,
             cancellationToken
         );
@@ -127,8 +154,18 @@ internal sealed class McpGatewayMcpServerHandlers(
             );
         }
 
-        var resolvedRequest =
-            await requestResolver.ResolvePromptAsync(exportedPromptName, cancellationToken);
+        await using var binding = await bindingManager.AcquireAsync(
+            request.Services,
+            serviceProvider,
+            request.Server,
+            cancellationToken
+        );
+
+        var resolvedRequest = await McpGatewayMcpServerRequestResolver.ResolvePromptAsync(
+            binding.Binding,
+            exportedPromptName,
+            cancellationToken
+        );
         if (resolvedRequest is null)
         {
             return McpGatewayMcpServerProtocolMapper.CreateErrorPromptResult(
@@ -136,7 +173,7 @@ internal sealed class McpGatewayMcpServerHandlers(
             );
         }
 
-        var promptResult = await promptCatalog.GetPromptAsync(
+        var promptResult = await binding.Binding.PromptCatalog.GetPromptAsync(
             new McpGatewayPromptRequest(
                 SourceId: resolvedRequest.SourceId,
                 PromptName: resolvedRequest.PromptName,
@@ -163,11 +200,18 @@ internal sealed class McpGatewayMcpServerHandlers(
     }
 
     public async ValueTask<ListResourcesResult> ListResourcesAsync(
-        RequestContext<ListResourcesRequestParams> _,
+        RequestContext<ListResourcesRequestParams> request,
         CancellationToken cancellationToken
     )
     {
-        var descriptors = await resourceCatalog.ListResourcesAsync(cancellationToken);
+        await using var binding = await bindingManager.AcquireAsync(
+            request.Services,
+            serviceProvider,
+            request.Server,
+            cancellationToken
+        );
+
+        var descriptors = await binding.Binding.ResourceCatalog.ListResourcesAsync(cancellationToken);
         return new ListResourcesResult
         {
             Resources = descriptors
@@ -177,11 +221,20 @@ internal sealed class McpGatewayMcpServerHandlers(
     }
 
     public async ValueTask<ListResourceTemplatesResult> ListResourceTemplatesAsync(
-        RequestContext<ListResourceTemplatesRequestParams> _,
+        RequestContext<ListResourceTemplatesRequestParams> request,
         CancellationToken cancellationToken
     )
     {
-        var descriptors = await resourceCatalog.ListResourceTemplatesAsync(cancellationToken);
+        await using var binding = await bindingManager.AcquireAsync(
+            request.Services,
+            serviceProvider,
+            request.Server,
+            cancellationToken
+        );
+
+        var descriptors = await binding.Binding.ResourceCatalog.ListResourceTemplatesAsync(
+            cancellationToken
+        );
         return new ListResourceTemplatesResult
         {
             ResourceTemplates = descriptors
@@ -201,12 +254,23 @@ internal sealed class McpGatewayMcpServerHandlers(
             throw new McpException(McpGatewayMcpProtocolConstants.InvalidResourceUriMessage);
         }
 
+        await using var binding = await bindingManager.AcquireAsync(
+            request.Services,
+            serviceProvider,
+            request.Server,
+            cancellationToken
+        );
+
         var resolvedRequest =
-            await requestResolver.ResolveResourceAsync(requestedUri, cancellationToken)
+            await McpGatewayMcpServerRequestResolver.ResolveResourceAsync(
+                binding.Binding,
+                requestedUri,
+                cancellationToken
+            )
             ?? throw new McpException($"Resource '{requestedUri}' was not found.");
 
         var resourceResult =
-            await resourceCatalog.ReadResourceAsync(
+            await binding.Binding.ResourceCatalog.ReadResourceAsync(
                 new McpGatewayResourceRequest(
                     resolvedRequest.SourceId,
                     resolvedRequest.UpstreamUri
@@ -233,6 +297,7 @@ internal sealed class McpGatewayMcpServerHandlers(
     )
     {
         await promptNotificationManager.RegisterDownstreamServerAsync(
+            request.Services,
             request.Server,
             cancellationToken
         );
@@ -246,11 +311,22 @@ internal sealed class McpGatewayMcpServerHandlers(
             throw new McpException(McpGatewayMcpProtocolConstants.InvalidCompletionArgumentMessage);
         }
 
+        await using var binding = await bindingManager.AcquireAsync(
+            request.Services,
+            serviceProvider,
+            request.Server,
+            cancellationToken
+        );
+
         var resolvedRequest =
-            await requestResolver.ResolveCompletionAsync(reference, cancellationToken)
+            await McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(
+                binding.Binding,
+                reference,
+                cancellationToken
+            )
             ?? throw new McpException("The requested completion target was not found.");
 
-        return await resolvedRequest.Registration.CompleteAsync(
+        return await resolvedRequest.Source.CompleteAsync(
                 resolvedRequest.UpstreamReference,
                 McpGatewayMcpServerProtocolMapper.CloneArgument(argument),
                 McpGatewayMcpServerProtocolMapper.CloneContext(request.Params?.Context),
@@ -272,13 +348,10 @@ internal sealed class McpGatewayMcpServerHandlers(
             throw new McpException(McpGatewayMcpProtocolConstants.InvalidResourceUriMessage);
         }
 
-        var resolvedRequest =
-            await requestResolver.ResolveResourceAsync(requestedUri, cancellationToken)
-            ?? throw new McpException($"Resource '{requestedUri}' was not found.");
-
         await subscriptionManager.SubscribeAsync(
+            request.Services,
             request.Server,
-            resolvedRequest,
+            requestedUri,
             cancellationToken
         );
 

@@ -1,36 +1,23 @@
 using System.Collections.Concurrent;
+using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway;
 
-internal sealed class McpGatewayPromptListNotificationManager : IAsyncDisposable
+internal sealed class McpGatewayPromptListNotificationManager(
+    McpGatewayMcpServerBindingManager bindingManager,
+    IServiceProvider serviceProvider,
+    ILogger<McpGatewayPromptListNotificationManager> logger,
+    ILoggerFactory loggerFactory
+) : IAsyncDisposable
 {
-    private readonly IMcpGatewayCatalogSource _catalogSource;
-    private readonly ILogger<McpGatewayPromptListNotificationManager> _logger;
-    private readonly ILoggerFactory _loggerFactory;
-    private readonly IDisposable _changeSubscription;
-    private readonly ConcurrentDictionary<string, ModelContextProtocol.Server.McpServer>
-        _downstreamServers = new();
-    private readonly ConcurrentDictionary<string, UpstreamSubscription> _upstreamSubscriptions =
-        new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, SessionState> _sessions = new(StringComparer.Ordinal);
     private int _disposed;
 
-    public McpGatewayPromptListNotificationManager(
-        IMcpGatewayCatalogSource catalogSource,
-        McpGatewayPromptChangeHub changeHub,
-        ILogger<McpGatewayPromptListNotificationManager> logger,
-        ILoggerFactory loggerFactory
-    )
-    {
-        _catalogSource = catalogSource;
-        _logger = logger;
-        _loggerFactory = loggerFactory;
-        _changeSubscription = changeHub.Subscribe(OnPromptCatalogChanged);
-    }
-
     public async Task RegisterDownstreamServerAsync(
+        IServiceProvider? requestServices,
         ModelContextProtocol.Server.McpServer downstreamServer,
         CancellationToken cancellationToken
     )
@@ -38,9 +25,39 @@ internal sealed class McpGatewayPromptListNotificationManager : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(downstreamServer);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var sessionId = downstreamServer.SessionId ?? string.Empty;
-        _downstreamServers[sessionId] = downstreamServer;
-        await RefreshUpstreamSubscriptionsAsync(cancellationToken);
+        var sessionId = McpGatewayMcpServerIdentity.GetKey(downstreamServer);
+
+        if (_sessions.TryGetValue(sessionId, out var existingState))
+        {
+            existingState.DownstreamServer = downstreamServer;
+            await RefreshUpstreamSubscriptionsAsync(existingState, cancellationToken);
+            return;
+        }
+
+        await using var bindingLease = await bindingManager.PinAsync(
+            requestServices,
+            serviceProvider,
+            downstreamServer,
+            cancellationToken
+        );
+
+        var createdState = new SessionState(
+            sessionId,
+            downstreamServer,
+            bindingLease.Binding,
+            bindingLease.Binding.SubscribeToPromptListChanges(
+                () => _ = NotifyPromptListChangedAsync(sessionId, CancellationToken.None)
+            )
+        );
+
+        if (!_sessions.TryAdd(sessionId, createdState))
+        {
+            createdState.PromptChangeSubscription.Dispose();
+            await bindingManager.ReleaseAsync(downstreamServer);
+            return;
+        }
+
+        await RefreshUpstreamSubscriptionsAsync(createdState, cancellationToken);
     }
 
     public async ValueTask DisposeAsync()
@@ -50,63 +67,58 @@ internal sealed class McpGatewayPromptListNotificationManager : IAsyncDisposable
             return;
         }
 
-        _changeSubscription.Dispose();
-        _downstreamServers.Clear();
+        var states = _sessions.ToArray();
+        _sessions.Clear();
 
-        foreach (var (_, subscription) in _upstreamSubscriptions)
+        foreach (var (_, state) in states)
         {
-            await subscription.Subscription.DisposeAsync();
+            await DisposeSessionAsync(state);
         }
 
-        _upstreamSubscriptions.Clear();
     }
 
-    private void OnPromptCatalogChanged()
-    {
-        _ = RefreshUpstreamSubscriptionsAsync(CancellationToken.None);
-        _ = NotifyPromptListChangedAsync(CancellationToken.None);
-    }
-
-    private async Task RefreshUpstreamSubscriptionsAsync(CancellationToken cancellationToken)
+    private async Task RefreshUpstreamSubscriptionsAsync(
+        SessionState sessionState,
+        CancellationToken cancellationToken
+    )
     {
         if (Volatile.Read(ref _disposed) != 0)
         {
             return;
         }
 
-        var snapshot = _catalogSource.CreateSnapshot();
-        var activeRegistrations = snapshot.Registrations.ToDictionary(
-            static registration => registration.SourceId,
+        var activeSources = (await sessionState.Binding.ListSourcesAsync(cancellationToken)).ToDictionary(
+            static source => source.SourceId,
             StringComparer.Ordinal
         );
 
-        foreach (var (sourceId, existingSubscription) in _upstreamSubscriptions.ToArray())
+        foreach (var (sourceId, existingSubscription) in sessionState.UpstreamSubscriptions.ToArray())
         {
             if (
-                !activeRegistrations.TryGetValue(sourceId, out var registration)
-                || !ReferenceEquals(existingSubscription.Registration, registration)
+                !activeSources.TryGetValue(sourceId, out var source)
+                || !ReferenceEquals(existingSubscription.Source, source)
             )
             {
-                if (_upstreamSubscriptions.TryRemove(sourceId, out var removedSubscription))
+                if (sessionState.UpstreamSubscriptions.TryRemove(sourceId, out var removed))
                 {
-                    await removedSubscription.Subscription.DisposeAsync();
+                    await removed.Subscription.DisposeAsync();
                 }
             }
         }
 
-        foreach (var registration in activeRegistrations.Values)
+        foreach (var source in activeSources.Values)
         {
-            if (_upstreamSubscriptions.ContainsKey(registration.SourceId))
+            if (sessionState.UpstreamSubscriptions.ContainsKey(source.SourceId))
             {
                 continue;
             }
 
-            var subscription = await registration.SubscribeToPromptListChangesAsync(
+            var subscription = await source.SubscribeToPromptListChangesAsync(
                 (_, token) =>
                     new ValueTask(
-                        ForwardUpstreamPromptListChangedAsync(registration.SourceId, token)
+                        ForwardUpstreamPromptListChangedAsync(sessionState.SessionId, source.SourceId, token)
                     ),
-                _loggerFactory,
+                loggerFactory,
                 cancellationToken
             );
             if (subscription is null)
@@ -114,8 +126,8 @@ internal sealed class McpGatewayPromptListNotificationManager : IAsyncDisposable
                 continue;
             }
 
-            var createdSubscription = new UpstreamSubscription(registration, subscription);
-            if (!_upstreamSubscriptions.TryAdd(registration.SourceId, createdSubscription))
+            var createdSubscription = new UpstreamSubscription(source, subscription);
+            if (!sessionState.UpstreamSubscriptions.TryAdd(source.SourceId, createdSubscription))
             {
                 await subscription.DisposeAsync();
             }
@@ -123,46 +135,89 @@ internal sealed class McpGatewayPromptListNotificationManager : IAsyncDisposable
     }
 
     private Task ForwardUpstreamPromptListChangedAsync(
+        string sessionId,
         string sourceId,
         CancellationToken cancellationToken
     )
     {
-        _logger.LogDebug(
-            "Forwarding MCP prompt list changed notification from upstream source '{SourceId}'.",
-            sourceId
+        logger.LogDebug(
+            "Forwarding MCP prompt list changed notification from upstream source '{SourceId}' to session '{SessionId}'.",
+            sourceId,
+            sessionId
         );
 
-        return NotifyPromptListChangedAsync(cancellationToken);
+        return NotifyPromptListChangedAsync(sessionId, cancellationToken);
     }
 
-    private async Task NotifyPromptListChangedAsync(CancellationToken cancellationToken)
+    private async Task NotifyPromptListChangedAsync(
+        string sessionId,
+        CancellationToken cancellationToken
+    )
     {
-        foreach (var (sessionId, downstreamServer) in _downstreamServers.ToArray())
+        if (!_sessions.TryGetValue(sessionId, out var sessionState))
         {
-            try
-            {
-                await downstreamServer.SendNotificationAsync(
-                    NotificationMethods.PromptListChangedNotification,
-                    new PromptListChangedNotificationParams(),
-                    McpJsonUtilities.DefaultOptions,
-                    cancellationToken
-                );
-            }
-            catch (Exception exception)
-            {
-                _logger.LogDebug(
-                    exception,
-                    "Failed to send MCP prompt list changed notification to session '{SessionId}'. Removing the downstream subscription.",
-                    sessionId
-                );
+            return;
+        }
 
-                _downstreamServers.TryRemove(sessionId, out _);
+        try
+        {
+            await sessionState.DownstreamServer.SendNotificationAsync(
+                NotificationMethods.PromptListChangedNotification,
+                new PromptListChangedNotificationParams(),
+                McpJsonUtilities.DefaultOptions,
+                cancellationToken
+            );
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(
+                exception,
+                "Failed to send MCP prompt list changed notification to session '{SessionId}'. Removing the downstream subscription.",
+                sessionId
+            );
+
+            if (_sessions.TryRemove(sessionId, out var removedState))
+            {
+                await DisposeSessionAsync(removedState);
             }
         }
     }
 
+    private async Task DisposeSessionAsync(SessionState sessionState)
+    {
+        sessionState.PromptChangeSubscription.Dispose();
+
+        foreach (var (_, subscription) in sessionState.UpstreamSubscriptions)
+        {
+            await subscription.Subscription.DisposeAsync();
+        }
+
+        sessionState.UpstreamSubscriptions.Clear();
+        await bindingManager.ReleaseAsync(sessionState.DownstreamServer);
+    }
+
+    private sealed class SessionState(
+        string sessionId,
+        ModelContextProtocol.Server.McpServer downstreamServer,
+        IMcpGatewayServerBinding binding,
+        IDisposable promptChangeSubscription
+    )
+    {
+        public string SessionId { get; } = sessionId;
+
+        public ModelContextProtocol.Server.McpServer DownstreamServer { get; set; } =
+            downstreamServer;
+
+        public IMcpGatewayServerBinding Binding { get; } = binding;
+
+        public IDisposable PromptChangeSubscription { get; } = promptChangeSubscription;
+
+        public ConcurrentDictionary<string, UpstreamSubscription> UpstreamSubscriptions { get; } =
+            new(StringComparer.Ordinal);
+    }
+
     private sealed record UpstreamSubscription(
-        McpGatewayToolSourceRegistration Registration,
+        IMcpGatewayServerSource Source,
         IAsyncDisposable Subscription
     );
 }

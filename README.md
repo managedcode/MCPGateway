@@ -319,6 +319,22 @@ services.AddMcpServer()
 
 Exported MCP tool and prompt names are source-qualified gateway ids such as `docs:search_repository`, `ops:deployment_review_system_prompt`, or `local:release_review_bundle`, so multiple upstream servers and gateway-owned prompts can be combined without name collisions. Exported MCP resource URIs and URI templates are rewritten into gateway-owned opaque URIs so downstream `resources/read` calls route back to the correct upstream source even when multiple servers expose overlapping URI spaces. The same source-aware rewrite is also used for `completion/complete`, forwarded prompt list changes, and forwarded resource update notifications, so downstream clients always talk in terms of gateway-owned prompt names and resource URIs while the gateway proxies the corresponding upstream MCP operations. When an upstream MCP tool already advertises task support, the gateway preserves that contract on the exported tool and proxies the corresponding upstream task flow. Local gateway tools are exported as optional task-capable tools and are executed through the gateway-owned task store.
 
+If the downstream MCP host cannot use the default singleton `IMcpGateway`, `IMcpGatewayPromptCatalog`, and `IMcpGatewayResourceCatalog` registrations directly, register a custom `IMcpGatewayServerBindingResolver`. The resolver can create or select a request-specific or session-specific gateway instance and return it through `McpGatewayServerBinding`, while `WithMcpGatewayCatalog()` continues to own the exported MCP handlers, prompt/resource notifications, subscriptions, and task flow:
+
+```csharp
+services.AddMcpGateway();
+
+services.AddSingleton<IMcpGatewayServerBindingResolver>(serviceProvider =>
+    new RouteScopedGatewayBindingResolver(
+        serviceProvider.GetRequiredService<IMcpGatewayFactory>()));
+
+services.AddMcpServer()
+    .WithHttpTransport()
+    .WithMcpGatewayCatalog();
+```
+
+Use the default resolver when one singleton aggregated gateway is enough. Use a custom binding resolver when the exported MCP endpoint needs to select a different gateway instance per downstream route, tenant, or authenticated session.
+
 If you need to fully reconfigure the in-memory runtime catalog, use `IMcpGatewayCatalogRuntime` instead of internal reflection:
 
 ```csharp

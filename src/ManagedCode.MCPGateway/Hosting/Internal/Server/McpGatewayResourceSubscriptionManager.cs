@@ -7,42 +7,100 @@ using ModelContextProtocol.Protocol;
 namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayResourceSubscriptionManager(
+    McpGatewayMcpServerBindingManager bindingManager,
+    IServiceProvider serviceProvider,
     ILogger<McpGatewayResourceSubscriptionManager> logger,
     ILoggerFactory loggerFactory
 ) : IAsyncDisposable
 {
-    private readonly ConcurrentDictionary<SubscriptionKey, IAsyncDisposable> _subscriptions = new();
+    private readonly ConcurrentDictionary<SubscriptionKey, SubscriptionState> _subscriptions = new();
 
     public async Task SubscribeAsync(
+        IServiceProvider? requestServices,
         ModelContextProtocol.Server.McpServer downstreamServer,
-        McpGatewayResolvedResourceRequest request,
+        string exposedUri,
         CancellationToken cancellationToken
     )
     {
         ArgumentNullException.ThrowIfNull(downstreamServer);
-        ArgumentNullException.ThrowIfNull(request);
+        ArgumentException.ThrowIfNullOrWhiteSpace(exposedUri);
 
-        var key = SubscriptionKey.Create(downstreamServer, request.ExposedUri);
-        var subscription =
-            await request.Registration.SubscribeToResourceAsync(
-                request.UpstreamUri,
-                (notification, token) =>
-                    ForwardUpdateAsync(key, downstreamServer, request.ExposedUri, notification, token),
-                loggerFactory,
-                cancellationToken
-            )
-            ?? throw new McpException(
-                $"Resource '{request.ExposedUri}' does not support subscriptions."
-            );
+        var key = SubscriptionKey.Create(downstreamServer, exposedUri);
+        var state = _subscriptions.GetOrAdd(key, _ => new SubscriptionState(downstreamServer));
+        await state.Gate.WaitAsync(cancellationToken);
 
-        if (_subscriptions.TryGetValue(key, out var existingSubscription))
+        IAsyncDisposable? previousSubscription = null;
+        var shouldPinBinding = false;
+
+        try
         {
-            _subscriptions[key] = subscription;
-            await existingSubscription.DisposeAsync();
-            return;
+            state.DownstreamServer = downstreamServer;
+            shouldPinBinding = !state.HasPinnedBinding;
+
+            await using var bindingLease = shouldPinBinding
+                ? await bindingManager.PinAsync(
+                    requestServices,
+                    serviceProvider,
+                    downstreamServer,
+                    cancellationToken
+                )
+                : await bindingManager.AcquireAsync(
+                    requestServices,
+                    serviceProvider,
+                    downstreamServer,
+                    cancellationToken
+                );
+
+            var resolvedRequest =
+                await McpGatewayMcpServerRequestResolver.ResolveResourceAsync(
+                    bindingLease.Binding,
+                    exposedUri,
+                    cancellationToken
+                ) ?? throw new McpException($"Resource '{exposedUri}' was not found.");
+
+            var subscription =
+                await resolvedRequest.Source.SubscribeToResourceAsync(
+                    resolvedRequest.UpstreamUri,
+                    (notification, token) =>
+                        ForwardUpdateAsync(
+                            key,
+                            downstreamServer,
+                            resolvedRequest.ExposedUri,
+                            notification,
+                            token
+                        ),
+                    loggerFactory,
+                    cancellationToken
+                )
+                ?? throw new McpException(
+                    $"Resource '{resolvedRequest.ExposedUri}' does not support subscriptions."
+                );
+
+            previousSubscription = state.Subscription;
+            state.Subscription = subscription;
+            if (shouldPinBinding)
+            {
+                state.HasPinnedBinding = true;
+            }
+        }
+        catch
+        {
+            if (shouldPinBinding && !state.HasPinnedBinding)
+            {
+                await bindingManager.ReleaseAsync(downstreamServer);
+            }
+
+            throw;
+        }
+        finally
+        {
+            state.Gate.Release();
         }
 
-        _subscriptions[key] = subscription;
+        if (previousSubscription is not null)
+        {
+            await previousSubscription.DisposeAsync();
+        }
     }
 
     public async Task UnsubscribeAsync(
@@ -55,9 +113,36 @@ internal sealed class McpGatewayResourceSubscriptionManager(
         cancellationToken.ThrowIfCancellationRequested();
 
         var key = SubscriptionKey.Create(downstreamServer, exposedUri);
-        if (_subscriptions.TryRemove(key, out var subscription))
+        if (!_subscriptions.TryGetValue(key, out var state))
+        {
+            return;
+        }
+
+        await state.Gate.WaitAsync(cancellationToken);
+
+        IAsyncDisposable? subscription;
+        bool releasePinnedBinding;
+
+        try
+        {
+            subscription = state.Subscription;
+            releasePinnedBinding = state.HasPinnedBinding;
+            state.Subscription = null;
+            state.HasPinnedBinding = false;
+        }
+        finally
+        {
+            state.Gate.Release();
+        }
+
+        if (subscription is not null)
         {
             await subscription.DisposeAsync();
+        }
+
+        if (releasePinnedBinding)
+        {
+            await bindingManager.ReleaseAsync(state.DownstreamServer);
         }
     }
 
@@ -68,7 +153,26 @@ internal sealed class McpGatewayResourceSubscriptionManager(
 
         foreach (var (_, subscription) in subscriptions)
         {
-            await subscription.DisposeAsync();
+            await subscription.Gate.WaitAsync(CancellationToken.None);
+            try
+            {
+                if (subscription.Subscription is not null)
+                {
+                    await subscription.Subscription.DisposeAsync();
+                    subscription.Subscription = null;
+                }
+
+                if (subscription.HasPinnedBinding)
+                {
+                    subscription.HasPinnedBinding = false;
+                    await bindingManager.ReleaseAsync(subscription.DownstreamServer);
+                }
+            }
+            finally
+            {
+                subscription.Gate.Release();
+                subscription.Gate.Dispose();
+            }
         }
     }
 
@@ -102,9 +206,27 @@ internal sealed class McpGatewayResourceSubscriptionManager(
                 key.ExposedUri
             );
 
-            if (_subscriptions.TryRemove(key, out var subscription))
+            if (_subscriptions.TryGetValue(key, out var state))
             {
-                await subscription.DisposeAsync();
+                await state.Gate.WaitAsync(CancellationToken.None);
+                try
+                {
+                    if (state.Subscription is not null)
+                    {
+                        await state.Subscription.DisposeAsync();
+                        state.Subscription = null;
+                    }
+
+                    if (state.HasPinnedBinding)
+                    {
+                        state.HasPinnedBinding = false;
+                        await bindingManager.ReleaseAsync(state.DownstreamServer);
+                    }
+                }
+                finally
+                {
+                    state.Gate.Release();
+                }
             }
         }
     }
@@ -115,5 +237,17 @@ internal sealed class McpGatewayResourceSubscriptionManager(
             ModelContextProtocol.Server.McpServer server,
             string exposedUri
         ) => new(server.SessionId ?? string.Empty, exposedUri);
+    }
+
+    private sealed class SubscriptionState(ModelContextProtocol.Server.McpServer downstreamServer)
+    {
+        public SemaphoreSlim Gate { get; } = new(1, 1);
+
+        public ModelContextProtocol.Server.McpServer DownstreamServer { get; set; } =
+            downstreamServer;
+
+        public IAsyncDisposable? Subscription { get; set; }
+
+        public bool HasPinnedBinding { get; set; }
     }
 }

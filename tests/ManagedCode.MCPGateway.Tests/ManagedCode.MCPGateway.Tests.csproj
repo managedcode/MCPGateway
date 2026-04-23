@@ -9,13 +9,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Microsoft.Agents.AI" />
+    <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="TUnit" />
     <PackageReference Include="Microsoft.Extensions.AI" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
-    <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup>

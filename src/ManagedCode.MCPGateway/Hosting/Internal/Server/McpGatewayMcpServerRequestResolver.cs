@@ -10,7 +10,7 @@ namespace ManagedCode.MCPGateway;
 internal sealed record McpGatewayResolvedPromptRequest(
     string SourceId,
     string PromptName,
-    McpGatewayToolSourceRegistration Registration
+    IMcpGatewayServerSource Source
 );
 
 internal sealed record McpGatewayResolvedResourceRequest(
@@ -18,12 +18,12 @@ internal sealed record McpGatewayResolvedResourceRequest(
     string UpstreamUri,
     string ExposedUri,
     bool UseGatewayUri,
-    McpGatewayToolSourceRegistration Registration
+    IMcpGatewayServerSource Source
 );
 
 internal sealed record McpGatewayResolvedCompletionRequest(
     Reference UpstreamReference,
-    McpGatewayToolSourceRegistration Registration
+    IMcpGatewayServerSource Source
 );
 
 internal sealed record McpGatewayResolvedToolRequest(
@@ -31,50 +31,47 @@ internal sealed record McpGatewayResolvedToolRequest(
     string SourceId,
     string ToolName,
     ToolTaskSupport TaskSupport,
-    McpGatewayToolSourceRegistration Registration
+    IMcpGatewayServerSource Source
 );
 
-internal sealed class McpGatewayMcpServerRequestResolver(
-    IMcpGatewayCatalogSource catalogSource,
-    IMcpGateway gateway,
-    IMcpGatewayPromptCatalog promptCatalog,
-    IMcpGatewayResourceCatalog resourceCatalog,
-    ILoggerFactory loggerFactory
-)
+internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFactory)
 {
     private readonly ILoggerFactory _loggerFactory = loggerFactory;
 
     public async Task<McpGatewayResolvedToolRequest?> ResolveToolAsync(
+        IMcpGatewayServerBinding binding,
         string toolNameOrId,
         CancellationToken cancellationToken
     )
     {
+        ArgumentNullException.ThrowIfNull(binding);
+
         if (string.IsNullOrWhiteSpace(toolNameOrId))
         {
             return null;
         }
 
         var requestedToolName = toolNameOrId.Trim();
-        var descriptors = await gateway.ListToolsAsync(cancellationToken);
+        var descriptors = await binding.Gateway.ListToolsAsync(cancellationToken);
 
         var exportedMatch = descriptors.FirstOrDefault(candidate =>
             string.Equals(candidate.ToolId, requestedToolName, StringComparison.Ordinal)
         );
         if (exportedMatch is not null)
         {
-            return await CreateResolvedToolRequestAsync(exportedMatch, cancellationToken);
+            return await CreateResolvedToolRequestAsync(binding, exportedMatch, cancellationToken);
         }
 
         var toolNameMatches = descriptors
             .Where(candidate =>
-                string.Equals(candidate.ToolName, requestedToolName, StringComparison.Ordinal)
+            string.Equals(candidate.ToolName, requestedToolName, StringComparison.Ordinal)
             )
             .ToList();
 
         return toolNameMatches.Count switch
         {
             0 => null,
-            1 => await CreateResolvedToolRequestAsync(toolNameMatches[0], cancellationToken),
+            1 => await CreateResolvedToolRequestAsync(binding, toolNameMatches[0], cancellationToken),
             _ => throw new McpException(
                 $"Tool name '{requestedToolName}' is ambiguous across multiple sources. Use the exported gateway tool id instead."
             ),
@@ -82,10 +79,13 @@ internal sealed class McpGatewayMcpServerRequestResolver(
     }
 
     public async Task<IReadOnlyDictionary<string, ToolTaskSupport?>> LoadToolTaskSupportsAsync(
+        IMcpGatewayServerBinding binding,
         CancellationToken cancellationToken
     )
     {
-        var descriptors = await gateway.ListToolsAsync(cancellationToken);
+        ArgumentNullException.ThrowIfNull(binding);
+
+        var descriptors = await binding.Gateway.ListToolsAsync(cancellationToken);
         var supports = new Dictionary<string, ToolTaskSupport?>(
             descriptors.Count,
             StringComparer.Ordinal
@@ -93,43 +93,51 @@ internal sealed class McpGatewayMcpServerRequestResolver(
 
         foreach (var descriptor in descriptors)
         {
-            var registration = FindRegistration(descriptor.SourceId);
-            if (registration is null)
+            var source = await FindSourceAsync(binding, descriptor.SourceId, cancellationToken);
+            if (source is null)
             {
                 continue;
             }
 
-            var loadedTool = await registration.GetToolAsync(
+            var taskSupport = await source.GetToolTaskSupportAsync(
                 descriptor.ToolName,
                 _loggerFactory,
                 cancellationToken
             );
 
-            supports[descriptor.ToolId] = loadedTool?.TaskSupport;
+            supports[descriptor.ToolId] = taskSupport;
         }
 
         return supports;
     }
 
-    public async Task<McpGatewayResolvedPromptRequest?> ResolvePromptAsync(
+    public static async Task<McpGatewayResolvedPromptRequest?> ResolvePromptAsync(
+        IMcpGatewayServerBinding binding,
         string promptNameOrId,
         CancellationToken cancellationToken
     )
     {
+        ArgumentNullException.ThrowIfNull(binding);
+
         if (string.IsNullOrWhiteSpace(promptNameOrId))
         {
             return null;
         }
 
         var requestedPromptName = promptNameOrId.Trim();
-        var descriptors = await promptCatalog.ListPromptsAsync(cancellationToken);
+        var descriptors = await binding.PromptCatalog.ListPromptsAsync(cancellationToken);
 
         var exportedMatch = descriptors.FirstOrDefault(candidate =>
             string.Equals(candidate.PromptId, requestedPromptName, StringComparison.Ordinal)
         );
         if (exportedMatch is not null)
         {
-            return CreateResolvedPromptRequest(exportedMatch.SourceId, exportedMatch.PromptName);
+            return await CreateResolvedPromptRequestAsync(
+                binding,
+                exportedMatch.SourceId,
+                exportedMatch.PromptName,
+                cancellationToken
+            );
         }
 
         var promptNameMatches = descriptors
@@ -141,9 +149,11 @@ internal sealed class McpGatewayMcpServerRequestResolver(
         return promptNameMatches.Count switch
         {
             0 => null,
-            1 => CreateResolvedPromptRequest(
+            1 => await CreateResolvedPromptRequestAsync(
+                binding,
                 promptNameMatches[0].SourceId,
-                promptNameMatches[0].PromptName
+                promptNameMatches[0].PromptName,
+                cancellationToken
             ),
             _ => throw new McpException(
                 $"Prompt name '{requestedPromptName}' is ambiguous across multiple sources. Use the exported gateway prompt name instead."
@@ -151,17 +161,25 @@ internal sealed class McpGatewayMcpServerRequestResolver(
         };
     }
 
-    public async Task<McpGatewayResolvedResourceRequest?> ResolveResourceAsync(
+    public static async Task<McpGatewayResolvedResourceRequest?> ResolveResourceAsync(
+        IMcpGatewayServerBinding binding,
         string requestedUri,
         CancellationToken cancellationToken
     )
     {
-        if (TryResolveGatewayResourceUri(requestedUri, out var resolvedGatewayRequest))
+        ArgumentNullException.ThrowIfNull(binding);
+
+        var resolvedGatewayRequest = await TryResolveGatewayResourceUriAsync(
+            binding,
+            requestedUri,
+            cancellationToken
+        );
+        if (resolvedGatewayRequest is not null)
         {
             return resolvedGatewayRequest;
         }
 
-        var resources = await resourceCatalog.ListResourcesAsync(cancellationToken);
+        var resources = await binding.ResourceCatalog.ListResourcesAsync(cancellationToken);
         var matches = resources
             .Where(descriptor =>
                 string.Equals(descriptor.ResourceUri, requestedUri, StringComparison.Ordinal)
@@ -171,11 +189,13 @@ internal sealed class McpGatewayMcpServerRequestResolver(
         return matches.Count switch
         {
             0 => null,
-            1 => CreateResolvedResourceRequest(
+            1 => await CreateResolvedResourceRequestAsync(
+                binding,
                 matches[0].SourceId,
                 matches[0].ResourceUri,
                 requestedUri,
-                useGatewayUri: false
+                useGatewayUri: false,
+                cancellationToken
             ),
             _ => throw new McpException(
                 $"Resource URI '{requestedUri}' is ambiguous across multiple sources. Use the exported gateway URI instead."
@@ -183,19 +203,25 @@ internal sealed class McpGatewayMcpServerRequestResolver(
         };
     }
 
-    public async Task<McpGatewayResolvedCompletionRequest?> ResolveCompletionAsync(
+    public static async Task<McpGatewayResolvedCompletionRequest?> ResolveCompletionAsync(
+        IMcpGatewayServerBinding binding,
         Reference reference,
         CancellationToken cancellationToken
     )
     {
         ArgumentNullException.ThrowIfNull(reference);
+        ArgumentNullException.ThrowIfNull(binding);
 
         switch (reference)
         {
             case PromptReference promptReference
                 when !string.IsNullOrWhiteSpace(promptReference.Name):
             {
-                var resolvedPrompt = await ResolvePromptAsync(promptReference.Name, cancellationToken);
+                var resolvedPrompt = await ResolvePromptAsync(
+                    binding,
+                    promptReference.Name,
+                    cancellationToken
+                );
                 if (resolvedPrompt is null)
                 {
                     return null;
@@ -207,13 +233,14 @@ internal sealed class McpGatewayMcpServerRequestResolver(
                         Name = resolvedPrompt.PromptName,
                         Title = promptReference.Title,
                     },
-                    resolvedPrompt.Registration
+                    resolvedPrompt.Source
                 );
             }
             case ResourceTemplateReference resourceReference
                 when !string.IsNullOrWhiteSpace(resourceReference.Uri):
             {
                 var resolvedResource = await ResolveResourceReferenceAsync(
+                    binding,
                     resourceReference.Uri,
                     cancellationToken
                 );
@@ -227,7 +254,7 @@ internal sealed class McpGatewayMcpServerRequestResolver(
                     {
                         Uri = resolvedResource.UpstreamUri,
                     },
-                    resolvedResource.Registration
+                    resolvedResource.Source
                 );
             }
             default:
@@ -235,13 +262,12 @@ internal sealed class McpGatewayMcpServerRequestResolver(
         }
     }
 
-    private bool TryResolveGatewayResourceUri(
+    private static async Task<McpGatewayResolvedResourceRequest?> TryResolveGatewayResourceUriAsync(
+        IMcpGatewayServerBinding binding,
         string requestedUri,
-        out McpGatewayResolvedResourceRequest? resolvedRequest
+        CancellationToken cancellationToken
     )
     {
-        resolvedRequest = null;
-
         if (
             !McpGatewayResourceUriCodec.TryDecodeGatewayUri(
                 requestedUri,
@@ -250,29 +276,36 @@ internal sealed class McpGatewayMcpServerRequestResolver(
             )
         )
         {
-            return false;
+            return null;
         }
 
-        resolvedRequest = CreateResolvedResourceRequest(
+        return await CreateResolvedResourceRequestAsync(
+            binding,
             sourceId,
             upstreamUri,
             requestedUri,
-            useGatewayUri: true
+            useGatewayUri: true,
+            cancellationToken
         );
-        return true;
     }
 
-    private async Task<McpGatewayResolvedResourceRequest?> ResolveResourceReferenceAsync(
+    private static async Task<McpGatewayResolvedResourceRequest?> ResolveResourceReferenceAsync(
+        IMcpGatewayServerBinding binding,
         string requestedUri,
         CancellationToken cancellationToken
     )
     {
-        if (TryResolveGatewayResourceUri(requestedUri, out var resolvedGatewayRequest))
+        var resolvedGatewayRequest = await TryResolveGatewayResourceUriAsync(
+            binding,
+            requestedUri,
+            cancellationToken
+        );
+        if (resolvedGatewayRequest is not null)
         {
             return resolvedGatewayRequest;
         }
 
-        var directResources = await resourceCatalog.ListResourcesAsync(cancellationToken);
+        var directResources = await binding.ResourceCatalog.ListResourcesAsync(cancellationToken);
         var directMatches = directResources
             .Where(descriptor =>
                 string.Equals(descriptor.ResourceUri, requestedUri, StringComparison.Ordinal)
@@ -280,7 +313,7 @@ internal sealed class McpGatewayMcpServerRequestResolver(
             .Select(descriptor => (SourceId: descriptor.SourceId, Uri: descriptor.ResourceUri))
             .ToList();
 
-        var templateResources = await resourceCatalog.ListResourceTemplatesAsync(cancellationToken);
+        var templateResources = await binding.ResourceCatalog.ListResourceTemplatesAsync(cancellationToken);
         var templateMatches = templateResources
             .Where(descriptor =>
                 string.Equals(descriptor.UriTemplate, requestedUri, StringComparison.Ordinal)
@@ -296,11 +329,13 @@ internal sealed class McpGatewayMcpServerRequestResolver(
         return matches.Count switch
         {
             0 => null,
-            1 => CreateResolvedResourceRequest(
+            1 => await CreateResolvedResourceRequestAsync(
+                binding,
                 matches[0].SourceId,
                 matches[0].Uri,
                 requestedUri,
-                useGatewayUri: false
+                useGatewayUri: false,
+                cancellationToken
             ),
             _ => throw new McpException(
                 $"Resource reference '{requestedUri}' is ambiguous across multiple sources. Use the exported gateway resource URI instead."
@@ -308,67 +343,76 @@ internal sealed class McpGatewayMcpServerRequestResolver(
         };
     }
 
-    private McpGatewayResolvedPromptRequest? CreateResolvedPromptRequest(
+    private static async Task<McpGatewayResolvedPromptRequest?> CreateResolvedPromptRequestAsync(
+        IMcpGatewayServerBinding binding,
         string sourceId,
-        string promptName
+        string promptName,
+        CancellationToken cancellationToken
     )
     {
-        var registration = FindRegistration(sourceId);
-        return registration is null
+        var source = await FindSourceAsync(binding, sourceId, cancellationToken);
+        return source is null
             ? null
-            : new McpGatewayResolvedPromptRequest(sourceId, promptName, registration);
+            : new McpGatewayResolvedPromptRequest(sourceId, promptName, source);
     }
 
-    private McpGatewayResolvedResourceRequest? CreateResolvedResourceRequest(
+    private static async Task<McpGatewayResolvedResourceRequest?> CreateResolvedResourceRequestAsync(
+        IMcpGatewayServerBinding binding,
         string sourceId,
         string upstreamUri,
         string exposedUri,
-        bool useGatewayUri
+        bool useGatewayUri,
+        CancellationToken cancellationToken
     )
     {
-        var registration = FindRegistration(sourceId);
-        return registration is null
+        var source = await FindSourceAsync(binding, sourceId, cancellationToken);
+        return source is null
             ? null
             : new McpGatewayResolvedResourceRequest(
                 sourceId,
                 upstreamUri,
                 exposedUri,
                 useGatewayUri,
-                registration
+                source
             );
     }
 
     private async Task<McpGatewayResolvedToolRequest?> CreateResolvedToolRequestAsync(
+        IMcpGatewayServerBinding binding,
         McpGatewayToolDescriptor descriptor,
         CancellationToken cancellationToken
     )
     {
-        var registration = FindRegistration(descriptor.SourceId);
-        if (registration is null)
+        var source = await FindSourceAsync(binding, descriptor.SourceId, cancellationToken);
+        if (source is null)
         {
             return null;
         }
 
-        var loadedTool = await registration.GetToolAsync(
-            descriptor.ToolName,
-            _loggerFactory,
-            cancellationToken
-        );
-        var taskSupport = loadedTool?.TaskSupport ?? ToolTaskSupport.Forbidden;
+        var taskSupport =
+            await source.GetToolTaskSupportAsync(
+                descriptor.ToolName,
+                _loggerFactory,
+                cancellationToken
+            ) ?? ToolTaskSupport.Forbidden;
 
         return new McpGatewayResolvedToolRequest(
             descriptor.ToolId,
             descriptor.SourceId,
             descriptor.ToolName,
             taskSupport,
-            registration
+            source
         );
     }
 
-    private McpGatewayToolSourceRegistration? FindRegistration(string sourceId)
+    private static async Task<IMcpGatewayServerSource?> FindSourceAsync(
+        IMcpGatewayServerBinding binding,
+        string sourceId,
+        CancellationToken cancellationToken
+    )
     {
-        var snapshot = catalogSource.CreateSnapshot();
-        return snapshot.Registrations.FirstOrDefault(candidate =>
+        var sources = await binding.ListSourcesAsync(cancellationToken);
+        return sources.FirstOrDefault(candidate =>
             string.Equals(candidate.SourceId, sourceId, StringComparison.Ordinal)
         );
     }

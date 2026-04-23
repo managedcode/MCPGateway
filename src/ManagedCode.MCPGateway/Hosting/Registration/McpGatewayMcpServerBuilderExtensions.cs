@@ -1,3 +1,4 @@
+using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -11,6 +12,8 @@ public static class McpGatewayMcpServerBuilderExtensions
     {
         ArgumentNullException.ThrowIfNull(builder);
 
+        builder.Services.TryAddSingleton<IMcpGatewayServerBindingResolver, McpGatewayDefaultServerBindingResolver>();
+        builder.Services.TryAddSingleton<McpGatewayMcpServerBindingManager>();
         builder.Services.TryAddSingleton<McpGatewayMcpServerRequestResolver>();
         builder.Services.TryAddSingleton<McpGatewayResourceSubscriptionManager>();
         builder.Services.TryAddSingleton<McpGatewayPromptListNotificationManager>();

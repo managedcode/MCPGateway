@@ -39,6 +39,7 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
 
     public static async Task<GatewayMcpServerHost> StartAsync(
         Action<McpGatewayOptions> configureGateway,
+        Action<IServiceCollection>? configureServices = null,
         CancellationToken cancellationToken = default
     )
     {
@@ -47,6 +48,7 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
         services.AddMcpGateway(configureGateway);
+        configureServices?.Invoke(services);
         services.AddMcpServer().WithMcpGatewayCatalog();
 
         var serviceProvider = services.BuildServiceProvider();

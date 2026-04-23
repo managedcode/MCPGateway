@@ -10,7 +10,8 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
     public async Task ResolveCompletionAsync_RewritesPromptAndResourceTemplateReferences()
     {
         var alphaRegistration = new TestRegistration("alpha");
-        var resolver = CreateResolver(
+
+        var (_, binding) = CreateResolverContext(
             promptDescriptors:
             [
                 CreatePromptDescriptor("alpha:release_review", "alpha", "release_review"),
@@ -26,22 +27,26 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
             registrations: [alphaRegistration]
         );
 
-        var promptCompletion = await resolver.ResolveCompletionAsync(
+        var promptCompletion = await McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(
+            binding,
             new PromptReference { Name = "alpha:release_review", Title = "Release review" },
             CancellationToken.None
         );
-        var resourceCompletion = await resolver.ResolveCompletionAsync(
+        var resourceCompletion = await McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(
+            binding,
             new ResourceTemplateReference
             {
                 Uri = McpGatewayResourceUriCodec.ToGatewayUri("alpha", "docs://issues/{id}"),
             },
             CancellationToken.None
         );
-        var unknown = await resolver.ResolveCompletionAsync(
+        var unknown = await McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(
+            binding,
             new PromptReference { Name = "missing" },
             CancellationToken.None
         );
-        var unsupported = await resolver.ResolveCompletionAsync(
+        var unsupported = await McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(
+            binding,
             new ResourceTemplateReference { Uri = " " },
             CancellationToken.None
         );
@@ -65,7 +70,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
     {
         var alphaRegistration = new TestRegistration("alpha");
         var betaRegistration = new TestRegistration("beta");
-        var resolver = CreateResolver(
+        var (resolver, binding) = CreateResolverContext(
             resourceDescriptors:
             [
                 CreateResourceDescriptor("alpha", "overview", "docs://overview"),
@@ -80,13 +85,15 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         );
 
         var directException = await CaptureAsync(() =>
-            resolver.ResolveCompletionAsync(
+            McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(
+                binding,
                 new ResourceTemplateReference { Uri = "docs://issues/{id}" },
                 CancellationToken.None
             )
         );
         var resourceException = await CaptureAsync(() =>
-            resolver.ResolveCompletionAsync(
+            McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(
+                binding,
                 new ResourceTemplateReference { Uri = "docs://overview" },
                 CancellationToken.None
             )

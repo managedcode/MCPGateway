@@ -212,7 +212,9 @@ public sealed class McpGatewayProtocolUtilityTests
                 "docs://overview",
                 "mcpgw://overview",
                 UseGatewayUri: true,
-                Registration: new McpGatewayLocalToolSourceRegistration("source-a", null)
+                Source: new McpGatewayRegistrationBoundServerSource(
+                    new McpGatewayLocalToolSourceRegistration("source-a", null)
+                )
             )
         );
         var blobContent = McpGatewayMcpServerProtocolMapper.ToProtocolResourceContent(
@@ -226,7 +228,9 @@ public sealed class McpGatewayProtocolUtilityTests
                 "docs://archive",
                 "docs://archive",
                 UseGatewayUri: false,
-                Registration: new McpGatewayLocalToolSourceRegistration("source-a", null)
+                Source: new McpGatewayRegistrationBoundServerSource(
+                    new McpGatewayLocalToolSourceRegistration("source-a", null)
+                )
             )
         );
 

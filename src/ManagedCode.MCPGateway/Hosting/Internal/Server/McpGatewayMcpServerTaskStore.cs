@@ -11,12 +11,15 @@ using ModelContextProtocol.Server;
 namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayMcpServerTaskStore(
-    IMcpGateway gateway,
+    McpGatewayMcpServerBindingManager bindingManager,
+    McpGatewayMcpServerRequestResolver requestResolver,
+    IServiceProvider serviceProvider,
     ILogger<McpGatewayMcpServerTaskStore> logger,
     ILoggerFactory loggerFactory
 ) : IMcpTaskStore, IAsyncDisposable
 {
     private const string TaskCancelledMessage = "Task execution was cancelled.";
+    private static readonly TimeSpan FinalizationPollDelay = TimeSpan.FromMilliseconds(25);
 
     private readonly InMemoryMcpTaskStore _innerStore = new();
     private readonly ConcurrentDictionary<TaskKey, TaskBinding> _bindings = new();
@@ -42,19 +45,84 @@ internal sealed class McpGatewayMcpServerTaskStore(
 
         var requestId = request.JsonRpcRequest.Id;
         var sessionId = NormalizeSessionId(request.Server);
+        var bindingLease = !string.IsNullOrWhiteSpace(sessionId)
+            ? await bindingManager.PinAsync(
+                request.Services,
+                serviceProvider,
+                request.Server,
+                cancellationToken
+            )
+            : await bindingManager.AcquireAsync(
+                request.Services,
+                serviceProvider,
+                request.Server,
+                cancellationToken
+            );
+        var bindingTransferred = false;
 
-        var upstreamTask = await tool.Registration.CallToolAsTaskAsync(
-            tool.ToolName,
-            arguments,
-            CloneTaskMetadata(taskMetadata),
-            progress: null,
-            loggerFactory,
-            cancellationToken
-        );
-
-        if (upstreamTask is not null)
+        try
         {
-            var downstreamTask = await _innerStore.CreateTaskAsync(
+            var boundTool =
+                await requestResolver.ResolveToolAsync(
+                    bindingLease.Binding,
+                    tool.ToolId,
+                    cancellationToken
+                ) ?? throw new McpException($"Tool '{tool.ToolId}' was not found.");
+
+            var upstreamTask = await boundTool.Source.CallToolAsTaskAsync(
+                boundTool.ToolName,
+                arguments,
+                CloneTaskMetadata(taskMetadata),
+                progress: null,
+                loggerFactory,
+                cancellationToken
+            );
+
+            if (upstreamTask is not null)
+            {
+                var downstreamTask = await _innerStore.CreateTaskAsync(
+                    CloneTaskMetadata(taskMetadata),
+                    requestId,
+                    request.JsonRpcRequest,
+                    sessionId,
+                    cancellationToken
+                );
+
+                var binding = new TaskBinding(
+                    TaskBindingKind.UpstreamProxy,
+                    sessionId,
+                    downstreamTask.TaskId,
+                    request.Server,
+                    boundTool.ToolId,
+                    boundTool.Source,
+                    upstreamTask.TaskId,
+                    cancellationSource: null,
+                    ownedBinding: bindingLease.OwnsBinding ? bindingLease.Binding : null,
+                    releasePinnedSessionBinding: !bindingLease.OwnsBinding
+                );
+
+                binding.UpstreamStatusSubscription =
+                    await boundTool.Source.SubscribeToTaskStatusAsync(
+                        upstreamTask.TaskId,
+                        (notification, token) =>
+                            ForwardUpstreamTaskStatusAsync(binding, notification, token),
+                        loggerFactory,
+                        cancellationToken
+                    );
+
+                bindingTransferred = true;
+                _bindings[TaskKey.Create(sessionId, downstreamTask.TaskId)] = binding;
+                return new CallToolResult { Task = CloneTask(upstreamTask, downstreamTask.TaskId) };
+            }
+
+            if (tool.TaskSupport == ToolTaskSupport.Required)
+            {
+                throw new McpException(
+                    $"Tool '{request.Params.Name}' requires task augmentation, but the upstream source does not support task-backed invocation."
+                );
+            }
+
+            var localTask = await _innerStore.CreateTaskAsync(
                 CloneTaskMetadata(taskMetadata),
                 requestId,
                 request.JsonRpcRequest,
@@ -62,58 +130,41 @@ internal sealed class McpGatewayMcpServerTaskStore(
                 cancellationToken
             );
 
-            var binding = new TaskBinding(
-                TaskBindingKind.UpstreamProxy,
+            var cancellationSource = new CancellationTokenSource();
+            var localBinding = new TaskBinding(
+                TaskBindingKind.LocalExecution,
                 sessionId,
-                downstreamTask.TaskId,
+                localTask.TaskId,
                 request.Server,
-                tool.ToolId,
-                tool.Registration,
-                upstreamTask.TaskId,
-                cancellationSource: null
+                boundTool.ToolId,
+                source: null,
+                upstreamTaskId: null,
+                cancellationSource,
+                ownedBinding: bindingLease.OwnsBinding ? bindingLease.Binding : null,
+                releasePinnedSessionBinding: !bindingLease.OwnsBinding
             );
 
-            binding.UpstreamStatusSubscription = await tool.Registration.SubscribeToTaskStatusAsync(
-                upstreamTask.TaskId,
-                (notification, token) => ForwardUpstreamTaskStatusAsync(binding, notification, token),
-                loggerFactory,
-                cancellationToken
-            );
-
-            _bindings[TaskKey.Create(sessionId, downstreamTask.TaskId)] = binding;
-            return new CallToolResult { Task = CloneTask(upstreamTask, downstreamTask.TaskId) };
+            bindingTransferred = true;
+            _bindings[TaskKey.Create(sessionId, localTask.TaskId)] = localBinding;
+            _ = RunLocalToolTaskAsync(localBinding, arguments);
+            return new CallToolResult { Task = localTask };
         }
-
-        if (tool.TaskSupport == ToolTaskSupport.Required)
+        catch
         {
-            throw new McpException(
-                $"Tool '{request.Params.Name}' requires task augmentation, but the upstream source does not support task-backed invocation."
-            );
+            if (!bindingTransferred)
+            {
+                if (bindingLease.OwnsBinding)
+                {
+                    await bindingLease.Binding.DisposeAsync();
+                }
+                else if (!string.IsNullOrWhiteSpace(sessionId))
+                {
+                    await bindingManager.ReleaseAsync(request.Server);
+                }
+            }
+
+            throw;
         }
-
-        var localTask = await _innerStore.CreateTaskAsync(
-            CloneTaskMetadata(taskMetadata),
-            requestId,
-            request.JsonRpcRequest,
-            sessionId,
-            cancellationToken
-        );
-
-        var cancellationSource = new CancellationTokenSource();
-        var localBinding = new TaskBinding(
-            TaskBindingKind.LocalExecution,
-            sessionId,
-            localTask.TaskId,
-            request.Server,
-            tool.ToolId,
-            registration: null,
-            upstreamTaskId: null,
-            cancellationSource
-        );
-
-        _bindings[TaskKey.Create(sessionId, localTask.TaskId)] = localBinding;
-        _ = RunLocalToolTaskAsync(localBinding, arguments);
-        return new CallToolResult { Task = localTask };
     }
 
     public Task<McpTask> CreateTaskAsync(
@@ -156,24 +207,56 @@ internal sealed class McpGatewayMcpServerTaskStore(
             if (
                 _bindings.TryGetValue(TaskKey.Create(sessionId, taskId), out var binding)
                 && binding.Kind == TaskBindingKind.UpstreamProxy
-                && binding.Registration is not null
+                && binding.Source is not null
                 && !string.IsNullOrWhiteSpace(binding.UpstreamTaskId)
+                && binding.TryEnterOperation()
             )
             {
-                var result = await binding.Registration.GetTaskResultAsync(
-                    binding.UpstreamTaskId,
-                    loggerFactory,
-                    cancellationToken
-                );
-                if (result is { } proxiedResult)
+                JsonElement? proxiedResult = null;
+
+                try
                 {
-                    return proxiedResult.Clone();
+                    var result = await binding.Source.GetTaskResultAsync(
+                        binding.UpstreamTaskId,
+                        loggerFactory,
+                        cancellationToken
+                    );
+                    if (result is { } upstreamResult)
+                    {
+                        proxiedResult = upstreamResult.Clone();
+                    }
+                }
+                finally
+                {
+                    binding.ExitOperation();
+                }
+
+                if (proxiedResult is { } clonedResult)
+                {
+                    await StoreTaskResultCoreAsync(
+                        taskId,
+                        await GetTerminalStatusForStoredResultAsync(
+                            taskId,
+                            sessionId,
+                            cancellationToken
+                        ),
+                        clonedResult,
+                        sessionId,
+                        notifyTaskStatus: false,
+                        cancellationToken: CancellationToken.None
+                    );
+                    await ReleaseBindingAsync(binding);
+                    return clonedResult;
                 }
             }
 
             return await WaitForStoredTaskResultAsync(taskId, sessionId, cancellationToken);
         }
         catch (InvalidOperationException)
+        {
+            return await WaitForStoredTaskResultAsync(taskId, sessionId, cancellationToken);
+        }
+        catch (McpProtocolException)
         {
             return await WaitForStoredTaskResultAsync(taskId, sessionId, cancellationToken);
         }
@@ -224,27 +307,39 @@ internal sealed class McpGatewayMcpServerTaskStore(
         {
             if (
                 binding.Kind == TaskBindingKind.UpstreamProxy
-                && binding.Registration is not null
+                && binding.Source is not null
                 && !string.IsNullOrWhiteSpace(binding.UpstreamTaskId)
+                && binding.TryEnterOperation()
             )
             {
-                var upstreamTask =
-                    await binding.Registration.CancelTaskAsync(
+                McpTask? upstreamTask = null;
+
+                try
+                {
+                    upstreamTask = await binding.Source.CancelTaskAsync(
                         binding.UpstreamTaskId,
                         loggerFactory,
                         cancellationToken
-                    )
-                    ?? throw new McpException($"Task '{taskId}' could not be cancelled.");
+                    );
+                }
+                finally
+                {
+                    binding.ExitOperation();
+                }
+
+                var cancelledUpstreamTask =
+                    upstreamTask ?? throw new McpException($"Task '{taskId}' could not be cancelled.");
 
                 await UpdateTaskStatusAsync(
                     taskId,
-                    upstreamTask.Status,
-                    upstreamTask.StatusMessage ?? TaskCancelledMessage,
+                    cancelledUpstreamTask.Status,
+                    cancelledUpstreamTask.StatusMessage ?? TaskCancelledMessage,
                     sessionId,
                     CancellationToken.None
                 );
 
-                return CloneTask(upstreamTask, taskId);
+                await ReleaseBindingAsync(binding);
+                return CloneTask(cancelledUpstreamTask, taskId);
             }
 
             binding.CancellationSource?.Cancel();
@@ -256,6 +351,7 @@ internal sealed class McpGatewayMcpServerTaskStore(
                 CancellationToken.None
             );
 
+            await ReleaseBindingAsync(binding);
             return cancelledTask;
         }
 
@@ -271,20 +367,14 @@ internal sealed class McpGatewayMcpServerTaskStore(
     )
     {
         sessionId ??= string.Empty;
-        var storedTask = await _innerStore.StoreTaskResultAsync(
+        return await StoreTaskResultCoreAsync(
             taskId,
             status,
             result,
             sessionId,
+            notifyTaskStatus: true,
             cancellationToken
         );
-
-        if (_bindings.TryGetValue(TaskKey.Create(sessionId, taskId), out var binding))
-        {
-            await NotifyTaskStatusAsync(binding.DownstreamServer, storedTask);
-        }
-
-        return storedTask;
     }
 
     public async Task<McpTask> UpdateTaskStatusAsync(
@@ -296,6 +386,12 @@ internal sealed class McpGatewayMcpServerTaskStore(
     )
     {
         sessionId ??= string.Empty;
+        var existingTask = await _innerStore.GetTaskAsync(taskId, sessionId, cancellationToken);
+        if (existingTask is not null && IsTerminal(existingTask.Status))
+        {
+            return existingTask;
+        }
+
         var updatedTask = await _innerStore.UpdateTaskStatusAsync(
             taskId,
             status,
@@ -314,17 +410,10 @@ internal sealed class McpGatewayMcpServerTaskStore(
 
     public async ValueTask DisposeAsync()
     {
-        foreach (var (_, binding) in _bindings)
+        foreach (var (_, binding) in _bindings.ToArray())
         {
-            binding.CancellationSource?.Cancel();
-            binding.CancellationSource?.Dispose();
-            if (binding.UpstreamStatusSubscription is not null)
-            {
-                await binding.UpstreamStatusSubscription.DisposeAsync();
-            }
+            await ReleaseBindingAsync(binding);
         }
-
-        _bindings.Clear();
     }
 
     private async Task RunLocalToolTaskAsync(
@@ -332,9 +421,28 @@ internal sealed class McpGatewayMcpServerTaskStore(
         IReadOnlyDictionary<string, object?>? arguments
     )
     {
+        if (!binding.TryEnterOperation())
+        {
+            return;
+        }
+
+        JsonElement? storedResult = null;
+        McpTaskStatus? finalStatus = null;
+        string? finalStatusMessage = null;
+
         try
         {
-            var invokeResult = await gateway.InvokeAsync(
+            await using var bindingLease = binding.OwnedBinding is null
+                ? await bindingManager.AcquireAsync(
+                    requestServices: null,
+                    serviceProvider,
+                    binding.DownstreamServer,
+                    binding.CancellationSource?.Token ?? CancellationToken.None
+                )
+                : default;
+
+            var gateway = binding.OwnedBinding ?? bindingLease.Binding;
+            var invokeResult = await gateway.Gateway.InvokeAsync(
                 new McpGatewayInvokeRequest(ToolId: binding.ToolId, Arguments: arguments),
                 binding.CancellationSource?.Token ?? CancellationToken.None
             );
@@ -345,28 +453,16 @@ internal sealed class McpGatewayMcpServerTaskStore(
             }
 
             var toolResult = McpGatewayMcpServerProtocolMapper.ToProtocolToolResult(invokeResult);
-            var serializedResult =
+            storedResult =
                 McpGatewayJsonSerializer.TrySerializeToElement(toolResult)
                 ?? JsonSerializer.SerializeToElement(toolResult, McpGatewayJsonSerializer.Options);
-
-            await StoreTaskResultAsync(
-                binding.DownstreamTaskId,
-                McpTaskStatus.Completed,
-                serializedResult,
-                binding.SessionId,
-                CancellationToken.None
-            );
+            finalStatus = McpTaskStatus.Completed;
         }
         catch (OperationCanceledException)
             when (binding.CancellationSource?.IsCancellationRequested == true)
         {
-            await UpdateTaskStatusAsync(
-                binding.DownstreamTaskId,
-                McpTaskStatus.Cancelled,
-                TaskCancelledMessage,
-                binding.SessionId,
-                CancellationToken.None
-            );
+            finalStatus = McpTaskStatus.Cancelled;
+            finalStatusMessage = TaskCancelledMessage;
         }
         catch (Exception exception)
         {
@@ -376,13 +472,37 @@ internal sealed class McpGatewayMcpServerTaskStore(
                 binding.ToolId
             );
 
-            await StoreTaskResultAsync(
-                binding.DownstreamTaskId,
-                McpTaskStatus.Failed,
-                CreateSerializedErrorToolResult($"Task execution failed: {exception.Message}"),
-                binding.SessionId,
-                CancellationToken.None
-            );
+            storedResult = CreateSerializedErrorToolResult($"Task execution failed: {exception.Message}");
+            finalStatus = McpTaskStatus.Failed;
+        }
+        finally
+        {
+            binding.ExitOperation();
+        }
+
+        switch (finalStatus)
+        {
+            case McpTaskStatus.Completed:
+            case McpTaskStatus.Failed:
+                await StoreTaskResultAsync(
+                    binding.DownstreamTaskId,
+                    finalStatus.Value,
+                    storedResult ?? default,
+                    binding.SessionId,
+                    CancellationToken.None
+                );
+                await ReleaseBindingAsync(binding);
+                break;
+            case McpTaskStatus.Cancelled:
+                await UpdateTaskStatusAsync(
+                    binding.DownstreamTaskId,
+                    McpTaskStatus.Cancelled,
+                    finalStatusMessage ?? TaskCancelledMessage,
+                    binding.SessionId,
+                    CancellationToken.None
+                );
+                await ReleaseBindingAsync(binding);
+                break;
         }
     }
 
@@ -401,7 +521,182 @@ internal sealed class McpGatewayMcpServerTaskStore(
             CancellationToken.None
         );
 
+        switch (mappedTask.Status)
+        {
+            case McpTaskStatus.Cancelled:
+                await ReleaseBindingAsync(binding);
+                break;
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
+    }
+
+    private async Task<McpTask> StoreTaskResultCoreAsync(
+        string taskId,
+        McpTaskStatus status,
+        JsonElement result,
+        string sessionId,
+        bool notifyTaskStatus,
+        CancellationToken cancellationToken
+    )
+    {
+        var storedTask = await _innerStore.StoreTaskResultAsync(
+            taskId,
+            status,
+            result,
+            sessionId,
+            cancellationToken
+        );
+
+        if (
+            notifyTaskStatus
+            && _bindings.TryGetValue(TaskKey.Create(sessionId, taskId), out var binding)
+        )
+        {
+            await NotifyTaskStatusAsync(binding.DownstreamServer, storedTask);
+        }
+
+        return storedTask;
+    }
+
+    private async Task<McpTaskStatus> GetTerminalStatusForStoredResultAsync(
+        string taskId,
+        string sessionId,
+        CancellationToken cancellationToken
+    )
+    {
+        var task = await _innerStore.GetTaskAsync(taskId, sessionId, cancellationToken);
+        return task is not null && IsTerminal(task.Status) ? task.Status : McpTaskStatus.Completed;
+    }
+
+    private async Task ReleaseBindingAsync(TaskBinding binding)
+    {
+        if (!binding.TryBeginRelease())
+        {
+            return;
+        }
+
+        _bindings.TryRemove(TaskKey.Create(binding.SessionId, binding.DownstreamTaskId), out _);
+        await binding.WaitForOperationsToCompleteAsync();
+
+        binding.CancellationSource?.Cancel();
+        binding.CancellationSource?.Dispose();
+
+        if (binding.UpstreamStatusSubscription is not null)
+        {
+            await binding.UpstreamStatusSubscription.DisposeAsync();
+        }
+
+        if (binding.ReleasePinnedSessionBinding)
+        {
+            await bindingManager.ReleaseAsync(binding.DownstreamServer);
+        }
+
+        if (binding.OwnedBinding is not null)
+        {
+            await binding.OwnedBinding.DisposeAsync();
+        }
+    }
+
+    private void ScheduleProxyTaskFinalization(
+        TaskBinding binding,
+        McpTaskStatus terminalStatus,
+        bool deferStart = false
+    )
+    {
+        if (!binding.TryBeginResultFinalization())
+        {
+            return;
+        }
+
+        _ = FinalizeProxyTaskResultAsync(binding, terminalStatus, deferStart);
+    }
+
+    private async Task FinalizeProxyTaskResultAsync(
+        TaskBinding binding,
+        McpTaskStatus terminalStatus,
+        bool deferStart
+    )
+    {
+        if (
+            binding.Kind != TaskBindingKind.UpstreamProxy
+            || binding.Source is null
+            || string.IsNullOrWhiteSpace(binding.UpstreamTaskId)
+        )
+        {
+            return;
+        }
+
+        if (!binding.TryEnterOperation())
+        {
+            return;
+        }
+
+        var shouldReleaseBinding = false;
+
+        try
+        {
+            if (deferStart)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(50), CancellationToken.None);
+            }
+
+            for (var attempt = 0; attempt < 200; attempt++)
+            {
+                try
+                {
+                    var result = await binding.Source.GetTaskResultAsync(
+                        binding.UpstreamTaskId,
+                        loggerFactory,
+                        CancellationToken.None
+                    );
+                    if (result is not { } upstreamResult)
+                    {
+                        await Task.Delay(FinalizationPollDelay, CancellationToken.None);
+                        continue;
+                    }
+
+                    await StoreTaskResultCoreAsync(
+                        binding.DownstreamTaskId,
+                        terminalStatus,
+                        upstreamResult.Clone(),
+                        binding.SessionId,
+                        notifyTaskStatus: false,
+                        cancellationToken: CancellationToken.None
+                    );
+                    shouldReleaseBinding = true;
+                    break;
+                }
+                catch (InvalidOperationException)
+                {
+                    await Task.Delay(FinalizationPollDelay, CancellationToken.None);
+                }
+                catch (McpProtocolException)
+                {
+                    await Task.Delay(FinalizationPollDelay, CancellationToken.None);
+                }
+            }
+
+            binding.ResetResultFinalization();
+        }
+        catch (Exception exception)
+        {
+            binding.ResetResultFinalization();
+            logger.LogDebug(
+                exception,
+                "Failed to finalize proxy task result for task '{TaskId}'.",
+                binding.DownstreamTaskId
+            );
+        }
+        finally
+        {
+            binding.ExitOperation();
+        }
+
+        if (shouldReleaseBinding)
+        {
+            await ReleaseBindingAsync(binding);
+        }
     }
 
     private async Task<McpTask?> TryGetProxyTaskAsync(
@@ -411,33 +706,80 @@ internal sealed class McpGatewayMcpServerTaskStore(
     {
         if (
             binding.Kind != TaskBindingKind.UpstreamProxy
-            || binding.Registration is null
+            || binding.Source is null
             || string.IsNullOrWhiteSpace(binding.UpstreamTaskId)
+            || !binding.TryEnterOperation()
         )
         {
             return null;
         }
 
-        var upstreamTask =
-            await binding.Registration.GetTaskAsync(
-                binding.UpstreamTaskId,
-                loggerFactory,
-                cancellationToken
-            );
-        if (upstreamTask is null)
+        McpTask? upstreamTask = null;
+        var shouldReleaseBinding = false;
+        var shouldScheduleFinalization = false;
+
+        try
         {
-            return null;
+            try
+            {
+                upstreamTask = await binding.Source.GetTaskAsync(
+                    binding.UpstreamTaskId,
+                    loggerFactory,
+                    cancellationToken
+                );
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+            catch (McpProtocolException)
+            {
+                return null;
+            }
+
+            if (upstreamTask is null)
+            {
+                return null;
+            }
+
+            await UpdateTaskStatusAsync(
+                binding.DownstreamTaskId,
+                upstreamTask.Status,
+                upstreamTask.StatusMessage ?? string.Empty,
+                binding.SessionId,
+                CancellationToken.None
+            );
+
+            switch (upstreamTask.Status)
+            {
+                case McpTaskStatus.Completed:
+                case McpTaskStatus.Failed:
+                    shouldScheduleFinalization = true;
+                    break;
+                case McpTaskStatus.Cancelled:
+                    shouldReleaseBinding = true;
+                    break;
+            }
+
+            return CloneTask(upstreamTask, binding.DownstreamTaskId);
         }
+        finally
+        {
+            binding.ExitOperation();
 
-        await UpdateTaskStatusAsync(
-            binding.DownstreamTaskId,
-            upstreamTask.Status,
-            upstreamTask.StatusMessage ?? string.Empty,
-            binding.SessionId,
-            CancellationToken.None
-        );
-
-        return CloneTask(upstreamTask, binding.DownstreamTaskId);
+            if (shouldReleaseBinding)
+            {
+                await ReleaseBindingAsync(binding);
+            }
+            else if (shouldScheduleFinalization)
+            {
+                ScheduleProxyTaskFinalization(
+                    binding,
+                    upstreamTask?.Status ?? McpTaskStatus.Completed,
+                    deferStart: true
+                );
+            }
+        }
     }
 
     private async Task<JsonElement> WaitForStoredTaskResultAsync(
@@ -496,6 +838,9 @@ internal sealed class McpGatewayMcpServerTaskStore(
         }
     }
 
+    private static bool IsTerminal(McpTaskStatus status) =>
+        status is McpTaskStatus.Completed or McpTaskStatus.Failed or McpTaskStatus.Cancelled;
+
     private static string NormalizeSessionId(ModelContextProtocol.Server.McpServer server) =>
         server.SessionId ?? string.Empty;
 
@@ -546,9 +891,11 @@ internal sealed class McpGatewayMcpServerTaskStore(
         string downstreamTaskId,
         ModelContextProtocol.Server.McpServer downstreamServer,
         string toolId,
-        McpGatewayToolSourceRegistration? registration,
+        IMcpGatewayServerSource? source,
         string? upstreamTaskId,
-        CancellationTokenSource? cancellationSource
+        CancellationTokenSource? cancellationSource,
+        IMcpGatewayServerBinding? ownedBinding,
+        bool releasePinnedSessionBinding
     )
     {
         public TaskBindingKind Kind { get; } = kind;
@@ -561,13 +908,87 @@ internal sealed class McpGatewayMcpServerTaskStore(
 
         public string ToolId { get; } = toolId;
 
-        public McpGatewayToolSourceRegistration? Registration { get; } = registration;
+        public IMcpGatewayServerSource? Source { get; } = source;
 
         public string? UpstreamTaskId { get; } = upstreamTaskId;
 
         public CancellationTokenSource? CancellationSource { get; } = cancellationSource;
 
+        public IMcpGatewayServerBinding? OwnedBinding { get; } = ownedBinding;
+
+        public bool ReleasePinnedSessionBinding { get; } = releasePinnedSessionBinding;
+
         public IAsyncDisposable? UpstreamStatusSubscription { get; set; }
+
+        private int _activeOperations;
+        private int _resultFinalizationState;
+
+        private readonly TaskCompletionSource<object?> _operationsCompleted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+        public int ReleaseState;
+
+        public bool TryEnterOperation()
+        {
+            while (true)
+            {
+                if (Volatile.Read(ref ReleaseState) != 0)
+                {
+                    return false;
+                }
+
+                var activeOperations = Volatile.Read(ref _activeOperations);
+                if (
+                    Interlocked.CompareExchange(
+                        ref _activeOperations,
+                        activeOperations + 1,
+                        activeOperations
+                    ) != activeOperations
+                )
+                {
+                    continue;
+                }
+
+                if (Volatile.Read(ref ReleaseState) == 0)
+                {
+                    return true;
+                }
+
+                ExitOperation();
+                return false;
+            }
+        }
+
+        public void ExitOperation()
+        {
+            if (Interlocked.Decrement(ref _activeOperations) == 0 && Volatile.Read(ref ReleaseState) != 0)
+            {
+                _operationsCompleted.TrySetResult(null);
+            }
+        }
+
+        public bool TryBeginRelease()
+        {
+            if (Interlocked.Exchange(ref ReleaseState, 1) != 0)
+            {
+                return false;
+            }
+
+            if (Volatile.Read(ref _activeOperations) == 0)
+            {
+                _operationsCompleted.TrySetResult(null);
+            }
+
+            return true;
+        }
+
+        public Task WaitForOperationsToCompleteAsync() => _operationsCompleted.Task;
+
+        public bool TryBeginResultFinalization() =>
+            Interlocked.CompareExchange(ref _resultFinalizationState, 1, 0) == 0;
+
+        public void ResetResultFinalization() => Interlocked.Exchange(ref _resultFinalizationState, 0);
     }
 
     private enum TaskBindingKind
