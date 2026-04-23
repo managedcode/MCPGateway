@@ -19,7 +19,6 @@ internal sealed partial class McpGatewayRuntime
             await BuildIndexAsync(cancellationToken);
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        return Volatile.Read(ref _state).Snapshot;
+        throw new OperationCanceledException(cancellationToken);
     }
 }
