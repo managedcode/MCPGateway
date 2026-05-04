@@ -108,6 +108,7 @@ public sealed partial class McpGatewaySearchTests
             .IsFalse();
         await Assert.That(searchResult.FocusedGraphNodeCount).IsGreaterThan(0);
         await Assert.That(searchResult.FocusedGraphEdgeCount).IsGreaterThan(0);
+        await Assert.That(searchResult.UsedSchemaSearch).IsTrue();
     }
 
     [TUnit.Core.Test]

@@ -88,6 +88,22 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
+    public async Task AddMcpGateway_ToolSetWorksWhenGatewayOverrideDoesNotImplementGraphSearch()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddSingleton<IMcpGateway>(new WarmupProbeGateway());
+        services.AddMcpGateway();
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var toolSet = serviceProvider.GetRequiredService<McpGatewayToolSet>();
+        var graphSearch = serviceProvider.GetService<IMcpGatewayGraphSearch>();
+
+        await Assert.That(toolSet.CreateTools().Count).IsEqualTo(3);
+        await Assert.That(graphSearch).IsNull();
+    }
+
+    [TUnit.Core.Test]
     public async Task AddMcpGatewayInMemorySearchCache_RegistersSharedCacheBackedSearchCache()
     {
         var services = new ServiceCollection();

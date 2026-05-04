@@ -6,13 +6,19 @@ namespace ManagedCode.MCPGateway;
 public sealed class McpGatewayOptions
 {
     private readonly McpGatewayRegistrationCollection _sourceRegistrations = new();
+    private readonly List<Uri> _markdownLdFederatedServiceEndpoints = [];
 
     public McpGatewaySearchStrategy SearchStrategy { get; set; } = McpGatewaySearchStrategy.Graph;
+
+    public McpGatewayMarkdownLdGraphSearchMode MarkdownLdGraphSearchMode { get; set; } =
+        McpGatewayMarkdownLdGraphSearchMode.Hybrid;
 
     public McpGatewayMarkdownLdGraphSource MarkdownLdGraphSource { get; set; } =
         McpGatewayMarkdownLdGraphSource.GeneratedToolGraph;
 
     public string? MarkdownLdGraphPath { get; set; }
+
+    public int MarkdownLdFederatedQueryTimeoutMilliseconds { get; set; } = 15000;
 
     public Func<
         IReadOnlyList<McpGatewayToolDescriptor>,
@@ -33,6 +39,9 @@ public sealed class McpGatewayOptions
 
     internal IReadOnlyList<McpGatewayToolSourceRegistration> SourceRegistrations =>
         _sourceRegistrations.Snapshot();
+
+    internal IReadOnlyList<Uri> MarkdownLdFederatedServiceEndpoints =>
+        _markdownLdFederatedServiceEndpoints.ToArray();
 
     public McpGatewayOptions AddTool(string sourceId, AITool tool, string? displayName = null) =>
         ConfigureRegistrations(registrations => registrations.AddTool(sourceId, tool, displayName));
@@ -166,6 +175,39 @@ public sealed class McpGatewayOptions
         MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.GeneratedToolGraph;
         MarkdownLdGraphPath = null;
         MarkdownLdGraphDocumentFactory = null;
+        return this;
+    }
+
+    public McpGatewayOptions UseHybridMarkdownLdGraphSearch()
+    {
+        MarkdownLdGraphSearchMode = McpGatewayMarkdownLdGraphSearchMode.Hybrid;
+        return this;
+    }
+
+    public McpGatewayOptions UseSchemaAwareMarkdownLdGraphSearch()
+    {
+        MarkdownLdGraphSearchMode = McpGatewayMarkdownLdGraphSearchMode.SchemaAware;
+        return this;
+    }
+
+    public McpGatewayOptions UseTokenDistanceMarkdownLdGraphSearch()
+    {
+        MarkdownLdGraphSearchMode = McpGatewayMarkdownLdGraphSearchMode.TokenDistance;
+        return this;
+    }
+
+    public McpGatewayOptions AddMarkdownLdFederatedServiceEndpoint(Uri endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+        if (!endpoint.IsAbsoluteUri)
+        {
+            throw new ArgumentException(
+                "Markdown-LD federated service endpoints must be absolute URIs.",
+                nameof(endpoint)
+            );
+        }
+
+        _markdownLdFederatedServiceEndpoints.Add(endpoint);
         return this;
     }
 

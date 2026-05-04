@@ -209,11 +209,15 @@ internal sealed partial class McpGatewayRuntime
                 continue;
             }
 
+            var document = BuildDescriptorDocument(descriptor);
+            var searchTermIndex = BuildToolSearchTermIndex(document);
             entries.Add(
                 new ToolCatalogEntry(
                     descriptor,
                     loadedTool.Tool,
-                    BuildDescriptorDocument(descriptor)
+                    document,
+                    searchTermIndex.SearchBoostTerms,
+                    searchTermIndex.ConfidenceTerms
                 )
             );
         }

@@ -27,7 +27,8 @@ dotnet add package ManagedCode.MCPGateway
 - one prompt catalog for source-aware MCP prompts plus gateway-owned custom and composite prompts
 - one resource catalog for MCP resources and resource templates aggregated across registered MCP sources
 - one downstream MCP server export path over the aggregated tool, prompt, and resource catalogs with stable MCP protocol parity for completions, prompt list-change notifications, resource subscriptions, logging level changes, and task-backed tool execution
-- one search API with default Markdown-LD graph ranking, opt-in vector ranking, and vector-first `Auto`
+- one search API with default schema-aware Markdown-LD SPARQL graph ranking, opt-in vector ranking, and vector-first `Auto`
+- one graph search API for schema/profile inspection, schema-aware SPARQL search, explicit allowlisted federation, graph evidence, and graph export
 - one category-first routing API for advanced tool discovery flows
 - one invocation API for both local tools and MCP tools
 - additive catalog registration through `IMcpGatewayRegistry`
@@ -37,12 +38,14 @@ dotnet add package ManagedCode.MCPGateway
 - DI-owned factory creation for isolated custom gateway instances
 - reusable gateway meta-tools for chat loops
 - optional warmup, caching, query normalization, and embedding reuse
+- BenchmarkDotNet performance and allocation benchmarks for search, indexing, and meta-tools
 
 After `services.AddMcpGateway(...)`, the container exposes:
 
 - `IMcpGateway`
 - `IMcpGatewayRegistry`
 - `IMcpGatewayCatalogRuntime`
+- `IMcpGatewayGraphSearch`
 - `IMcpGatewayPromptCatalog`
 - `IMcpGatewayResourceCatalog`
 - `IMcpGatewayFactory`
@@ -93,10 +96,13 @@ Default behavior:
 
 - `SearchStrategy = Graph`
 - `MarkdownLdGraphSource = GeneratedToolGraph`
+- `MarkdownLdGraphSearchMode = Hybrid`
 - `SearchQueryNormalization = TranslateToEnglishWhenAvailable`
 - `DefaultSearchLimit = 5`
 - `MaxSearchResults = 15`
 - the index is built lazily on first list, search, or invoke
+
+`Hybrid` means the Markdown-LD graph path runs schema-aware SPARQL search first, then uses the `ManagedCode.MarkdownLd.Kb` ranked BM25 path as supporting evidence and fuzzy fallback for noisy queries. It is not a tokenizer-only search path.
 
 ## Register Tools And Sources
 
@@ -387,6 +393,7 @@ Use the package surfaces like this:
 - `IMcpGateway`: build, list, search, route, invoke
 - `IMcpGatewayRegistry`: additive tool and source registration
 - `IMcpGatewayCatalogRuntime`: full in-memory catalog clear or reconfiguration
+- `IMcpGatewayGraphSearch`: schema/profile inspection, schema-aware SPARQL graph search, explicit federation, and graph export
 - `IMcpGatewayPromptCatalog`: list and render aggregated upstream plus gateway-owned prompts
 - `IMcpGatewayResourceCatalog`: list direct resources, list resource templates, and read concrete resource URIs
 - `IMcpGatewayFactory`: create isolated custom gateway instances
@@ -444,6 +451,8 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
 - `NextStepMatches` for bounded graph next-step expansion
 - `Diagnostics` for fallback, normalization, and retrieval signals
 - `RankingMode` with `graph`, `vector`, `hybrid`, `browse`, or `empty`
+- `UsedSchemaSearch` and `UsedSchemaFallback` for the Markdown-LD schema/SPARQL path
+- `FocusedGraphNodeCount` and `FocusedGraphEdgeCount` for focused graph scope
 
 `McpGatewayInvokeResult` returns:
 
@@ -524,7 +533,29 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion.
+Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges ranked BM25 graph results as supporting evidence for small focused catalogs. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in the BM25 fallback for small catalogs so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Larger catalogs stay schema-first and use the cheaper token-distance fallback when a fuzzy unbounded BM25 pass would be too expensive.
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.SearchStrategy = McpGatewaySearchStrategy.Graph;
+    options.UseHybridMarkdownLdGraphSearch();
+});
+```
+
+If a host wants to force only the schema-aware SPARQL path or explicitly use the older lower-level token-distance graph path:
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.UseSchemaAwareMarkdownLdGraphSearch();
+});
+
+services.AddMcpGateway(options =>
+{
+    options.UseTokenDistanceMarkdownLdGraphSearch();
+});
+```
 
 ### Embeddings
 
@@ -550,9 +581,71 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Use it when you want semantic ranking without losing graph-based related and next-step expansion.
+Use it when you want semantic ranking without losing graph-based related and next-step expansion. For larger catalogs, `Auto` avoids unbounded graph supplementation after a usable vector primary result; graph fallback still runs when vector ranking is unavailable or unusable.
 
 If vector ranking is unavailable or unusable, `Auto` falls back to graph ranking and reports diagnostics.
+
+## Schema-Aware SPARQL Graph Search
+
+Use `IMcpGatewayGraphSearch` when the caller needs graph schema/profile inspection, graph evidence, generated SPARQL, focused graph counts, federation metadata, or graph exports:
+
+```csharp
+var graphSearch = serviceProvider.GetRequiredService<IMcpGatewayGraphSearch>();
+
+var schema = await graphSearch.DescribeGraphSchemaAsync();
+Console.WriteLine(schema.Prefixes["schema"]);
+Console.WriteLine(schema.GraphNodeCount);
+
+var graphResult = await graphSearch.SearchGraphAsync(
+    new McpGatewayGraphSearchRequest("severity filter")
+    {
+        MaxResults = 3
+    });
+
+Console.WriteLine(graphResult.GeneratedSparql);
+Console.WriteLine(graphResult.Matches[0].ToolMatch?.ToolId);
+```
+
+`McpGatewayGraphSchemaResult` returns:
+
+- graph availability, node count, edge count, and graph source
+- search strategy, graph search mode, default limits, and max result settings
+- schema prefixes, text predicates, relationship predicates, expansion predicates, and type filters
+- configured federated service endpoints
+- diagnostics when the profile cannot be validated against the current graph
+
+`McpGatewayGraphSearchResult` returns:
+
+- `Matches`, `RelatedMatches`, and `NextStepMatches`
+- `GeneratedSparql` and `GeneratedExpansionSparql`
+- graph evidence with predicate ids, matched text, source context, and optional service endpoint
+- mapped gateway `ToolMatch` values when a graph node maps back to a registered tool
+- focused graph node and edge counts
+
+Federated graph search is explicit. Configure allowed SPARQL service endpoints first:
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.AddMarkdownLdFederatedServiceEndpoint(
+        new Uri("https://knowledge.example.com/sparql"));
+});
+```
+
+Then request federation:
+
+```csharp
+var federatedResult = await graphSearch.SearchGraphAsync(
+    new McpGatewayGraphSearchRequest("story detail lookup")
+    {
+        UseFederation = true,
+        IncludeLocalGatewayGraph = true,
+        ServiceEndpoints = ["https://knowledge.example.com/sparql"]
+    });
+```
+
+The gateway never discovers remote SPARQL endpoints on its own. It uses the configured allowlist, can bind the local gateway graph as a federated service, and reports diagnostics when a requested endpoint is invalid or blocked.
+Federated query execution uses `MarkdownLdFederatedQueryTimeoutMilliseconds`, which defaults to `15000`.
 
 ## Graph Sources
 
@@ -587,6 +680,24 @@ var documents = McpGatewayMarkdownLdGraphFile.CreateDocuments(descriptors);
 await McpGatewayMarkdownLdGraphFile.WriteAsync(
     "artifacts/mcp-tools.graph.json",
     documents);
+```
+
+To export the generated tool graph for RDF tooling, graph visualization, or preprocessing handoff:
+
+```csharp
+var export = await McpGatewayMarkdownLdGraphFile.ExportAsync(documents);
+
+await File.WriteAllTextAsync("artifacts/mcp-tools.graph.jsonld", export.JsonLd);
+await File.WriteAllTextAsync("artifacts/mcp-tools.graph.ttl", export.Turtle);
+await File.WriteAllTextAsync("artifacts/mcp-tools.graph.mmd", export.MermaidFlowchart);
+await File.WriteAllTextAsync("artifacts/mcp-tools.graph.dot", export.DotGraph);
+```
+
+To export the currently indexed runtime graph:
+
+```csharp
+var graphSearch = serviceProvider.GetRequiredService<IMcpGatewayGraphSearch>();
+var export = await graphSearch.ExportMarkdownLdGraphAsync();
 ```
 
 For full control over the graph input, provide the Markdown-LD documents directly:
@@ -719,6 +830,14 @@ The gateway can expose itself as three reusable tools:
 - `gateway_tools_route`
 - `gateway_tool_invoke`
 
+`McpGatewayToolSet` also exposes graph-specific tools for callers that need schema/profile inspection, explicit index rebuilds, schema/SPARQL evidence, federated SPARQL search, or graph export:
+
+- `gateway_graph_schema_describe`
+- `gateway_tool_index_build`
+- `gateway_graph_schema_search`
+- `gateway_graph_federated_search`
+- `gateway_graph_export`
+
 From the gateway:
 
 ```csharp
@@ -741,6 +860,14 @@ var options = new ChatOptions
 {
     AllowMultipleToolCalls = false
 }.AddMcpGatewayTools(toolSet);
+```
+
+To add the graph/SPARQL tools to `ChatOptions`:
+
+```csharp
+var options = new ChatOptions()
+    .AddMcpGatewayTools(serviceProvider)
+    .AddMcpGatewayGraphTools(serviceProvider);
 ```
 
 For staged auto-discovery in a chat loop, wrap any `IChatClient`:
@@ -833,6 +960,41 @@ Search telemetry includes configured strategy, ranking mode, graph/vector usage,
 - `GraphEdgeCount`
 - `Diagnostics`
 
+## Performance Benchmarks
+
+BenchmarkDotNet benchmarks live under `benchmarks/ManagedCode.MCPGateway.Benchmarks/` and run in `Release` with allocation statistics enabled:
+
+```bash
+dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*"
+```
+
+Focused benchmark groups:
+
+```bash
+dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*Search*"
+dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*Index*"
+dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*ToolSet*"
+```
+
+Run focused BenchmarkDotNet commands one at a time so generated benchmark build artifacts do not contend with each other.
+
+CI runs the full BenchmarkDotNet suite with `--filter "*"` after the build/test gate and uploads the complete benchmark reports as `benchmark-results`. The release workflow also runs the full suite before package creation and uploads `release-benchmark-results`. These benchmark jobs are intentionally not smoke tests or reduced benchmark subsets.
+
+Latest full local BenchmarkDotNet snapshot on Apple M2 Pro, .NET SDK `10.0.201`, runtime `.NET 10.0.5`:
+
+| Scenario | Mean | Allocated |
+| --- | ---: | ---: |
+| `BuildGraphIndex` | 620.0 ms | 499.81 MB |
+| `SearchWeatherGraph` | 25.72 ms | 25.92 MB |
+| `SearchPortfolioGraph` | 27.35 ms | 26.29 MB |
+| `SearchArchiveGraph` | 191.23 ms | 130.75 MB |
+| `SearchWeatherGraphTool` | 27.57 ms | 25.92 MB |
+| `CreateGatewayTools` | 582.8 ns | 936 B |
+| `CreateGraphTools` | 1.114 us | 1,528 B |
+| `CreateDiscoveredTools` | 802.5 ns | 3,192 B |
+
+See [docs/Performance/Benchmarks.md](docs/Performance/Benchmarks.md) for benchmark scope and optimization policy.
+
 ## Deeper Docs
 
 - [Architecture overview](docs/Architecture/Overview.md)
@@ -843,8 +1005,10 @@ Search telemetry includes configured strategy, ranking mode, graph/vector usage,
 - [ADR-0005: Markdown-LD graph search for tool retrieval](docs/ADR/ADR-0005-markdown-ld-graph-search-for-tool-retrieval.md)
 - [ADR-0006: Vector-first auto search and runtime telemetry](docs/ADR/ADR-0006-vector-first-auto-search-and-runtime-telemetry.md)
 - [ADR-0007: Vertical-slice package organization](docs/ADR/ADR-0007-vertical-slice-package-organization.md)
+- [ADR-0012: Schema-aware SPARQL graph search](docs/ADR/ADR-0012-schema-aware-sparql-graph-search.md)
 - [Feature spec: Search query normalization and ranking](docs/Features/SearchQueryNormalizationAndRanking.md)
 - [Feature spec: Auto vector-first search and performance](docs/Features/AutoVectorFirstSearchAndPerformance.md)
+- [Performance benchmarks](docs/Performance/Benchmarks.md)
 
 ## Local Development
 
@@ -874,4 +1038,10 @@ Coverage:
 ```bash
 dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml
 dotnet tool run reportgenerator -reports:"artifacts/coverage/coverage.cobertura.xml" -targetdir:"artifacts/coverage-report" -reporttypes:"HtmlSummary;MarkdownSummaryGithub"
+```
+
+Benchmarks:
+
+```bash
+dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*"
 ```

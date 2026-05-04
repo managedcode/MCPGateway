@@ -22,7 +22,16 @@ public static class McpGatewayServiceCollectionExtensions
 
         services.TryAddSingleton<IMcpGatewaySearchCache, McpGatewayNoOpSearchCache>();
         services.TryAddSingleton<McpGatewayPromptChangeHub>();
+        var gatewayRegistered = services.Any(static descriptor =>
+            descriptor.ServiceType == typeof(IMcpGateway)
+        );
         services.TryAddSingleton<IMcpGateway, McpGateway>();
+        if (!gatewayRegistered)
+        {
+            services.TryAddSingleton(static serviceProvider =>
+                (IMcpGatewayGraphSearch)serviceProvider.GetRequiredService<IMcpGateway>()
+            );
+        }
         services.TryAddSingleton<IMcpGatewayRegistry, McpGatewayRegistry>();
         services.TryAddSingleton<IMcpGatewayCatalogSource>(static serviceProvider =>
             (IMcpGatewayCatalogSource)serviceProvider.GetRequiredService<IMcpGatewayRegistry>()
@@ -33,7 +42,13 @@ public static class McpGatewayServiceCollectionExtensions
         services.TryAddSingleton<IMcpGatewayPromptCatalog, McpGatewayPromptCatalog>();
         services.TryAddSingleton<IMcpGatewayResourceCatalog, McpGatewayResourceCatalog>();
         services.TryAddSingleton<IMcpGatewayFactory, McpGatewayFactory>();
-        services.TryAddSingleton<McpGatewayToolSet>();
+        services.TryAddSingleton(static serviceProvider =>
+        {
+            var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+            return serviceProvider.GetService<IMcpGatewayGraphSearch>() is IMcpGatewayGraphSearch graphSearch
+                ? new McpGatewayToolSet(gateway, graphSearch)
+                : new McpGatewayToolSet(gateway);
+        });
 
         return services;
     }

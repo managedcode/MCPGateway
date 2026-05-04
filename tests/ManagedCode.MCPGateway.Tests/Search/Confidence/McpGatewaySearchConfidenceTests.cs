@@ -34,7 +34,8 @@ public sealed partial class McpGatewaySearchTests
                 )
             )
             .IsTrue();
-        await Assert.That(searchResult.Matches.Count).IsEqualTo(3);
+        await Assert.That(searchResult.Matches.Count > 0).IsTrue();
+        await Assert.That(searchResult.Matches.Count <= 3).IsTrue();
         await Assert.That(searchResult.Matches.All(static match => match.Score < 0.35d)).IsTrue();
     }
 

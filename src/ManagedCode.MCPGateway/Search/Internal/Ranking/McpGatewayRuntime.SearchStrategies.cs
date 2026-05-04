@@ -55,6 +55,7 @@ internal sealed partial class McpGatewayRuntime
             addGraphFallbackDiagnostic: false,
             addUnavailableDiagnostic: true,
             addFailureDiagnostics: true,
+            enableFuzzySchemaFallback: true,
             cancellationToken
         );
         AddLowConfidenceGraphDiagnostic(graphRanked, diagnostics);
@@ -90,6 +91,7 @@ internal sealed partial class McpGatewayRuntime
             addGraphFallbackDiagnostic: true,
             addUnavailableDiagnostic: true,
             addFailureDiagnostics: true,
+            enableFuzzySchemaFallback: true,
             cancellationToken
         );
         AddLowConfidenceGraphDiagnostic(graphRanked, diagnostics);
@@ -122,6 +124,7 @@ internal sealed partial class McpGatewayRuntime
                 addGraphFallbackDiagnostic: true,
                 addUnavailableDiagnostic: true,
                 addFailureDiagnostics: true,
+                enableFuzzySchemaFallback: true,
                 cancellationToken
             );
             AddLowConfidenceGraphDiagnostic(graphFallback, diagnostics);
@@ -138,10 +141,16 @@ internal sealed partial class McpGatewayRuntime
                 addGraphFallbackDiagnostic: true,
                 addUnavailableDiagnostic: true,
                 addFailureDiagnostics: true,
+                enableFuzzySchemaFallback: true,
                 cancellationToken
             );
             AddLowConfidenceGraphDiagnostic(graphFallback, diagnostics);
             return graphFallback;
+        }
+
+        if (snapshot.Entries.Count > AutoGraphSupplementMaximumUnboundedCatalogSize)
+        {
+            return vectorRanked;
         }
 
         var graphRanked = await TryRankWithGraphAsync(
@@ -151,6 +160,7 @@ internal sealed partial class McpGatewayRuntime
             diagnostics,
             addUnavailableDiagnostic: false,
             addFailureDiagnostics: false,
+            enableFuzzySchemaFallback: false,
             cancellationToken
         );
         if (graphRanked is null)
@@ -254,23 +264,25 @@ internal sealed partial class McpGatewayRuntime
                 return null;
             }
 
-            var ranked = snapshot
-                .Entries.Select(entry => new ScoredToolEntry(
-                    entry,
-                    ScoreVectorEntry(
+            var scoreContext = CreateSearchScoreContext(searchInput.BoostQuery);
+            var ranked = new List<ScoredToolEntry>(snapshot.Entries.Count);
+            foreach (var entry in snapshot.Entries)
+            {
+                ranked.Add(
+                    new ScoredToolEntry(
                         entry,
-                        searchInput.BoostQuery,
-                        queryVector,
-                        queryMagnitude,
-                        applyLexicalBoosts
+                        ScoreVectorEntry(
+                            entry,
+                            scoreContext,
+                            queryVector,
+                            queryMagnitude,
+                            applyLexicalBoosts
+                        )
                     )
-                ))
-                .OrderByDescending(static item => item.Score)
-                .ThenBy(
-                    static item => item.Entry.Descriptor.ToolName,
-                    StringComparer.OrdinalIgnoreCase
-                )
-                .ToList();
+                );
+            }
+
+            ranked.Sort(CompareScoredToolEntries);
             return new RankedSearch(ranked, SearchModeVector)
             {
                 Metrics = new RankedSearchMetrics(
@@ -305,14 +317,26 @@ internal sealed partial class McpGatewayRuntime
 
     private static double ScoreVectorEntry(
         ToolCatalogEntry entry,
-        string boostQuery,
+        SearchScoreContext scoreContext,
         float[] queryVector,
         double queryMagnitude,
         bool applyLexicalBoosts
     )
     {
         var cosine = Math.Max(0d, CalculateCosine(entry, queryVector, queryMagnitude));
-        return applyLexicalBoosts ? ApplySearchBoosts(entry, boostQuery, cosine) : cosine;
+        return applyLexicalBoosts ? ApplySearchBoosts(entry, scoreContext, cosine) : cosine;
+    }
+
+    private static int CompareScoredToolEntries(ScoredToolEntry left, ScoredToolEntry right)
+    {
+        var scoreComparison = right.Score.CompareTo(left.Score);
+        return scoreComparison != 0
+            ? scoreComparison
+            : string.Compare(
+                left.Entry.Descriptor.ToolName,
+                right.Entry.Descriptor.ToolName,
+                StringComparison.OrdinalIgnoreCase
+            );
     }
 
     private static bool IsUnusableVectorResult(RankedSearch rankedSearch) =>
@@ -363,6 +387,8 @@ internal sealed partial class McpGatewayRuntime
             {
                 FocusedGraphNodeCount = graphRanked.FocusedGraphNodeCount,
                 FocusedGraphEdgeCount = graphRanked.FocusedGraphEdgeCount,
+                UsedSchemaSearch = graphRanked.UsedSchemaSearch,
+                UsedSchemaFallback = graphRanked.UsedSchemaFallback,
                 Metrics = metrics,
             };
         }
@@ -373,6 +399,8 @@ internal sealed partial class McpGatewayRuntime
             NextSteps = nextSteps,
             FocusedGraphNodeCount = graphRanked.FocusedGraphNodeCount,
             FocusedGraphEdgeCount = graphRanked.FocusedGraphEdgeCount,
+            UsedSchemaSearch = graphRanked.UsedSchemaSearch,
+            UsedSchemaFallback = graphRanked.UsedSchemaFallback,
             Metrics = metrics,
         };
     }

@@ -43,4 +43,51 @@ public static class McpGatewayChatOptionsExtensions
             invokeToolName
         );
     }
+
+    public static ChatOptions AddMcpGatewayGraphTools(
+        this ChatOptions options,
+        McpGatewayToolSet toolSet,
+        string graphSearchToolName = McpGatewayToolSet.DefaultGraphSearchToolName,
+        string graphFederatedSearchToolName = McpGatewayToolSet.DefaultGraphFederatedSearchToolName,
+        string graphExportToolName = McpGatewayToolSet.DefaultGraphExportToolName,
+        string graphSchemaToolName = McpGatewayToolSet.DefaultGraphSchemaToolName,
+        string toolIndexBuildToolName = McpGatewayToolSet.DefaultToolIndexBuildToolName
+    )
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(toolSet);
+
+        options.Tools = toolSet.AddGraphTools(
+            options.Tools ?? new List<AITool>(),
+            graphSearchToolName,
+            graphFederatedSearchToolName,
+            graphExportToolName,
+            graphSchemaToolName,
+            toolIndexBuildToolName
+        );
+        return options;
+    }
+
+    public static ChatOptions AddMcpGatewayGraphTools(
+        this ChatOptions options,
+        IServiceProvider serviceProvider,
+        string graphSearchToolName = McpGatewayToolSet.DefaultGraphSearchToolName,
+        string graphFederatedSearchToolName = McpGatewayToolSet.DefaultGraphFederatedSearchToolName,
+        string graphExportToolName = McpGatewayToolSet.DefaultGraphExportToolName,
+        string graphSchemaToolName = McpGatewayToolSet.DefaultGraphSchemaToolName,
+        string toolIndexBuildToolName = McpGatewayToolSet.DefaultToolIndexBuildToolName
+    )
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+
+        return options.AddMcpGatewayGraphTools(
+            serviceProvider.GetRequiredService<McpGatewayToolSet>(),
+            graphSearchToolName,
+            graphFederatedSearchToolName,
+            graphExportToolName,
+            graphSchemaToolName,
+            toolIndexBuildToolName
+        );
+    }
 }

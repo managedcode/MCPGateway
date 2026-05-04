@@ -160,7 +160,7 @@ Mitigations:
 
 One maintainability exception remains after the slice move and the MCP metadata/routing expansion:
 
-- `src/ManagedCode.MCPGateway/Search/Internal/Graph/McpGatewayRuntime.GraphIndexing.cs` is currently `720` code LOC, which is `70` lines above the repository `file_max_loc` limit of `650`.
+- `src/ManagedCode.MCPGateway/Search/Internal/Graph/McpGatewayRuntime.GraphIndexing.cs` is currently `714` code LOC, which is `64` lines above the repository `file_max_loc` limit of `650`.
 
 Justification:
 

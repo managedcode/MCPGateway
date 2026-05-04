@@ -142,6 +142,8 @@ internal sealed partial class McpGatewayRuntime
                         ),
                         FocusedGraphNodeCount = rankedSearch.FocusedGraphNodeCount,
                         FocusedGraphEdgeCount = rankedSearch.FocusedGraphEdgeCount,
+                        UsedSchemaSearch = rankedSearch.UsedSchemaSearch,
+                        UsedSchemaFallback = rankedSearch.UsedSchemaFallback,
                     };
                 }
 

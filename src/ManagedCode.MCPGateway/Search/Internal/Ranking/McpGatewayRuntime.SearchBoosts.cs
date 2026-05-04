@@ -2,64 +2,71 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
-    private static double ApplySearchBoosts(ToolCatalogEntry entry, string boostQuery, double score)
+    private static ToolSearchTermIndex BuildToolSearchTermIndex(string document)
+    {
+        var searchBoostTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var confidenceTerms = new List<GraphConfidenceDescriptorTerm>();
+
+        foreach (var term in BuildOrderedGraphTerms(document))
+        {
+            if (searchBoostTerms.Add(term))
+            {
+                confidenceTerms.Add(new GraphConfidenceDescriptorTerm(term, CreateCharacterBigrams(term)));
+            }
+        }
+
+        return new ToolSearchTermIndex(searchBoostTerms, confidenceTerms);
+    }
+
+    private static SearchScoreContext CreateSearchScoreContext(string boostQuery)
     {
         if (string.IsNullOrWhiteSpace(boostQuery))
         {
-            return score;
+            return SearchScoreContext.Empty;
         }
 
-        var queryTerms = BuildOrderedGraphTerms(boostQuery)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (queryTerms.Count == 0)
+        var boostTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var confidenceTerms = new List<GraphConfidenceQueryTerm>();
+
+        foreach (var term in BuildOrderedGraphTerms(boostQuery))
         {
-            return score;
+            if (!boostTerms.Add(term))
+            {
+                continue;
+            }
+
+            if (confidenceTerms.Count < GraphConfidenceMaxQueryTerms)
+            {
+                confidenceTerms.Add(
+                    new GraphConfidenceQueryTerm(
+                        term,
+                        Math.Min(GraphConfidenceTermWeightCap, term.Length),
+                        CreateCharacterBigrams(term)
+                    )
+                );
+            }
         }
 
-        var descriptorTerms = BuildOrderedGraphTerms(
-                string.Concat(
-                    entry.Descriptor.ToolName,
-                    " ",
-                    entry.Descriptor.DisplayName,
-                    " ",
-                    entry.Descriptor.Description,
-                    " ",
-                    string.Join(" ", entry.Descriptor.SearchAliases),
-                    " ",
-                    string.Join(" ", entry.Descriptor.SearchKeywords),
-                    " ",
-                    string.Join(" ", entry.Descriptor.Categories),
-                    " ",
-                    string.Join(" ", entry.Descriptor.Tags),
-                    " ",
-                    string.Join(" ", entry.Descriptor.DataSources),
-                    " ",
-                    string.Join(
-                        " ",
-                        entry.Descriptor.UsageExamples.Select(static example =>
-                            string.Concat(
-                                example.Description,
-                                " ",
-                                example.Input,
-                                " ",
-                                example.Output
-                            )
-                        )
-                    ),
-                    " ",
-                    string.Join(" ", entry.Descriptor.RequiredArguments)
-                )
-            )
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (descriptorTerms.Count == 0)
+        return boostTerms.Count == 0
+            ? SearchScoreContext.Empty
+            : new SearchScoreContext(boostTerms, confidenceTerms);
+    }
+
+    private static double ApplySearchBoosts(
+        ToolCatalogEntry entry,
+        SearchScoreContext scoreContext,
+        double score
+    )
+    {
+        if (!scoreContext.HasBoostTerms || entry.SearchBoostTerms.Count == 0)
         {
             return score;
         }
 
         var overlap = 0;
-        foreach (var queryTerm in queryTerms)
+        foreach (var queryTerm in scoreContext.BoostTerms)
         {
-            if (descriptorTerms.Contains(queryTerm))
+            if (entry.SearchBoostTerms.Contains(queryTerm))
             {
                 overlap++;
             }
@@ -70,7 +77,7 @@ internal sealed partial class McpGatewayRuntime
             return score;
         }
 
-        var coverage = (double)overlap / queryTerms.Count;
+        var coverage = (double)overlap / scoreContext.BoostTerms.Count;
         return Math.Min(1d, score + (coverage * ToolNameSignalWeight));
     }
 }

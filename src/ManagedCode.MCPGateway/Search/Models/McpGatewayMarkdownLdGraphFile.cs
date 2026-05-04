@@ -9,6 +9,15 @@ public sealed record McpGatewayMarkdownLdGraphDocument(
     string? CanonicalUri = null
 );
 
+public sealed record McpGatewayMarkdownLdGraphExport(
+    string JsonLd,
+    string Turtle,
+    string MermaidFlowchart,
+    string DotGraph,
+    int NodeCount,
+    int EdgeCount
+);
+
 public static class McpGatewayMarkdownLdGraphFile
 {
     public const int CurrentVersion = 1;
@@ -32,6 +41,25 @@ public static class McpGatewayMarkdownLdGraphFile
             descriptors.ToArray(),
             Math.Max(256, maxDescriptorLength)
         );
+    }
+
+    public static Task<McpGatewayMarkdownLdGraphExport> ExportAsync(
+        IEnumerable<McpGatewayToolDescriptor> descriptors,
+        int maxDescriptorLength = 4096,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(descriptors);
+        return ExportAsync(CreateDocuments(descriptors, maxDescriptorLength), cancellationToken);
+    }
+
+    public static Task<McpGatewayMarkdownLdGraphExport> ExportAsync(
+        IEnumerable<McpGatewayMarkdownLdGraphDocument> documents,
+        CancellationToken cancellationToken = default
+    )
+    {
+        ArgumentNullException.ThrowIfNull(documents);
+        return McpGatewayRuntime.ExportMarkdownLdGraphAsync(documents.ToArray(), cancellationToken);
     }
 
     public static async Task WriteAsync(

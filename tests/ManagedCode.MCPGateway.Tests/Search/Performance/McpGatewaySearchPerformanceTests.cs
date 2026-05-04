@@ -81,10 +81,47 @@ public sealed partial class McpGatewaySearchTests
             .IsTrue();
     }
 
+    [TUnit.Core.Test]
+    public async Task SchemaGraphSearchAsync_LargeCatalogUsesDirectOptimizedGraphToolPath()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigurePerformanceGraphCatalog
+        );
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        var toolSet = serviceProvider.GetRequiredService<McpGatewayToolSet>();
+
+        var buildResult = await gateway.BuildIndexAsync();
+        var searchResult = await toolSet.SchemaGraphSearchAsync(
+            "umbrella planning for region seven",
+            maxResults: 5
+        );
+
+        await Assert.That(buildResult.ToolCount).IsEqualTo(PerformanceCatalogToolCount);
+        await Assert.That(buildResult.IsGraphSearchEnabled).IsTrue();
+        await Assert.That(searchResult.IsFederated).IsFalse();
+        await Assert.That(searchResult.GeneratedSparql).Contains("SELECT");
+        await Assert.That(searchResult.Matches.Count).IsGreaterThan(0);
+        await Assert
+            .That(searchResult.Matches[0].ToolMatch?.ToolId)
+            .IsEqualTo("local:weather_dispatch_specialist");
+        await Assert.That(searchResult.FocusedGraphNodeCount).IsGreaterThan(0);
+        await Assert.That(searchResult.FocusedGraphEdgeCount).IsGreaterThan(0);
+    }
+
     private static void ConfigurePerformanceCatalog(McpGatewayOptions options)
     {
         options.SearchStrategy = McpGatewaySearchStrategy.Auto;
+        AddPerformanceCatalogTools(options);
+    }
 
+    private static void ConfigurePerformanceGraphCatalog(McpGatewayOptions options)
+    {
+        options.SearchStrategy = McpGatewaySearchStrategy.Graph;
+        AddPerformanceCatalogTools(options);
+    }
+
+    private static void AddPerformanceCatalogTools(McpGatewayOptions options)
+    {
         for (var index = 1; index <= PerformanceCatalogToolCount; index++)
         {
             switch (index)

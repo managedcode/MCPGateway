@@ -7,7 +7,7 @@ using Microsoft.Extensions.Options;
 
 namespace ManagedCode.MCPGateway;
 
-internal sealed partial class McpGatewayRuntime : IMcpGateway
+internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphSearch
 {
     private const string QueryArgumentName = "query";
     private const string ContextArgumentName = "context";
@@ -26,6 +26,12 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string HybridVectorMergeDiagnosticCode = "hybrid_vector_merge_used";
     private const string GraphUnavailableDiagnosticCode = "graph_unavailable";
     private const string GraphSearchFailedDiagnosticCode = "graph_search_failed";
+    private const string GraphSchemaFallbackDiagnosticCode = "graph_schema_fallback";
+    private const string GraphSchemaValidationDiagnosticCode = "graph_schema_profile_invalid";
+    private const string GraphFederationEndpointBlockedDiagnosticCode =
+        "graph_federation_endpoint_blocked";
+    private const string GraphFederationEndpointInvalidDiagnosticCode =
+        "graph_federation_endpoint_invalid";
     private const string EmbeddingCountMismatchDiagnosticCode = "embedding_count_mismatch";
     private const string EmbeddingGeneratorMissingDiagnosticCode = "embedding_generator_missing";
     private const string EmbeddingFailedDiagnosticCode = "embedding_failed";
@@ -52,6 +58,18 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         "Vector-first ranking was supplemented with Markdown-LD graph expansion.";
     private const string GraphUnavailableMessage = "Markdown-LD graph ranking is unavailable.";
     private const string GraphSearchFailedMessageTemplate = "Markdown-LD graph ranking failed: {0}";
+    private const string GraphSchemaFallbackMessage =
+        "Markdown-LD schema-aware ranking found no mapped gateway tools. Ranked BM25 graph ranking with fuzzy token matching was used.";
+    private const string GraphSchemaTokenDistanceFallbackMessage =
+        "Markdown-LD schema-aware ranking found no mapped gateway tools. Token-distance graph ranking was used.";
+    private const string GraphSchemaNoSupplementMessage =
+        "Markdown-LD schema-aware ranking found no mapped gateway tools. No graph supplement was added.";
+    private const string GraphSchemaValidationMessageTemplate =
+        "Markdown-LD schema search profile is invalid: {0}";
+    private const string GraphFederationEndpointBlockedMessageTemplate =
+        "Markdown-LD federated service endpoint '{0}' is not configured in the gateway allowlist.";
+    private const string GraphFederationEndpointInvalidMessageTemplate =
+        "Markdown-LD federated service endpoint '{0}' is not an absolute URI.";
     private const string EmbeddingCountMismatchMessageTemplate =
         "Embedding generation returned {0} vectors for {1} tools.";
     private const string QueryEmbeddingCountMismatchMessageTemplate =
@@ -200,6 +218,29 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const string ContextPrefix = "context: ";
     private const string GraphKnowledgeBaseUriText =
         "https://managedcode.com/mcpgateway/knowledge/";
+    private const string GraphLocalFederationEndpointUriText =
+        "https://managedcode.com/mcpgateway/federation/local";
+    private const string SchemaPrefixName = "schema";
+    private const string KbPrefixName = "kb";
+    private const string SkosPrefixName = "skos";
+    private const string ProvPrefixName = "prov";
+    private const string SchemaPrefixUri = "https://schema.org/";
+    private const string KbPrefixUri = "urn:managedcode:markdown-ld-kb:vocab:";
+    private const string SkosPrefixUri = "http://www.w3.org/2004/02/skos/core#";
+    private const string ProvPrefixUri = "http://www.w3.org/ns/prov#";
+    private const string SchemaTypeArticle = "schema:Article";
+    private const string KbTypeMarkdownDocument = "kb:MarkdownDocument";
+    private const string SchemaPredicateName = "schema:name";
+    private const string SchemaPredicateDescription = "schema:description";
+    private const string SchemaPredicateKeywords = "schema:keywords";
+    private const string SchemaPredicateAbout = "schema:about";
+    private const string SchemaPredicateMentions = "schema:mentions";
+    private const string SchemaPredicateHasPart = "schema:hasPart";
+    private const string KbPredicateRelatedTo = "kb:relatedTo";
+    private const string KbPredicateNextStep = "kb:nextStep";
+    private const string KbPredicateMemberOf = "kb:memberOf";
+    private const string SkosPredicatePrefLabel = "skos:prefLabel";
+    private const string ProvPredicateWasDerivedFrom = "prov:wasDerivedFrom";
     private const string GraphToolDocumentPathPrefix = "tools/";
     private const string GraphToolDocumentExtension = ".md";
     private const string GraphToolDocumentUriPrefix = "tools/";
@@ -287,10 +328,16 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const int GraphMaxNextStepToolsPerDocument = 3;
     private const int GraphFocusedRelatedResultsLimit = 6;
     private const int GraphFocusedNextStepResultsLimit = 6;
+    private const int GraphSchemaQueryMaxTerms = 14;
     private const int SearchQueryNormalizationMaxOutputTokens = 96;
     private const int GraphConfidenceMaxQueryTerms = 8;
     private const int GraphConfidenceTermWeightCap = 12;
     private const int GraphMinimumFuzzyTermLength = 4;
+    private const int GraphRankedSearchMaxFuzzyEditDistance = 1;
+    private const int GraphRankedBm25MaximumUnboundedCatalogSize = 32;
+    private const int GraphSearchCandidateMultiplier = 1;
+    private const int GraphSearchMinimumCandidateWindow = 5;
+    private const int GraphSchemaCandidateMinimumWindow = 5;
     private const double ToolNameSignalWeight = 0.05d;
     private const double MinimumGraphMatchConfidence = 0.35d;
     private const double GraphConfidenceEvidenceWeight = 2d;
@@ -298,6 +345,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private const double GraphMinimumFuzzySimilarity = 0.55d;
     private const int AutoSupplementCandidateMultiplier = 4;
     private const int AutoSupplementMinimumCandidateWindow = 8;
+    private const int AutoGraphSupplementMaximumUnboundedCatalogSize = 32;
 
     private static readonly char[] TokenSeparators =
     [
@@ -349,6 +397,24 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         "thing",
         "this",
         "to",
+        "active",
+        "browser",
+        "browsing",
+        "context",
+        "dashboard",
+        "dashboards",
+        "false",
+        "filter",
+        "filters",
+        "intent",
+        "mode",
+        "page",
+        "section",
+        "signal",
+        "signals",
+        "summary",
+        "true",
+        "user",
         "with",
     };
     private static readonly IReadOnlySet<string> GraphDiscoveryTerms = new HashSet<string>(
@@ -415,6 +481,12 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private static readonly CompositeFormat GraphSearchFailedMessageFormat = CompositeFormat.Parse(
         GraphSearchFailedMessageTemplate
     );
+    private static readonly CompositeFormat GraphSchemaValidationMessageFormat =
+        CompositeFormat.Parse(GraphSchemaValidationMessageTemplate);
+    private static readonly CompositeFormat GraphFederationEndpointBlockedMessageFormat =
+        CompositeFormat.Parse(GraphFederationEndpointBlockedMessageTemplate);
+    private static readonly CompositeFormat GraphFederationEndpointInvalidMessageFormat =
+        CompositeFormat.Parse(GraphFederationEndpointInvalidMessageTemplate);
     private static readonly CompositeFormat EmbeddingCountMismatchMessageFormat =
         CompositeFormat.Parse(EmbeddingCountMismatchMessageTemplate);
     private static readonly CompositeFormat QueryEmbeddingCountMismatchMessageFormat =
@@ -445,6 +517,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private readonly ILoggerFactory _loggerFactory;
     private readonly IMcpGatewayCatalogSource _catalogSource;
     private readonly McpGatewaySearchStrategy _searchStrategy;
+    private readonly McpGatewayMarkdownLdGraphSearchMode _markdownLdGraphSearchMode;
     private readonly McpGatewayMarkdownLdGraphSource _markdownLdGraphSource;
     private readonly Func<
         IReadOnlyList<McpGatewayToolDescriptor>,
@@ -456,6 +529,9 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
+    private readonly int _markdownLdFederatedQueryTimeoutMilliseconds;
+    private readonly IReadOnlyList<Uri> _markdownLdFederatedServiceEndpoints;
+    private readonly Uri _graphLocalFederationEndpoint;
     private readonly IMcpGatewaySearchCache _searchRuntimeCache;
     private RuntimeState _state = RuntimeState.Empty;
     private BuildOperation? _buildOperation;
@@ -481,6 +557,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         var resolvedOptions = options.Value;
         _catalogSource = ResolveCatalogSource(serviceProvider);
         _searchStrategy = resolvedOptions.SearchStrategy;
+        _markdownLdGraphSearchMode = resolvedOptions.MarkdownLdGraphSearchMode;
         _markdownLdGraphSource = resolvedOptions.MarkdownLdGraphSource;
         _markdownLdGraphDocumentFactory = resolvedOptions.MarkdownLdGraphDocumentFactory;
         _searchQueryNormalization = resolvedOptions.SearchQueryNormalization;
@@ -488,6 +565,15 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway
         _defaultSearchLimit = Math.Max(1, resolvedOptions.DefaultSearchLimit);
         _maxSearchResults = Math.Max(1, resolvedOptions.MaxSearchResults);
         _maxDescriptorLength = Math.Max(256, resolvedOptions.MaxDescriptorLength);
+        _markdownLdFederatedQueryTimeoutMilliseconds = Math.Max(
+            100,
+            resolvedOptions.MarkdownLdFederatedQueryTimeoutMilliseconds
+        );
+        _markdownLdFederatedServiceEndpoints = resolvedOptions.MarkdownLdFederatedServiceEndpoints;
+        _graphLocalFederationEndpoint = new Uri(
+            $"{GraphLocalFederationEndpointUriText}/{Guid.NewGuid():N}",
+            UriKind.Absolute
+        );
         _searchRuntimeCache = serviceProvider.GetRequiredService<IMcpGatewaySearchCache>();
     }
 

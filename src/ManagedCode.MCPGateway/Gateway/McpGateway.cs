@@ -10,7 +10,7 @@ public sealed class McpGateway(
     IOptions<McpGatewayOptions> options,
     ILogger<McpGateway> logger,
     ILoggerFactory loggerFactory
-) : IMcpGateway
+) : IMcpGateway, IMcpGatewayGraphSearch
 {
     private readonly McpGatewayRuntime _runtime = CreateRuntime(
         serviceProvider,
@@ -53,6 +53,19 @@ public sealed class McpGateway(
         string routeToolName = McpGatewayToolSet.DefaultRouteToolName,
         string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
     ) => _runtime.CreateMetaTools(searchToolName, routeToolName, invokeToolName);
+
+    public Task<McpGatewayGraphSchemaResult> DescribeGraphSchemaAsync(
+        CancellationToken cancellationToken = default
+    ) => _runtime.DescribeGraphSchemaAsync(cancellationToken);
+
+    public Task<McpGatewayGraphSearchResult> SearchGraphAsync(
+        McpGatewayGraphSearchRequest request,
+        CancellationToken cancellationToken = default
+    ) => _runtime.SearchGraphAsync(request, cancellationToken);
+
+    public Task<McpGatewayMarkdownLdGraphExport> ExportMarkdownLdGraphAsync(
+        CancellationToken cancellationToken = default
+    ) => _runtime.ExportMarkdownLdGraphAsync(cancellationToken);
 
     public ValueTask DisposeAsync() => _runtime.DisposeAsync();
 

@@ -22,7 +22,7 @@ internal sealed partial class McpGatewayRuntime
 
     private static double CalibrateGraphConfidence(
         ToolCatalogEntry entry,
-        string confidenceQuery,
+        SearchScoreContext scoreContext,
         double rawScore
     )
     {
@@ -32,7 +32,7 @@ internal sealed partial class McpGatewayRuntime
             return 0d;
         }
 
-        var evidence = CalculateDescriptorQueryEvidence(confidenceQuery, entry);
+        var evidence = CalculateDescriptorQueryEvidence(scoreContext, entry);
         return Math.Clamp(
             (clampedRawScore + (GraphConfidenceEvidenceWeight * evidence))
                 / (1d + GraphConfidenceEvidenceWeight),
@@ -42,39 +42,35 @@ internal sealed partial class McpGatewayRuntime
     }
 
     private static double CalculateDescriptorQueryEvidence(
-        string confidenceQuery,
+        SearchScoreContext scoreContext,
         ToolCatalogEntry entry
     )
     {
-        var queryTerms = BuildOrderedGraphTerms(confidenceQuery)
-            .Take(GraphConfidenceMaxQueryTerms)
-            .ToArray();
-        if (queryTerms.Length == 0)
+        if (!scoreContext.HasConfidenceTerms)
         {
             return 1d;
         }
 
-        var descriptorTerms = BuildOrderedGraphTerms(entry.Document).ToArray();
-        if (descriptorTerms.Length == 0)
+        if (entry.ConfidenceTerms.Count == 0)
         {
             return 0d;
         }
 
         var supportedWeight = 0d;
         var totalWeight = 0d;
-        foreach (var queryTerm in queryTerms)
+        foreach (var queryTerm in scoreContext.ConfidenceTerms)
         {
-            var weight = Math.Min(GraphConfidenceTermWeightCap, queryTerm.Length);
-            totalWeight += weight;
-            supportedWeight += weight * CalculateBestTermSimilarity(queryTerm, descriptorTerms);
+            totalWeight += queryTerm.Weight;
+            supportedWeight +=
+                queryTerm.Weight * CalculateBestTermSimilarity(queryTerm, entry.ConfidenceTerms);
         }
 
         return totalWeight <= double.Epsilon ? 1d : supportedWeight / totalWeight;
     }
 
     private static double CalculateBestTermSimilarity(
-        string queryTerm,
-        IReadOnlyList<string> descriptorTerms
+        GraphConfidenceQueryTerm queryTerm,
+        IReadOnlyList<GraphConfidenceDescriptorTerm> descriptorTerms
     )
     {
         var best = 0d;
@@ -95,37 +91,41 @@ internal sealed partial class McpGatewayRuntime
         return best;
     }
 
-    private static double CalculateTermSimilarity(string queryTerm, string descriptorTerm)
+    private static double CalculateTermSimilarity(
+        GraphConfidenceQueryTerm queryTerm,
+        GraphConfidenceDescriptorTerm descriptorTerm
+    )
     {
-        if (string.Equals(queryTerm, descriptorTerm, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(queryTerm.Value, descriptorTerm.Value, StringComparison.OrdinalIgnoreCase))
         {
             return 1d;
         }
 
         if (
-            queryTerm.Length < GraphMinimumFuzzyTermLength
-            || descriptorTerm.Length < GraphMinimumFuzzyTermLength
+            queryTerm.Value.Length < GraphMinimumFuzzyTermLength
+            || descriptorTerm.Value.Length < GraphMinimumFuzzyTermLength
         )
         {
             return 0d;
         }
 
         if (
-            descriptorTerm.Contains(queryTerm, StringComparison.OrdinalIgnoreCase)
-            || queryTerm.Contains(descriptorTerm, StringComparison.OrdinalIgnoreCase)
+            descriptorTerm.Value.Contains(queryTerm.Value, StringComparison.OrdinalIgnoreCase)
+            || queryTerm.Value.Contains(descriptorTerm.Value, StringComparison.OrdinalIgnoreCase)
         )
         {
             return GraphContainsTermSimilarity;
         }
 
-        var similarity = CalculateDiceCoefficient(queryTerm, descriptorTerm);
+        var similarity = CalculateDiceCoefficient(queryTerm.Bigrams, descriptorTerm.Bigrams);
         return similarity >= GraphMinimumFuzzySimilarity ? similarity : 0d;
     }
 
-    private static double CalculateDiceCoefficient(string left, string right)
+    private static double CalculateDiceCoefficient(
+        IReadOnlySet<string> leftBigrams,
+        IReadOnlySet<string> rightBigrams
+    )
     {
-        var leftBigrams = CreateCharacterBigrams(left);
-        var rightBigrams = CreateCharacterBigrams(right);
         if (leftBigrams.Count == 0 || rightBigrams.Count == 0)
         {
             return 0d;

@@ -72,6 +72,17 @@ jobs:
       - name: Test
         run: dotnet test --solution ManagedCode.MCPGateway.slnx --configuration Release --no-build --verbosity normal
 
+      - name: Run full BenchmarkDotNet suite
+        run: dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*" --artifacts ./artifacts/benchmarks
+
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-benchmark-results
+          path: ./artifacts/benchmarks/**
+          retention-days: 14
+
       - name: Pack NuGet package
         run: dotnet pack src/ManagedCode.MCPGateway/ManagedCode.MCPGateway.csproj --configuration Release --no-build -p:IncludeSymbols=false -p:SymbolPackageFormat=snupkg --output ./artifacts
 

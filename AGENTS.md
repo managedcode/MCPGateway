@@ -20,6 +20,7 @@ This file defines how AI agents work in this solution.
 - Solution root: `.`
 - Projects or modules with local `AGENTS.md` files:
   - `src/ManagedCode.MCPGateway/`
+  - `benchmarks/ManagedCode.MCPGateway.Benchmarks/`
   - `tests/ManagedCode.MCPGateway.Tests/`
 
 ## Conversations (Self-Learning)
@@ -93,6 +94,10 @@ If no new rule is detected -> do not update the file.
 - roslynator-analyze: `dotnet tool run roslynator analyze src/ManagedCode.MCPGateway/ManagedCode.MCPGateway.csproj tests/ManagedCode.MCPGateway.Tests/ManagedCode.MCPGateway.Tests.csproj`
 - coverage: `dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml`
 - coverage-report: `dotnet tool run reportgenerator -reports:"artifacts/coverage/coverage.cobertura.xml" -targetdir:"artifacts/coverage-report" -reporttypes:"HtmlSummary;MarkdownSummaryGithub"`
+- benchmark: `dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*"`
+- benchmark-search: `dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*Search*"`
+- benchmark-index: `dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*Index*"`
+- benchmark-tools: `dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*ToolSet*"`
 
 ### Rule Precedence
 
@@ -162,10 +167,20 @@ If no new rule is detected -> do not update the file.
 - If a user adds or corrects a persistent workflow rule, update `AGENTS.md` first and only then continue with the task.
 - When a search-quality fix is requested as a concrete architectural change, finish the intended runtime behavior in the same task instead of stopping at a partial scoring-only step, because partial search fixes leave the real retrieval defect unresolved.
 - When the user asks for a shipped feature set, implement the runtime behavior end-to-end with production-ready code and tests instead of leaving placeholder, mocked, or temporary execution paths, because partial delivery is explicitly rejected in this repository.
+- When adopting new upstream graph/search capabilities such as `ManagedCode.MarkdownLd.Kb` schema-aware search, implement the real hybrid runtime benefits with tests and docs instead of limiting the task to dependency bumps or export helpers, because the user expects the package to capture the upstream search value end-to-end.
+- When adding federated graph search, do not reject federation as a category; expose it through explicit allowlisted APIs or built-in tools with diagnostics and tests, because the user wants powerful hybrid/federated search while keeping hidden unconfigured network calls out of the default path.
+- Keep graph/search/index-specific capabilities on the appropriate search or indexing public surface instead of forcing them directly onto the MCP-facing `IMcpGateway` facade, because graph federation and graph export are search/index concerns rather than generic MCP gateway operations.
+- Markdown-LD graph search must be SPARQL-backed when schema-aware graph search is enabled; use `ManagedCode.MarkdownLd.Kb` schema search/federated SPARQL as the primary graph retrieval path and keep token-distance or vector signals as hybrid ranking/supporting signals rather than as a replacement for graph SPARQL.
+- For graph/search delivery, do not rely on old mock-only coverage to prove retrieval quality; prefer real gateway integration tests that exercise generated Markdown-LD/SPARQL graph behavior, MCP-backed graph tools, and explicit vector-enabled paths so tests prove the shipped graph-first runtime instead of a mocked approximation.
+- Built-in graph/search tooling must include explicit schema/profile and index-build/inspection tools, because consumers and LLM agents need to understand, rebuild, and validate the tool graph/index before relying on graph/SPARQL retrieval.
+- For performance optimization work, add or update BenchmarkDotNet benchmarks with allocation statistics and use the benchmark results to choose hot-path changes; avoid speculative `ValueTask`, `struct`, `AsSpan`, compiled-lambda, or collection rewrites unless they improve measured runtime or allocation behavior without hurting API clarity.
+- CI and release benchmark coverage must run the full BenchmarkDotNet benchmark suite rather than smoke-only or shortcut benchmark checks, because benchmark results are used as real performance evidence in this repository.
+- README benchmark documentation must include the latest representative benchmark result snapshot when benchmark coverage or performance behavior changes, because the user expects README readers to see actual measured results, not only benchmark commands.
 
 ### Repository Layout
 
 - `src/ManagedCode.MCPGateway/` contains the package source.
+- `benchmarks/ManagedCode.MCPGateway.Benchmarks/` contains BenchmarkDotNet performance and allocation benchmarks.
 - `tests/ManagedCode.MCPGateway.Tests/` contains integration-style package tests.
 - `src/ManagedCode.MCPGateway/Gateway/` contains the public gateway facade, factory, options, DI entry points, runtime core, telemetry, and serialization.
 - `src/ManagedCode.MCPGateway/Discovery/` contains reusable `AITool` meta-tools, auto-discovery chat integration, and discovery-specific registration/configuration.
@@ -226,6 +241,7 @@ If no new rule is detected -> do not update the file.
   - MCP tool indexing and invocation
   - vector search behavior
   - Markdown-LD graph search and vector-to-graph fallback behavior
+- Treat graph search as the default behavior under test; vector search tests are valid only when the test explicitly enables embeddings/vector strategy and should not redefine the default retrieval story away from graph/SPARQL.
 - For MCP protocol coverage, prefer end-to-end integration tests that use the official `ModelContextProtocol` C# SDK on both client and server paths instead of test doubles when the behavior depends on real protocol contracts, because MCP regressions often hide outside mocked flows.
 - When changing MCP discovery, routing, search, or invocation behavior, add multi-step integration cases with realistic tool metadata, side-effect boundaries, and client-driven execution so retrieval and invocation are verified under production-like conditions.
 - Keep embedding-based search covered with deterministic local tests by using a fake or test-only embedding generator.
@@ -329,6 +345,11 @@ If no new rule is detected -> do not update the file.
 - NuGet package dependencies over local project references for `ManagedCode.MarkdownLd.Kb`
 - Production-ready feature implementations with real runtime behavior and test coverage instead of temporary or placeholder execution paths
 - Developer-controlled index lifecycle and explicit cache-strategy selection over hardwired hidden defaults
+- Full hybrid search that uses upstream graph/schema/federation capabilities end-to-end when those capabilities are available
+- Clear API boundaries between MCP gateway operations and graph/search/index operations
+- Real integration-style graph/SPARQL search coverage over mock-only search tests
+- Built-in tools that expose graph schema/profile and index-build state for agent-visible diagnostics
+- Benchmark-driven performance work with allocation statistics for search, index-build, and meta-tool hot paths
 
 ### Dislikes
 
@@ -339,3 +360,7 @@ If no new rule is detected -> do not update the file.
 - Self-rolled in-memory storage when standard .NET caching abstractions already fit the scenario
 - Legacy/obsolete compatibility leftovers after a replacement is accepted
 - `ManagedCode`-prefixed public DI/setup API names that should have been cleaned up
+- Mixing graph/search/index-specific operations into the MCP-facing gateway facade when a narrower search/index surface is the better boundary
+- Old mock-only search tests that do not prove the real graph-first runtime behavior
+- Speculative micro-optimizations that make the code harder to read without BenchmarkDotNet evidence
+- Smoke-only benchmark CI that skips the real BenchmarkDotNet benchmark suite

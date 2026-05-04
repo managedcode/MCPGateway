@@ -25,7 +25,7 @@ Constraints:
 - keep `Graph` as the default strategy
 - keep the gateway library-first and MCP-tool-first
 - do not introduce Microsoft Agentic Framework
-- do not expose a separate public BM25 strategy in this task
+- do not expose a separate public BM25 strategy in this task; BM25/fuzzy support remains inside the Markdown-LD graph path
 - keep vector search optional and host-provided
 
 ## Decision
@@ -37,6 +37,7 @@ Key points:
 - When vectors are available, `Auto` performs vector ranking first and treats that semantic ordering as the primary result set.
 - Markdown-LD graph search still runs in `Auto`, but only after vector ranking, to supplement confidence and to supply related or next-step matches.
 - Graph supplementation is semantically bounded by the vector candidate window so irrelevant graph-only hits do not flood multilingual or noisy searches.
+- For larger catalogs, `Auto` skips unbounded graph supplementation after a usable vector primary result until graph retrieval can be candidate-bounded cheaply; vector-unusable fallback still uses the graph path.
 - When normalization changes the query, vector search preserves both the original query and the English-normalized query, while graph search prefers the English-normalized query.
 - When query embeddings are unavailable, fail, or return an unusable vector, `Auto` falls back to Markdown-LD graph ranking.
 - The package will emit built-in .NET runtime telemetry for index builds and search execution through `ActivitySource` and `Meter`, including vector token usage for query embeddings and index embedding batches.
@@ -125,7 +126,7 @@ Mitigations:
 - keep `Graph` as the default zero-embedding path
 - keep graph supplementation bounded by the vector candidate set
 - keep telemetry built on first-party .NET diagnostics only
-- add deterministic regression and performance-smoke tests
+- add deterministic performance regression tests and full BenchmarkDotNet benchmark coverage
 
 ## Invariants
 

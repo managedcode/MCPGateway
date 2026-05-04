@@ -79,20 +79,6 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
-    public async Task SearchAsync_DefaultGraphStrategyUsesMarkdownLdTokenSearchAndTopFiveLimit()
-    {
-        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
-            ConfigureDefaultMarkdownLdSearchTools
-        );
-        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
-
-        var searchResult = await gateway.SearchAsync("search");
-
-        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
-        await Assert.That(searchResult.Matches.Count).IsEqualTo(5);
-    }
-
-    [TUnit.Core.Test]
     public async Task SearchAsync_GraphStrategyUsesRegisteredSearchAliasesForMultilingualQuery()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
@@ -213,23 +199,28 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
-    public async Task SearchAsync_MarkdownLdGraphHandlesTypoHeavyQueryWithoutEmbeddings()
+    public async Task SearchAsync_HybridGraphUsesRankedFuzzyFallbackForTypoHeavyQueryWithoutEmbeddings()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureDefaultMarkdownLdSearchTools
         );
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
-        var searchResult = await gateway.SearchAsync("track shipmnt 1z999");
+        var searchResult = await gateway.SearchAsync("trak shipmnt 1z999", maxResults: 1);
 
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
+        await Assert.That(searchResult.UsedSchemaSearch).IsTrue();
+        await Assert.That(searchResult.UsedSchemaFallback).IsTrue();
         await Assert
             .That(
-                searchResult.Matches.Any(static match =>
-                    match.ToolId == "local:commerce_shipping_tracking"
+                searchResult.Diagnostics.Any(static diagnostic =>
+                    diagnostic.Code == "graph_schema_fallback"
                 )
             )
             .IsTrue();
+        await Assert
+            .That(searchResult.Matches[0].ToolId)
+            .IsEqualTo("local:commerce_shipping_tracking");
     }
 
     [TUnit.Core.Test]

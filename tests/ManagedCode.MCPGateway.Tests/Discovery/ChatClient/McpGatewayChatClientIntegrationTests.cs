@@ -28,6 +28,49 @@ public sealed class McpGatewayChatClientIntegrationTests
     }
 
     [TUnit.Core.Test]
+    public async Task ChatOptions_AddMcpGatewayGraphTools_ResolvesToolSetAndAvoidsDuplicates()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
+
+        var options = new ChatOptions()
+            .AddMcpGatewayGraphTools(serviceProvider)
+            .AddMcpGatewayGraphTools(serviceProvider);
+
+        await Assert.That(options.Tools).IsNotNull();
+        await Assert.That(options.Tools!.Count).IsEqualTo(5);
+        await Assert
+            .That(options.Tools.Select(static tool => tool.Name))
+            .IsEquivalentTo([
+                McpGatewayToolSet.DefaultGraphSchemaToolName,
+                McpGatewayToolSet.DefaultToolIndexBuildToolName,
+                McpGatewayToolSet.DefaultGraphSearchToolName,
+                McpGatewayToolSet.DefaultGraphFederatedSearchToolName,
+                McpGatewayToolSet.DefaultGraphExportToolName,
+            ]);
+    }
+
+    [TUnit.Core.Test]
+    public async Task ToolSet_CreateTools_DoesNotRequireGraphSearchSurface()
+    {
+        var toolSet = new McpGatewayToolSet(new WarmupProbeGateway());
+
+        var tools = toolSet.CreateTools();
+        NotSupportedException? exception = null;
+        try
+        {
+            _ = toolSet.CreateGraphTools();
+        }
+        catch (NotSupportedException ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(tools.Count).IsEqualTo(3);
+        await Assert.That(exception).IsNotNull();
+        await Assert.That(exception!.Message).Contains("IMcpGatewayGraphSearch");
+    }
+
+    [TUnit.Core.Test]
     public async Task ToolSet_AddTools_ReturnsNewListWithoutMutatingInput()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
@@ -312,11 +355,15 @@ public sealed class McpGatewayChatClientIntegrationTests
                     McpGatewayToolSet.DefaultSearchToolName
                 ) ?? throw new InvalidOperationException("Second hybrid search result is missing.");
 
-        await Assert.That(firstSearchResult.RankingMode).IsEqualTo("hybrid");
+        await Assert
+            .That(firstSearchResult.RankingMode is "vector" or "hybrid")
+            .IsTrue();
         await Assert
             .That(firstSearchResult.Matches[0].ToolId)
             .IsEqualTo(GatewayIntegrationTestSupport.WeatherToolId);
-        await Assert.That(secondSearchResult.RankingMode is "graph" or "hybrid").IsTrue();
+        await Assert
+            .That(secondSearchResult.RankingMode is "vector" or "graph" or "hybrid")
+            .IsTrue();
         await Assert
             .That(secondSearchResult.Matches[0].ToolId)
             .IsEqualTo(GatewayIntegrationTestSupport.PortfolioToolId);

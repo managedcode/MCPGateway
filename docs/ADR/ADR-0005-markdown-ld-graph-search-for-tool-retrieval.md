@@ -3,13 +3,15 @@
 Status: Implemented  
 Date: 2026-04-15  
 Related Features: [`docs/Features/SearchQueryNormalizationAndRanking.md`](../Features/SearchQueryNormalizationAndRanking.md)  
-Related ADRs: [`ADR-0002`](ADR-0002-search-ranking-and-query-normalization.md)
+Related ADRs: [`ADR-0002`](ADR-0002-search-ranking-and-query-normalization.md), [`ADR-0012`](ADR-0012-schema-aware-sparql-graph-search.md)
 
 ## Context
 
 `ManagedCode.MCPGateway` must keep one searchable execution surface for local `AITool` instances and MCP tools while avoiding a mandatory paid embedding dependency. Vector ranking is still useful when a host opts into embeddings, but the default path needs to be deterministic, local, and strong enough for focused tool discovery.
 
-The selected dependency is [`ManagedCode.MarkdownLd.Kb`](https://github.com/managedcode/markdown-ld-kb), a .NET library that turns Markdown knowledge documents into an in-memory RDF/JSON-LD graph and provides deterministic Tiktoken token-distance focused search. This lets the gateway model the tool catalog as a graph without introducing a hosted graph database or provider-specific AI service.
+This ADR records the original Markdown-LD graph-search decision. [`ADR-0012`](ADR-0012-schema-aware-sparql-graph-search.md) updates the retrieval implementation to use schema-aware SPARQL as the primary graph path, ranked BM25/fuzzy graph search as hybrid support/fallback, and token-distance graph search as an explicit compatibility mode.
+
+The selected dependency is [`ManagedCode.MarkdownLd.Kb`](https://github.com/managedcode/markdown-ld-kb), a .NET library that turns Markdown knowledge documents into an in-memory RDF/JSON-LD graph and provides deterministic schema/SPARQL, ranked BM25/fuzzy, and Tiktoken token-distance graph search paths. This lets the gateway model the tool catalog as a graph without introducing a hosted graph database or provider-specific AI service.
 
 Constraints:
 
@@ -53,8 +55,12 @@ flowchart LR
     Markdown --> Graph["ManagedCode.MarkdownLd.Kb graph"]
     FileDocs --> Graph
     CustomDocs --> Graph
-    Graph --> Focused["Focused token-distance search"]
-    Focused --> Expansion["Primary + related + next-step matches"]
+    Graph --> Schema["Schema-aware SPARQL search"]
+    Graph --> Ranked["Ranked BM25 / fuzzy fallback"]
+    Graph --> Focused["Focused token-distance compatibility mode"]
+    Schema --> Expansion["Primary + related + next-step matches"]
+    Ranked --> Expansion
+    Focused --> Expansion
     Expansion --> MatchMap["Document id to ToolId map"]
     MatchMap --> Result["McpGatewaySearchResult"]
     Result --> Invoke["Existing gateway invoke path"]
@@ -138,7 +144,7 @@ Trade-offs:
 
 - the package dependency surface grows through `ManagedCode.MarkdownLd.Kb` and its Markdown/RDF/tokenization dependencies
 - default graph indexing does more work than the removed tokenizer-only path
-- graph ranking is token-distance focused search over graph documents; it complements but does not replace true semantic embeddings
+- graph ranking now uses schema-aware SPARQL first in the default hybrid mode; ranked BM25/fuzzy search complements it, and token-distance focused search remains available as an explicit graph mode
 - file-backed graph mode must map loaded documents back to the current gateway catalog, so graph files and registered tools need stable source/tool identities
 
 Mitigations:

@@ -100,7 +100,7 @@ Positive:
 Trade-offs:
 
 - graph indexing is heavier than the removed local tokenizer pipeline
-- multilingual quality without a normalizer still depends on the graph corpus and Markdown-LD token-distance behavior
+- multilingual quality without a normalizer still depends on the graph corpus and Markdown-LD ranked/fuzzy behavior
 - documentation must clearly distinguish default graph mode from opt-in embedding mode
 
 Mitigations:
