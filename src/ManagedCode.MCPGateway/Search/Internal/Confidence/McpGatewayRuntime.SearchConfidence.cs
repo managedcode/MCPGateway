@@ -26,18 +26,20 @@ internal sealed partial class McpGatewayRuntime
         double rawScore
     )
     {
-        var clampedRawScore = Math.Clamp(rawScore, 0d, 1d);
+        var clampedRawScore = Math.Clamp(rawScore, SearchScoreMinimum, SearchScoreMaximum);
         if (clampedRawScore <= double.Epsilon)
         {
-            return 0d;
+            return SearchScoreMinimum;
         }
 
         var evidence = CalculateDescriptorQueryEvidence(scoreContext, entry);
         return Math.Clamp(
-            (clampedRawScore + (GraphConfidenceEvidenceWeight * evidence))
-                / (1d + GraphConfidenceEvidenceWeight),
-            0d,
-            1d
+            (
+                (GraphConfidenceRawScoreWeight * clampedRawScore)
+                + (GraphConfidenceEvidenceWeight * evidence)
+            ) / (GraphConfidenceRawScoreWeight + GraphConfidenceEvidenceWeight),
+            SearchScoreMinimum,
+            SearchScoreMaximum
         );
     }
 
@@ -48,16 +50,16 @@ internal sealed partial class McpGatewayRuntime
     {
         if (!scoreContext.HasConfidenceTerms)
         {
-            return 1d;
+            return SearchScoreMaximum;
         }
 
         if (entry.ConfidenceTerms.Count == 0)
         {
-            return 0d;
+            return SearchScoreMinimum;
         }
 
-        var supportedWeight = 0d;
-        var totalWeight = 0d;
+        var supportedWeight = SearchScoreMinimum;
+        var totalWeight = SearchScoreMinimum;
         foreach (var queryTerm in scoreContext.ConfidenceTerms)
         {
             totalWeight += queryTerm.Weight;
@@ -65,7 +67,7 @@ internal sealed partial class McpGatewayRuntime
                 queryTerm.Weight * CalculateBestTermSimilarity(queryTerm, entry.ConfidenceTerms);
         }
 
-        return totalWeight <= double.Epsilon ? 1d : supportedWeight / totalWeight;
+        return totalWeight <= double.Epsilon ? SearchScoreMaximum : supportedWeight / totalWeight;
     }
 
     private static double CalculateBestTermSimilarity(
@@ -73,7 +75,7 @@ internal sealed partial class McpGatewayRuntime
         IReadOnlyList<GraphConfidenceDescriptorTerm> descriptorTerms
     )
     {
-        var best = 0d;
+        var best = SearchScoreMinimum;
         foreach (var descriptorTerm in descriptorTerms)
         {
             var similarity = CalculateTermSimilarity(queryTerm, descriptorTerm);
@@ -82,9 +84,9 @@ internal sealed partial class McpGatewayRuntime
                 best = similarity;
             }
 
-            if (best >= 1d)
+            if (best >= SearchScoreMaximum)
             {
-                return 1d;
+                return SearchScoreMaximum;
             }
         }
 
@@ -98,7 +100,7 @@ internal sealed partial class McpGatewayRuntime
     {
         if (string.Equals(queryTerm.Value, descriptorTerm.Value, StringComparison.OrdinalIgnoreCase))
         {
-            return 1d;
+            return SearchScoreMaximum;
         }
 
         if (
@@ -106,7 +108,7 @@ internal sealed partial class McpGatewayRuntime
             || descriptorTerm.Value.Length < GraphMinimumFuzzyTermLength
         )
         {
-            return 0d;
+            return SearchScoreMinimum;
         }
 
         if (
@@ -118,7 +120,7 @@ internal sealed partial class McpGatewayRuntime
         }
 
         var similarity = CalculateDiceCoefficient(queryTerm.Bigrams, descriptorTerm.Bigrams);
-        return similarity >= GraphMinimumFuzzySimilarity ? similarity : 0d;
+        return similarity >= GraphMinimumFuzzySimilarity ? similarity : SearchScoreMinimum;
     }
 
     private static double CalculateDiceCoefficient(
@@ -128,7 +130,7 @@ internal sealed partial class McpGatewayRuntime
     {
         if (leftBigrams.Count == 0 || rightBigrams.Count == 0)
         {
-            return 0d;
+            return SearchScoreMinimum;
         }
 
         var overlap = 0;
@@ -140,7 +142,8 @@ internal sealed partial class McpGatewayRuntime
             }
         }
 
-        return (2d * overlap) / (leftBigrams.Count + rightBigrams.Count);
+        return (GraphConfidenceDiceCoefficientScale * overlap)
+            / (leftBigrams.Count + rightBigrams.Count);
     }
 
     private static HashSet<string> CreateCharacterBigrams(string term)

@@ -161,62 +161,62 @@ internal sealed partial class McpGatewayRuntime
         var score = match.Score;
         if (match.IsEnabledByDefault)
         {
-            score += 0.02d;
+            score += RouteEnabledByDefaultScoreBoost;
         }
 
         if (preferReadOnly is true)
         {
             score += match.IsReadOnly switch
             {
-                true => 0.08d,
-                false => -0.08d,
-                _ => 0d,
+                true => RouteReadOnlyPreferredScoreBoost,
+                false => RouteWritableWhenReadOnlyPreferredScorePenalty,
+                _ => RouteNoScoreAdjustment,
             };
         }
         else if (preferReadOnly is false)
         {
             score += match.IsReadOnly switch
             {
-                false => 0.05d,
-                true => -0.03d,
-                _ => 0d,
+                false => RouteWritablePreferredScoreBoost,
+                true => RouteReadOnlyWhenWritablePreferredScorePenalty,
+                _ => RouteNoScoreAdjustment,
             };
             score += match.IsDestructive switch
             {
-                true => 0.02d,
-                false => 0.01d,
-                _ => 0d,
+                true => RouteDestructiveWritableScoreBoost,
+                false => RouteNonDestructiveWritableScoreBoost,
+                _ => RouteNoScoreAdjustment,
             };
         }
 
         if (match.IsIdempotent is true)
         {
-            score += 0.01d;
+            score += RouteIdempotentScoreBoost;
         }
 
         score += match.CostTier switch
         {
-            McpGatewayToolCostTier.Low => 0.03d,
-            McpGatewayToolCostTier.Medium => 0.01d,
-            McpGatewayToolCostTier.High => -0.02d,
-            _ => 0d,
+            McpGatewayToolCostTier.Low => RouteLowCostScoreBoost,
+            McpGatewayToolCostTier.Medium => RouteMediumCostScoreBoost,
+            McpGatewayToolCostTier.High => RouteHighCostScorePenalty,
+            _ => RouteNoScoreAdjustment,
         };
         score += match.LatencyTier switch
         {
-            McpGatewayToolLatencyTier.Low => 0.03d,
-            McpGatewayToolLatencyTier.Medium => 0.01d,
-            McpGatewayToolLatencyTier.High => -0.02d,
-            _ => 0d,
+            McpGatewayToolLatencyTier.Low => RouteLowLatencyScoreBoost,
+            McpGatewayToolLatencyTier.Medium => RouteMediumLatencyScoreBoost,
+            McpGatewayToolLatencyTier.High => RouteHighLatencyScorePenalty,
+            _ => RouteNoScoreAdjustment,
         };
 
         if (match.Categories.Count > 0)
         {
-            score += 0.01d;
+            score += RouteCategorizedToolScoreBoost;
         }
 
         if (match.UsageExamples.Count > 0)
         {
-            score += 0.01d;
+            score += RouteUsageExampleScoreBoost;
         }
 
         return score;

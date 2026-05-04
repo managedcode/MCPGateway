@@ -323,7 +323,7 @@ internal sealed partial class McpGatewayRuntime
         bool applyLexicalBoosts
     )
     {
-        var cosine = Math.Max(0d, CalculateCosine(entry, queryVector, queryMagnitude));
+        var cosine = Math.Max(SearchScoreMinimum, CalculateCosine(entry, queryVector, queryMagnitude));
         return applyLexicalBoosts ? ApplySearchBoosts(entry, scoreContext, cosine) : cosine;
     }
 

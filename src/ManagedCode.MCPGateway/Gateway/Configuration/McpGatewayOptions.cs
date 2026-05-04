@@ -18,8 +18,6 @@ public sealed class McpGatewayOptions
 
     public string? MarkdownLdGraphPath { get; set; }
 
-    public int MarkdownLdFederatedQueryTimeoutMilliseconds { get; set; } = 15000;
-
     public Func<
         IReadOnlyList<McpGatewayToolDescriptor>,
         CancellationToken,

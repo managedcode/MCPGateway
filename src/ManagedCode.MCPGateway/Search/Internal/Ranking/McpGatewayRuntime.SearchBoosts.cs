@@ -78,6 +78,6 @@ internal sealed partial class McpGatewayRuntime
         }
 
         var coverage = (double)overlap / scoreContext.BoostTerms.Count;
-        return Math.Min(1d, score + (coverage * ToolNameSignalWeight));
+        return Math.Min(SearchScoreMaximum, score + (coverage * ToolNameSignalWeight));
     }
 }

@@ -35,7 +35,7 @@ internal sealed partial class McpGatewayRuntime
         IReadOnlySet<string> SearchBoostTerms,
         IReadOnlyList<GraphConfidenceDescriptorTerm> ConfidenceTerms,
         float[]? Vector = null,
-        double Magnitude = 0d
+        double Magnitude = ToolEmbeddingDefaultMagnitude
     );
 
     private sealed record ToolSearchTermIndex(

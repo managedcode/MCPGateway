@@ -96,7 +96,7 @@ internal sealed partial class McpGatewayRuntime
                 if (!searchInput.HasTerms)
                 {
                     var browse = snapshot
-                        .Entries.Select(static entry => ToSearchMatch(entry, 0d))
+                        .Entries.Select(static entry => ToSearchMatch(entry, SearchScoreMinimum))
                         .Where(match => request.IncludeDisabledTools || match.IsEnabledByDefault)
                         .Take(limit)
                         .ToList();
@@ -196,7 +196,7 @@ internal sealed partial class McpGatewayRuntime
             entry.Descriptor.Description,
             entry.Descriptor.RequiredArguments,
             entry.Descriptor.InputSchemaJson,
-            Math.Clamp(score, 0d, 1d)
+            Math.Clamp(score, SearchScoreMinimum, SearchScoreMaximum)
         )
         {
             SearchAliases = entry.Descriptor.SearchAliases,

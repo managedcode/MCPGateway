@@ -116,8 +116,11 @@ internal sealed partial class McpGatewayRuntime
         );
         foreach (var (term, frequency) in documentFrequencies)
         {
-            inverseDocumentFrequency[term] = Math.Log((candidateCount + 1d) / (frequency + 0.5d))
-                + 1d;
+            inverseDocumentFrequency[term] =
+                Math.Log(
+                    (candidateCount + GraphCandidateIdfDocumentOffset)
+                        / (frequency + GraphCandidateIdfFrequencyOffset)
+                ) + GraphCandidateIdfBaseWeight;
         }
 
         return inverseDocumentFrequency;
@@ -145,7 +148,7 @@ internal sealed partial class McpGatewayRuntime
             queryTerms,
             index.InverseDocumentFrequency
         );
-        if (maximumScore <= 0d)
+        if (maximumScore <= SearchScoreMinimum)
         {
             return [];
         }
@@ -159,12 +162,16 @@ internal sealed partial class McpGatewayRuntime
                 index.InverseDocumentFrequency,
                 enableFuzzyTokenMatching
             );
-            if (score <= 0d)
+            if (score <= SearchScoreMinimum)
             {
                 continue;
             }
 
-            var normalizedScore = Math.Clamp(score / maximumScore, 0d, 1d);
+            var normalizedScore = Math.Clamp(
+                score / maximumScore,
+                SearchScoreMinimum,
+                SearchScoreMaximum
+            );
             matches.Add(
                 new KnowledgeGraphRankedSearchMatch(
                     candidate.NodeId,
@@ -191,7 +198,7 @@ internal sealed partial class McpGatewayRuntime
         IReadOnlyDictionary<string, double> inverseDocumentFrequency
     )
     {
-        var maximumScore = 0d;
+        var maximumScore = SearchScoreMinimum;
         foreach (var term in queryTerms)
         {
             maximumScore += ResolveGraphCandidateTermWeight(term, inverseDocumentFrequency);
@@ -207,7 +214,7 @@ internal sealed partial class McpGatewayRuntime
         bool enableFuzzyTokenMatching
     )
     {
-        var score = 0d;
+        var score = SearchScoreMinimum;
         foreach (var term in queryTerms)
         {
             if (candidate.Terms.Contains(term))
@@ -218,7 +225,9 @@ internal sealed partial class McpGatewayRuntime
 
             if (enableFuzzyTokenMatching && HasFuzzyGraphCandidateTerm(candidate.Terms, term))
             {
-                score += ResolveGraphCandidateTermWeight(term, inverseDocumentFrequency) * 0.6d;
+                score +=
+                    ResolveGraphCandidateTermWeight(term, inverseDocumentFrequency)
+                    * GraphCandidateFuzzyScoreMultiplier;
             }
         }
 
@@ -229,7 +238,9 @@ internal sealed partial class McpGatewayRuntime
         string term,
         IReadOnlyDictionary<string, double> inverseDocumentFrequency
     ) =>
-        inverseDocumentFrequency.TryGetValue(term, out var weight) ? weight : 1d;
+        inverseDocumentFrequency.TryGetValue(term, out var weight)
+            ? weight
+            : GraphCandidateDefaultTermWeight;
 
     private static bool HasFuzzyGraphCandidateTerm(IEnumerable<string> candidateTerms, string term)
     {

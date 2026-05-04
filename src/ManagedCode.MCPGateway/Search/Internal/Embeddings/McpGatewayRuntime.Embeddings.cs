@@ -60,16 +60,16 @@ internal sealed partial class McpGatewayRuntime
             || queryMagnitude <= double.Epsilon
         )
         {
-            return 0d;
+            return EmbeddingCosineUnavailableScore;
         }
 
         var overlap = Math.Min(entry.Vector.Length, queryVector.Length);
         if (overlap == 0)
         {
-            return 0d;
+            return EmbeddingCosineUnavailableScore;
         }
 
-        var dot = 0d;
+        var dot = EmbeddingDotProductInitialValue;
         for (var index = 0; index < overlap; index++)
         {
             dot += entry.Vector[index] * queryVector[index];
@@ -82,10 +82,10 @@ internal sealed partial class McpGatewayRuntime
     {
         if (vector.Count == 0)
         {
-            return 0d;
+            return ToolEmbeddingDefaultMagnitude;
         }
 
-        var magnitudeSquared = 0d;
+        var magnitudeSquared = EmbeddingMagnitudeSquaredInitialValue;
         foreach (var component in vector)
         {
             magnitudeSquared += component * component;

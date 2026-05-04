@@ -645,7 +645,6 @@ var federatedResult = await graphSearch.SearchGraphAsync(
 ```
 
 The gateway never discovers remote SPARQL endpoints on its own. It uses the configured allowlist, can bind the local gateway graph as a federated service, and reports diagnostics when a requested endpoint is invalid or blocked.
-Federated query execution uses `MarkdownLdFederatedQueryTimeoutMilliseconds`, which defaults to `15000`.
 
 ## Graph Sources
 

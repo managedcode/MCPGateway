@@ -40,32 +40,44 @@ internal sealed partial class McpGatewayRuntime
             Prefixes = CreateToolGraphSchemaPrefixes(),
             TextPredicates =
             [
-                new KnowledgeGraphSchemaTextPredicate(SchemaPredicateName, 1.2d),
-                new KnowledgeGraphSchemaTextPredicate(SchemaPredicateDescription, 1.1d),
-                new KnowledgeGraphSchemaTextPredicate(SchemaPredicateKeywords, 0.95d),
-                new KnowledgeGraphSchemaTextPredicate(SkosPredicatePrefLabel, 0.75d),
+                new KnowledgeGraphSchemaTextPredicate(
+                    SchemaPredicateName,
+                    GraphSchemaNameTextWeight
+                ),
+                new KnowledgeGraphSchemaTextPredicate(
+                    SchemaPredicateDescription,
+                    GraphSchemaDescriptionTextWeight
+                ),
+                new KnowledgeGraphSchemaTextPredicate(
+                    SchemaPredicateKeywords,
+                    GraphSchemaKeywordsTextWeight
+                ),
+                new KnowledgeGraphSchemaTextPredicate(
+                    SkosPredicatePrefLabel,
+                    GraphSchemaPrefLabelTextWeight
+                ),
             ],
             RelationshipPredicates =
             [
                 new KnowledgeGraphSchemaRelationshipPredicate(
                     SchemaPredicateAbout,
                     [SchemaPredicateName, SkosPredicatePrefLabel],
-                    0.9d
+                    GraphSchemaAboutRelationshipWeight
                 ),
                 new KnowledgeGraphSchemaRelationshipPredicate(
                     SchemaPredicateMentions,
                     [SchemaPredicateName],
-                    0.7d
+                    GraphSchemaMentionsRelationshipWeight
                 ),
                 new KnowledgeGraphSchemaRelationshipPredicate(
                     KbPredicateMemberOf,
                     [SchemaPredicateName, SkosPredicatePrefLabel],
-                    0.8d
+                    GraphSchemaGroupMembershipRelationshipWeight
                 ),
                 new KnowledgeGraphSchemaRelationshipPredicate(
                     ProvPredicateWasDerivedFrom,
                     [SchemaPredicateName, SchemaPredicateDescription],
-                    0.65d
+                    GraphSchemaProvenanceRelationshipWeight
                 )
                 {
                     Direction = KnowledgeGraphSchemaRelationshipDirection.Inbound,
@@ -76,22 +88,22 @@ internal sealed partial class McpGatewayRuntime
                 new KnowledgeGraphSchemaExpansionPredicate(
                     KbPredicateRelatedTo,
                     KnowledgeGraphSchemaSearchRole.Related,
-                    0.75d
+                    GraphSchemaRelatedExpansionScore
                 ),
                 new KnowledgeGraphSchemaExpansionPredicate(
                     KbPredicateNextStep,
                     KnowledgeGraphSchemaSearchRole.NextStep,
-                    0.9d
+                    GraphSchemaNextStepExpansionScore
                 ),
                 new KnowledgeGraphSchemaExpansionPredicate(
                     SchemaPredicateMentions,
                     KnowledgeGraphSchemaSearchRole.Related,
-                    0.35d
+                    GraphSchemaMentionsExpansionScore
                 ),
                 new KnowledgeGraphSchemaExpansionPredicate(
                     SchemaPredicateHasPart,
                     KnowledgeGraphSchemaSearchRole.Related,
-                    0.25d
+                    GraphSchemaHasPartExpansionScore
                 ),
             ],
             TypeFilters = [SchemaTypeArticle, KbTypeMarkdownDocument],

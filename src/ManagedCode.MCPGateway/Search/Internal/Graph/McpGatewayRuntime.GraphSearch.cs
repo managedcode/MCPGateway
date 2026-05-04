@@ -442,7 +442,11 @@ internal sealed partial class McpGatewayRuntime
             var score = CalibrateGraphConfidence(
                 entry,
                 scoreContext,
-                ApplySearchBoosts(entry, scoreContext, Math.Clamp(match.Score, 0d, 1d))
+                ApplySearchBoosts(
+                    entry,
+                    scoreContext,
+                    Math.Clamp(match.Score, SearchScoreMinimum, SearchScoreMaximum)
+                )
             );
             if (
                 !bestScores.TryGetValue(entry.Descriptor.ToolId, out var existing)

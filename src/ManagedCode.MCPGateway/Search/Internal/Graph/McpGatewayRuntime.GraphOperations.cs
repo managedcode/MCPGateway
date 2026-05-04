@@ -222,7 +222,7 @@ internal sealed partial class McpGatewayRuntime
         {
             AllowedServiceEndpoints = serviceEndpoints,
             LocalServiceBindings = localBindings,
-            QueryExecutionTimeoutMilliseconds = _markdownLdFederatedQueryTimeoutMilliseconds,
+            QueryExecutionTimeoutMilliseconds = FederatedSparqlQueryTimeoutMilliseconds,
         };
     }
 
@@ -331,7 +331,7 @@ internal sealed partial class McpGatewayRuntime
             match.NodeId,
             match.Label,
             match.Role.ToString(),
-            Math.Clamp(match.Score, 0d, 1d),
+            Math.Clamp(match.Score, SearchScoreMinimum, SearchScoreMaximum),
             [],
             []
         )
@@ -352,7 +352,7 @@ internal sealed partial class McpGatewayRuntime
             match.NodeId,
             match.Label,
             match.Role.ToString(),
-            Math.Clamp(match.Score, 0d, 1d),
+            Math.Clamp(match.Score, SearchScoreMinimum, SearchScoreMaximum),
             match.Types,
             MapGraphSearchEvidence(match.Evidence)
         )
@@ -376,7 +376,7 @@ internal sealed partial class McpGatewayRuntime
                     item.PredicateId,
                     item.MatchedText,
                     item.Kind.ToString(),
-                    Math.Clamp(item.Score, 0d, 1d)
+                    Math.Clamp(item.Score, SearchScoreMinimum, SearchScoreMaximum)
                 )
                 {
                     RelatedNodeId = item.RelatedNodeId,
@@ -423,7 +423,11 @@ internal sealed partial class McpGatewayRuntime
         var score = CalibrateGraphConfidence(
             entry,
             scoreContext,
-            ApplySearchBoosts(entry, scoreContext, Math.Clamp(match.Score, 0d, 1d))
+            ApplySearchBoosts(
+                entry,
+                scoreContext,
+                Math.Clamp(match.Score, SearchScoreMinimum, SearchScoreMaximum)
+            )
         );
         return ToSearchMatch(entry, score);
     }
@@ -442,7 +446,11 @@ internal sealed partial class McpGatewayRuntime
         var score = CalibrateGraphConfidence(
             entry,
             scoreContext,
-            ApplySearchBoosts(entry, scoreContext, Math.Clamp(match.Score, 0d, 1d))
+            ApplySearchBoosts(
+                entry,
+                scoreContext,
+                Math.Clamp(match.Score, SearchScoreMinimum, SearchScoreMaximum)
+            )
         );
         return ToSearchMatch(entry, score);
     }

@@ -282,6 +282,7 @@ If no new rule is detected -> do not update the file.
 - Do not duplicate package metadata or version blocks inside project files unless a project-specific override is required.
 - Use constants for stable tool names and protocol-facing identifiers.
 - Never leave stable string literals inline in runtime code; extract named constants for diagnostic codes, messages, modes, keys, tool descriptions, and other durable identifiers so changes stay centralized.
+- Never leave stable graph/search scoring weights, thresholds, multipliers, limits, or other durable numeric tuning values inline in runtime code; extract named constants so ranking behavior is auditable and tunable from one place.
 - Use the correct contextual logger type for each service; internal collaborators must log with their own type category instead of reusing a parent facade logger, because wrong logger categories make diagnostics misleading.
 - Keep transport-specific logic inside the gateway and source registration abstractions, not scattered across the codebase.
 - Keep the package dependency surface small and justified.
@@ -296,6 +297,7 @@ If no new rule is detected -> do not update the file.
 - Cache reusable search, graph, embedding, and normalization artifacts instead of recreating expensive objects on every request; prefer `IMemoryCache` for process-local reuse and keep extensibility behind interfaces so hosts can swap in durable or distributed implementations.
 - Keep caching dependencies explicit and optional; do not make the core gateway path require `IMemoryCache` when a pluggable or no-op cache boundary can preserve a smaller dependency surface, because the user does not want avoidable cache dependencies forced into the base package.
 - Keep index-building and warmup control explicit and customizable; expose understandable extension points so consumers can choose how and when the catalog or graph index is built instead of being forced into one hidden lifecycle.
+- Do not add speculative public configuration options unless production runtime code consumes them and tests/docs prove the behavior; remove dead public options instead of expanding the package API surface.
 - Never keep legacy compatibility shims, obsolete paths, or lingering documentation references to removed implementations when a replacement is accepted, because this repository should converge on the current design instead of carrying dead historical baggage.
 - Never leave `ManagedCode`-prefixed DI/setup extension method names such as `AddManagedCodeMcpGateway(...)` in the public API once concise `McpGateway` naming is available, because these branded leftovers make the package surface inconsistent and read like stale legacy.
 

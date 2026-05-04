@@ -203,7 +203,7 @@ internal sealed partial class McpGatewayRuntime
                     KnowledgeGraphFocusedSearchRole.Related,
                     groupId,
                     KbPredicateMemberOf,
-                    0.7d
+                    GraphRankedSharedGroupRelatedScore
                 );
             }
         }
@@ -454,7 +454,12 @@ internal sealed partial class McpGatewayRuntime
                 AddGraphNavigationLink(
                     relatedBySource,
                     edge.SubjectId,
-                    new GraphNavigationLink(edge.ObjectId, edge.SubjectId, edge.PredicateLabel, 0.9d)
+                    new GraphNavigationLink(
+                        edge.ObjectId,
+                        edge.SubjectId,
+                        edge.PredicateLabel,
+                        GraphNavigationRelatedScore
+                    )
                 );
             }
             else if (IsGraphPredicate(edge, KbPredicateNextStep))
@@ -462,7 +467,12 @@ internal sealed partial class McpGatewayRuntime
                 AddGraphNavigationLink(
                     nextStepsBySource,
                     edge.SubjectId,
-                    new GraphNavigationLink(edge.ObjectId, edge.SubjectId, edge.PredicateLabel, 0.8d)
+                    new GraphNavigationLink(
+                        edge.ObjectId,
+                        edge.SubjectId,
+                        edge.PredicateLabel,
+                        GraphNavigationNextStepScore
+                    )
                 );
             }
             else if (IsGraphPredicate(edge, KbPredicateMemberOf))

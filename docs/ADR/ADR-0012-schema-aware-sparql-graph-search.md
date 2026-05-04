@@ -169,7 +169,6 @@ Mitigations:
 
 - `ManagedCode.MarkdownLd.Kb` is upgraded to `0.2.5`.
 - `MarkdownLdGraphSearchMode` defaults to `Hybrid`.
-- `MarkdownLdFederatedQueryTimeoutMilliseconds` defaults to `15000`.
 - Federated endpoints are configured through `AddMarkdownLdFederatedServiceEndpoint(...)`.
 
 ### Documentation

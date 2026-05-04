@@ -338,14 +338,60 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const int GraphSearchCandidateMultiplier = 1;
     private const int GraphSearchMinimumCandidateWindow = 5;
     private const int GraphSchemaCandidateMinimumWindow = 5;
+    private const int FederatedSparqlQueryTimeoutMilliseconds = 15000;
+    private const double SearchScoreMinimum = 0d;
+    private const double SearchScoreMaximum = 1d;
+    private const double GraphSchemaNameTextWeight = 1.2d;
+    private const double GraphSchemaDescriptionTextWeight = 1.1d;
+    private const double GraphSchemaKeywordsTextWeight = 0.95d;
+    private const double GraphSchemaPrefLabelTextWeight = 0.75d;
+    private const double GraphSchemaAboutRelationshipWeight = 0.9d;
+    private const double GraphSchemaMentionsRelationshipWeight = 0.7d;
+    private const double GraphSchemaGroupMembershipRelationshipWeight = 0.8d;
+    private const double GraphSchemaProvenanceRelationshipWeight = 0.65d;
+    private const double GraphSchemaRelatedExpansionScore = 0.75d;
+    private const double GraphSchemaNextStepExpansionScore = 0.9d;
+    private const double GraphSchemaMentionsExpansionScore = 0.35d;
+    private const double GraphSchemaHasPartExpansionScore = 0.25d;
+    private const double GraphCandidateIdfDocumentOffset = 1d;
+    private const double GraphCandidateIdfFrequencyOffset = 0.5d;
+    private const double GraphCandidateIdfBaseWeight = 1d;
+    private const double GraphCandidateDefaultTermWeight = 1d;
+    private const double GraphCandidateFuzzyScoreMultiplier = 0.6d;
+    private const double GraphRankedSharedGroupRelatedScore = 0.7d;
+    private const double GraphNavigationRelatedScore = 0.9d;
+    private const double GraphNavigationNextStepScore = 0.8d;
     private const double ToolNameSignalWeight = 0.05d;
     private const double MinimumGraphMatchConfidence = 0.35d;
+    private const double GraphConfidenceRawScoreWeight = 1d;
     private const double GraphConfidenceEvidenceWeight = 2d;
+    private const double GraphConfidenceDiceCoefficientScale = 2d;
     private const double GraphContainsTermSimilarity = 0.92d;
     private const double GraphMinimumFuzzySimilarity = 0.55d;
     private const int AutoSupplementCandidateMultiplier = 4;
     private const int AutoSupplementMinimumCandidateWindow = 8;
     private const int AutoGraphSupplementMaximumUnboundedCatalogSize = 32;
+    private const double ToolEmbeddingDefaultMagnitude = 0d;
+    private const double EmbeddingCosineUnavailableScore = 0d;
+    private const double EmbeddingDotProductInitialValue = 0d;
+    private const double EmbeddingMagnitudeSquaredInitialValue = 0d;
+    private const double RouteNoScoreAdjustment = 0d;
+    private const double RouteEnabledByDefaultScoreBoost = 0.02d;
+    private const double RouteReadOnlyPreferredScoreBoost = 0.08d;
+    private const double RouteWritableWhenReadOnlyPreferredScorePenalty = -0.08d;
+    private const double RouteWritablePreferredScoreBoost = 0.05d;
+    private const double RouteReadOnlyWhenWritablePreferredScorePenalty = -0.03d;
+    private const double RouteDestructiveWritableScoreBoost = 0.02d;
+    private const double RouteNonDestructiveWritableScoreBoost = 0.01d;
+    private const double RouteIdempotentScoreBoost = 0.01d;
+    private const double RouteLowCostScoreBoost = 0.03d;
+    private const double RouteMediumCostScoreBoost = 0.01d;
+    private const double RouteHighCostScorePenalty = -0.02d;
+    private const double RouteLowLatencyScoreBoost = 0.03d;
+    private const double RouteMediumLatencyScoreBoost = 0.01d;
+    private const double RouteHighLatencyScorePenalty = -0.02d;
+    private const double RouteCategorizedToolScoreBoost = 0.01d;
+    private const double RouteUsageExampleScoreBoost = 0.01d;
 
     private static readonly char[] TokenSeparators =
     [
@@ -529,7 +575,6 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
-    private readonly int _markdownLdFederatedQueryTimeoutMilliseconds;
     private readonly IReadOnlyList<Uri> _markdownLdFederatedServiceEndpoints;
     private readonly Uri _graphLocalFederationEndpoint;
     private readonly IMcpGatewaySearchCache _searchRuntimeCache;
@@ -565,10 +610,6 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         _defaultSearchLimit = Math.Max(1, resolvedOptions.DefaultSearchLimit);
         _maxSearchResults = Math.Max(1, resolvedOptions.MaxSearchResults);
         _maxDescriptorLength = Math.Max(256, resolvedOptions.MaxDescriptorLength);
-        _markdownLdFederatedQueryTimeoutMilliseconds = Math.Max(
-            100,
-            resolvedOptions.MarkdownLdFederatedQueryTimeoutMilliseconds
-        );
         _markdownLdFederatedServiceEndpoints = resolvedOptions.MarkdownLdFederatedServiceEndpoints;
         _graphLocalFederationEndpoint = new Uri(
             $"{GraphLocalFederationEndpointUriText}/{Guid.NewGuid():N}",
