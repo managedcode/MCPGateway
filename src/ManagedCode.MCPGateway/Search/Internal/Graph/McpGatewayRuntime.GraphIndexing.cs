@@ -19,16 +19,19 @@ internal sealed partial class McpGatewayRuntime
     {
         ArgumentNullException.ThrowIfNull(descriptors);
 
-        var graphDocuments = CreateToolGraphDocumentSources(
-            descriptors
-                .Select(descriptor =>
-                    (
-                        Descriptor: descriptor,
-                        Document: BuildDescriptorDocument(descriptor, maxDescriptorLength)
-                    )
-                )
-                .ToArray()
-        );
+        var descriptorDocuments = new (McpGatewayToolDescriptor Descriptor, string Document)[
+            descriptors.Count
+        ];
+        for (var index = 0; index < descriptors.Count; index++)
+        {
+            var descriptor = descriptors[index];
+            descriptorDocuments[index] = (
+                descriptor,
+                BuildDescriptorDocument(descriptor, maxDescriptorLength)
+            );
+        }
+
+        var graphDocuments = CreateToolGraphDocumentSources(descriptorDocuments);
         return CreateMarkdownLdGraphFileDocuments(graphDocuments);
     }
 
@@ -62,7 +65,12 @@ internal sealed partial class McpGatewayRuntime
         var result = await pipeline.BuildAsync(documents, cancellationToken).ConfigureAwait(false);
         var snapshot = result.Graph.ToSnapshot();
         var entriesByNodeId = CreateEntriesByGraphNodeId(entries, result.Documents);
-        var searchableNodeIds = entriesByNodeId.Keys.ToHashSet(StringComparer.Ordinal);
+        var searchableNodeIds = new HashSet<string>(entriesByNodeId.Count, StringComparer.Ordinal);
+        foreach (var nodeId in entriesByNodeId.Keys)
+        {
+            searchableNodeIds.Add(nodeId);
+        }
+
         var nodesById = CreateRankedGraphNodesById(snapshot.Nodes);
         var navigation = CreateGraphNavigationIndex(snapshot, searchableNodeIds);
         var schemaDiagnostics = CreateSchemaProfileDiagnostics(
@@ -106,7 +114,12 @@ internal sealed partial class McpGatewayRuntime
             return [];
         }
 
-        var descriptors = entries.Select(static entry => entry.Descriptor).ToArray();
+        var descriptors = new McpGatewayToolDescriptor[entries.Count];
+        for (var index = 0; index < entries.Count; index++)
+        {
+            descriptors[index] = entries[index].Descriptor;
+        }
+
         var documents = await _markdownLdGraphDocumentFactory(descriptors, cancellationToken)
             .ConfigureAwait(false);
         return McpGatewayMarkdownLdGraphFile.ToMarkdownSourceDocuments(documents);
@@ -181,16 +194,30 @@ internal sealed partial class McpGatewayRuntime
         IReadOnlyList<ToolCatalogEntry> entries
     )
     {
-        var graphDocuments = CreateToolGraphDocumentSources(
-            entries.Select(static entry => (entry.Descriptor, entry.Document)).ToArray()
+        var descriptorDocuments = new (McpGatewayToolDescriptor Descriptor, string Document)[
+            entries.Count
+        ];
+        for (var index = 0; index < entries.Count; index++)
+        {
+            var entry = entries[index];
+            descriptorDocuments[index] = (entry.Descriptor, entry.Document);
+        }
+
+        var graphDocuments = CreateMarkdownLdGraphFileDocuments(
+            CreateToolGraphDocumentSources(descriptorDocuments)
         );
-        return CreateMarkdownLdGraphFileDocuments(graphDocuments)
-            .Select(static document => new MarkdownSourceDocument(
+        var documents = new MarkdownSourceDocument[graphDocuments.Count];
+        for (var index = 0; index < graphDocuments.Count; index++)
+        {
+            var document = graphDocuments[index];
+            documents[index] = new MarkdownSourceDocument(
                 document.Path,
                 document.Content,
                 new Uri(document.CanonicalUri!, UriKind.Absolute)
-            ))
-            .ToArray();
+            );
+        }
+
+        return documents;
     }
 
     private static bool IsGraphBundleFile(string filePath) =>

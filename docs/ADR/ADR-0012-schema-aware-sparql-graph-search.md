@@ -9,7 +9,7 @@ Related Features: [`docs/Features/SearchQueryNormalizationAndRanking.md`](../Fea
 
 - [x] Upgrade `ManagedCode.MarkdownLd.Kb` to the version that exposes schema-aware and federated SPARQL graph search.
 - [x] Add schema-aware SPARQL graph retrieval as the primary Markdown-LD graph path.
-- [x] Use ranked BM25 graph search as a hybrid support signal and fuzzy fallback, while keeping token-distance as an explicit compatibility mode.
+- [x] Use ranked graph candidate search as a hybrid support signal and fuzzy fallback, while keeping token-distance as an explicit compatibility mode.
 - [x] Expose graph-specific schema/profile inspection, search, federation, evidence, generated SPARQL, and export through `IMcpGatewayGraphSearch`.
 - [x] Add built-in graph meta-tools for schema/profile inspection, tool index rebuilds, schema search, federated search, and graph export.
 - [x] Add automated coverage for schema profile inspection, index rebuild tools, schema SPARQL search, federated local graph search, graph tools, and graph export.
@@ -40,10 +40,10 @@ Key points:
 
 - `ManagedCode.MarkdownLd.Kb` `SearchBySchemaAsync(...)` is the primary graph retrieval call for `McpGatewaySearchStrategy.Graph`.
 - `McpGatewayMarkdownLdGraphSearchMode.Hybrid` is the default graph search mode.
-- Large catalogs first use `ManagedCode.MarkdownLd.Kb` ranked BM25 over searchable tool node IDs to choose a bounded candidate window, then run schema-aware SPARQL over that focused graph instead of executing full-graph SPARQL for every query.
+- Large catalogs first use a gateway-built ranked candidate index over searchable tool node IDs to choose a bounded candidate window, then run schema-aware SPARQL over that focused graph instead of executing full-graph SPARQL for every query.
 - Non-federated `IMcpGatewayGraphSearch.SearchGraphAsync(...)` and the built-in `gateway_graph_schema_search` tool use the same candidate-backed schema path as normal `SearchAsync(...)`.
-- Hybrid mode executes schema-aware SPARQL first and merges ranked BM25 graph results as support for small focused catalogs.
-- If schema-aware search finds no mapped gateway tools, hybrid mode enables `ManagedCode.MarkdownLd.Kb` fuzzy token matching on the BM25 fallback for small catalogs and uses token-distance compatibility fallback for larger catalogs to avoid unbounded BM25 cost.
+- Hybrid mode executes schema-aware SPARQL first and merges ranked graph candidate results as support.
+- If schema-aware search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in the ranked candidate fallback.
 - `McpGatewayMarkdownLdGraphSearchMode.SchemaAware` forces schema-aware SPARQL only.
 - `McpGatewayMarkdownLdGraphSearchMode.TokenDistance` remains available for hosts that explicitly want the older lower-level graph ranking.
 - `IMcpGatewayGraphSearch` owns graph-specific schema/profile, query, and export operations.
@@ -64,7 +64,7 @@ flowchart LR
     Catalog["Catalog snapshot"] --> Docs["Markdown-LD tool documents"]
     Docs --> Kb["ManagedCode.MarkdownLd.Kb graph"]
     Kb --> Schema["SearchBySchemaAsync generated SPARQL"]
-    Kb --> Ranked["SearchRankedAsync BM25 / fuzzy support"]
+    Kb --> Ranked["Gateway ranked candidate / fuzzy support"]
     Kb --> Token["SearchFocusedAsync token-distance compatibility mode"]
     Kb --> Federation["SearchBySchemaFederatedAsync SERVICE blocks"]
     Schema --> Hybrid["Hybrid graph ranking"]
@@ -129,7 +129,7 @@ Rejected because federation is valuable when it is explicit, allowlisted, and ob
 Positive:
 
 - default graph search now benefits from schema-aware SPARQL over the generated Markdown-LD graph
-- hybrid fallback now benefits from upstream ranked BM25 and fuzzy token matching for typo-heavy queries without requiring embeddings
+- hybrid fallback now benefits from ranked candidate and fuzzy token matching for typo-heavy queries without requiring embeddings
 - callers can inspect schema/profile state, generated SPARQL, graph evidence, service endpoints, and mapped gateway tools
 - hosts can expose graph search and federated graph search as built-in `AITool` functions
 - direct graph search tools no longer bypass the large-catalog schema-search optimization
@@ -149,8 +149,8 @@ Mitigations:
 - validate schema search profiles and return diagnostics
 - expose schema/profile and graph index state through `DescribeGraphSchemaAsync(...)` and `gateway_graph_schema_describe`
 - keep token-distance mode as an explicit compatibility option
-- keep ranked BM25/fuzzy matching inside the Markdown-LD graph path rather than exposing a separate public BM25 strategy
-- bound ranked BM25/fuzzy use to focused catalogs until upstream ranked search can be reused through a precomputed candidate index without large per-query allocation or latency
+- keep ranked candidate/fuzzy matching inside the Markdown-LD graph path rather than exposing a separate public token strategy
+- keep ranked candidate/fuzzy use bounded by the gateway index instead of recreating upstream ranked-search artifacts per query
 - replace per-query candidate graph materialization with an upstream schema-search candidate filter when `ManagedCode.MarkdownLd.Kb` exposes one, ideally emitted as SPARQL `VALUES`
 - keep federation endpoints allowlisted and diagnostic-driven
 - cover local schema search, schema/profile inspection, index-build tooling, federated local graph search, graph tools, and export with tests
@@ -175,7 +175,7 @@ Mitigations:
 
 - `README.md` documents schema/profile inspection, schema-aware SPARQL graph search, federation, graph export, and graph tools.
 - `docs/Architecture/Overview.md` documents the `IMcpGatewayGraphSearch` boundary, index-build tooling, and SPARQL graph retrieval.
-- `ADR-0005` remains the original graph-search decision; this ADR records the 0.2.x schema/SPARQL, ranked BM25/fuzzy, and federation evolution.
+- `ADR-0005` remains the original graph-search decision; this ADR records the 0.2.x schema/SPARQL, ranked candidate/fuzzy, and federation evolution.
 
 ## Verification
 
@@ -196,7 +196,7 @@ Tests:
 | ID | Scenario | Level | Expected result |
 | --- | --- | --- | --- |
 | TST-001 | `SearchAsync_GraphStrategyReturnsFocusedMcpRelatedAndNextStepMatches` | Integration | Graph search reports schema search and preserves focused related/next-step matches |
-| TST-001B | `SearchAsync_HybridGraphUsesRankedFuzzyFallbackForTypoHeavyQueryWithoutEmbeddings` | Integration | Hybrid graph search uses schema fallback plus ranked fuzzy BM25 to recover a typo-heavy shipment query |
+| TST-001B | `SearchAsync_HybridGraphUsesRankedFuzzyFallbackForTypoHeavyQueryWithoutEmbeddings` | Integration | Hybrid graph search uses schema fallback plus ranked fuzzy candidate search to recover a typo-heavy shipment query |
 | TST-002 | `SearchGraphAsync_ReturnsSchemaSparqlAndMappedGatewayTools` | Integration | Direct graph search returns generated SPARQL, evidence, and mapped `ToolMatch` |
 | TST-003 | `SearchGraphAsync_FederatesThroughExplicitLocalGraphService` | Integration | Federated graph search emits `SERVICE` SPARQL and maps the local graph match |
 | TST-004 | `SearchGraphAsync_BlocksUnconfiguredFederatedEndpoint` | Integration | Federated graph search reports blocked endpoints instead of using unconfigured services |

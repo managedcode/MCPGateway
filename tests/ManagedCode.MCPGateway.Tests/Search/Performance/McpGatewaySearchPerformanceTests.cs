@@ -108,6 +108,53 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.FocusedGraphEdgeCount).IsGreaterThan(0);
     }
 
+    [TUnit.Core.Test]
+    public async Task SearchAsync_LargeCatalogBroadSchemaQueryReturnsArchiveMatches()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigurePerformanceGraphCatalog
+        );
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        await gateway.BuildIndexAsync();
+        var searchResult = await gateway.SearchAsync(
+            "genealogy record archive lookup",
+            maxResults: 5
+        );
+
+        await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
+        await Assert.That(searchResult.UsedSchemaSearch).IsTrue();
+        await Assert.That(searchResult.Matches.Count).IsGreaterThan(0);
+        await Assert.That(searchResult.Matches[0].ToolId).StartsWith("local:archive_lookup_");
+        await Assert.That(searchResult.FocusedGraphNodeCount).IsGreaterThan(0);
+        await Assert.That(searchResult.FocusedGraphEdgeCount).IsGreaterThan(0);
+    }
+
+    [TUnit.Core.Test]
+    public async Task SchemaGraphSearchAsync_LargeCatalogBroadSchemaQueryReturnsArchiveMatches()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
+            ConfigurePerformanceGraphCatalog
+        );
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        var toolSet = serviceProvider.GetRequiredService<McpGatewayToolSet>();
+
+        await gateway.BuildIndexAsync();
+        var searchResult = await toolSet.SchemaGraphSearchAsync(
+            "genealogy record archive lookup",
+            maxResults: 5
+        );
+
+        await Assert.That(searchResult.IsFederated).IsFalse();
+        await Assert.That(searchResult.GeneratedSparql).Contains("SELECT");
+        await Assert.That(searchResult.Matches.Count).IsGreaterThan(0);
+        await Assert
+            .That(searchResult.Matches[0].ToolMatch?.ToolId)
+            .StartsWith("local:archive_lookup_");
+        await Assert.That(searchResult.FocusedGraphNodeCount).IsGreaterThan(0);
+        await Assert.That(searchResult.FocusedGraphEdgeCount).IsGreaterThan(0);
+    }
+
     private static void ConfigurePerformanceCatalog(McpGatewayOptions options)
     {
         options.SearchStrategy = McpGatewaySearchStrategy.Auto;

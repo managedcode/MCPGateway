@@ -29,7 +29,10 @@ internal sealed partial class McpGatewayRuntime
             1,
             _maxSearchResults
         );
-        var schemaQuery = NormalizeGraphSchemaQuery(request.Query);
+        var schemaQuery = request.UseFederation
+            ? NormalizeGraphSchemaQuery(request.Query)
+            : NormalizeGraphSchemaQuery(graphIndex, request.Query);
+        var scoreContext = CreateSearchScoreContext(request.Query);
         var serviceEndpoints = ResolveGraphFederatedServiceEndpoints(request, diagnostics);
         var schemaServiceEndpoints = request.UseFederation ? serviceEndpoints : [];
         var profile = CreateToolGraphSchemaSearchProfile(
@@ -57,7 +60,6 @@ internal sealed partial class McpGatewayRuntime
                     )
                     .ConfigureAwait(false);
 
-                var scoreContext = CreateSearchScoreContext(schemaQuery);
                 return MapGraphSearchResult(
                     graphIndex,
                     result,
@@ -78,7 +80,7 @@ internal sealed partial class McpGatewayRuntime
                 graphIndex,
                 schemaSearch,
                 diagnostics,
-                CreateSearchScoreContext(schemaQuery)
+                scoreContext
             );
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -151,9 +153,15 @@ internal sealed partial class McpGatewayRuntime
             return endpoints.Values.ToArray();
         }
 
-        var allowedEndpointUris = _markdownLdFederatedServiceEndpoints
-            .Select(static endpoint => endpoint.AbsoluteUri)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var allowedEndpointUris = new HashSet<string>(
+            _markdownLdFederatedServiceEndpoints.Count,
+            StringComparer.OrdinalIgnoreCase
+        );
+        foreach (var configuredEndpoint in _markdownLdFederatedServiceEndpoints)
+        {
+            allowedEndpointUris.Add(configuredEndpoint.AbsoluteUri);
+        }
+
         foreach (var endpointText in request.ServiceEndpoints)
         {
             if (
@@ -296,10 +304,8 @@ internal sealed partial class McpGatewayRuntime
             mappedMatches.Add(MapGraphSearchMatch(graphIndex, match, scoreContext));
         }
 
-        return mappedMatches
-            .OrderByDescending(static match => match.ToolMatch?.Score ?? match.Score)
-            .ThenBy(static match => match.Label, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        mappedMatches.Sort(CompareGraphSearchMatches);
+        return mappedMatches.ToArray();
     }
 
     private static IReadOnlyList<McpGatewayGraphSearchMatch> MapFocusedGraphSearchMatches(
@@ -314,10 +320,21 @@ internal sealed partial class McpGatewayRuntime
             mappedMatches.Add(MapFocusedGraphSearchMatch(graphIndex, match, scoreContext));
         }
 
-        return mappedMatches
-            .OrderByDescending(static match => match.ToolMatch?.Score ?? match.Score)
-            .ThenBy(static match => match.Label, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        mappedMatches.Sort(CompareGraphSearchMatches);
+        return mappedMatches.ToArray();
+    }
+
+    private static int CompareGraphSearchMatches(
+        McpGatewayGraphSearchMatch left,
+        McpGatewayGraphSearchMatch right
+    )
+    {
+        var leftScore = left.ToolMatch?.Score ?? left.Score;
+        var rightScore = right.ToolMatch?.Score ?? right.Score;
+        var scoreComparison = rightScore.CompareTo(leftScore);
+        return scoreComparison != 0
+            ? scoreComparison
+            : string.Compare(left.Label, right.Label, StringComparison.OrdinalIgnoreCase);
     }
 
     private static McpGatewayGraphSearchMatch MapFocusedGraphSearchMatch(

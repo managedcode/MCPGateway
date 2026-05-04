@@ -67,6 +67,37 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
+    public async Task SearchGraphAsync_SmallCatalogKeepsFullSchemaQueryTerms()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    SearchGitHub,
+                    "alpha_beta_gamma_delta_epsilon_report",
+                    "Search alpha beta gamma delta epsilon reports."
+                )
+            );
+        });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+        var graphSearch = serviceProvider.GetRequiredService<IMcpGatewayGraphSearch>();
+
+        await gateway.BuildIndexAsync();
+        var searchResult = await graphSearch.SearchGraphAsync(
+            new McpGatewayGraphSearchRequest("alpha beta gamma delta epsilon")
+            {
+                MaxResults = 3,
+            }
+        );
+
+        await Assert.That(searchResult.GeneratedSparql).Contains("epsilon");
+        await Assert
+            .That(searchResult.Matches[0].ToolMatch?.ToolId)
+            .IsEqualTo("local:alpha_beta_gamma_delta_epsilon_report");
+    }
+
+    [TUnit.Core.Test]
     public async Task DescribeGraphSchemaAsync_ReturnsValidatedSchemaProfileAndIndexState()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>

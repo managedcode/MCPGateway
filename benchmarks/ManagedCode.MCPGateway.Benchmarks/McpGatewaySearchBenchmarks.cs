@@ -8,49 +8,53 @@ public class McpGatewaySearchBenchmarks
     private BenchmarkGatewayHost _host = null!;
 
     [GlobalSetup]
-    public void GlobalSetup() =>
-        _host = BenchmarkCatalog.CreateBuiltGraphGatewayAsync().GetAwaiter().GetResult();
+    public async Task GlobalSetup() =>
+        _host = await BenchmarkCatalog.CreateBuiltGraphGatewayAsync();
 
     [GlobalCleanup]
-    public void GlobalCleanup() => _host.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public async Task GlobalCleanup() => await _host.DisposeAsync();
 
     [Benchmark]
-    public int SearchWeatherGraph()
+    public async Task<int> SearchWeatherGraph()
     {
-        var result = _host
-            .Gateway.SearchAsync(BenchmarkCatalog.WeatherQuery, maxResults: 5)
-            .GetAwaiter()
-            .GetResult();
+        var result = await _host.Gateway.SearchAsync(BenchmarkCatalog.WeatherQuery, maxResults: 5);
         return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
     }
 
     [Benchmark]
-    public int SearchPortfolioGraph()
+    public async Task<int> SearchPortfolioGraph()
     {
-        var result = _host
-            .Gateway.SearchAsync(BenchmarkCatalog.PortfolioQuery, maxResults: 5)
-            .GetAwaiter()
-            .GetResult();
+        var result = await _host.Gateway.SearchAsync(
+            BenchmarkCatalog.PortfolioQuery,
+            maxResults: 5
+        );
         return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
     }
 
     [Benchmark]
-    public int SearchArchiveGraph()
+    public async Task<int> SearchArchiveGraph()
     {
-        var result = _host
-            .Gateway.SearchAsync(BenchmarkCatalog.ArchiveQuery, maxResults: 5)
-            .GetAwaiter()
-            .GetResult();
+        var result = await _host.Gateway.SearchAsync(BenchmarkCatalog.ArchiveQuery, maxResults: 5);
         return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
     }
 
     [Benchmark]
-    public int SearchWeatherGraphTool()
+    public async Task<int> SearchWeatherGraphTool()
     {
-        var result = _host
-            .ToolSet.SchemaGraphSearchAsync(BenchmarkCatalog.WeatherQuery, maxResults: 5)
-            .GetAwaiter()
-            .GetResult();
+        var result = await _host.ToolSet.SchemaGraphSearchAsync(
+            BenchmarkCatalog.WeatherQuery,
+            maxResults: 5
+        );
+        return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
+    }
+
+    [Benchmark]
+    public async Task<int> SearchArchiveGraphTool()
+    {
+        var result = await _host.ToolSet.SchemaGraphSearchAsync(
+            BenchmarkCatalog.ArchiveQuery,
+            maxResults: 5
+        );
         return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
     }
 }

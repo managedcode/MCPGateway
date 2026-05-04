@@ -9,7 +9,13 @@ internal sealed partial class McpGatewayRuntime
     )
     {
         var snapshot = await GetSnapshotAsync(cancellationToken);
-        return snapshot.Entries.Select(static item => item.Descriptor).ToList();
+        var descriptors = new List<McpGatewayToolDescriptor>(snapshot.Entries.Count);
+        foreach (var entry in snapshot.Entries)
+        {
+            descriptors.Add(entry.Descriptor);
+        }
+
+        return descriptors;
     }
 
     public async Task<McpGatewaySearchResult> SearchAsync(
@@ -95,11 +101,11 @@ internal sealed partial class McpGatewayRuntime
             {
                 if (!searchInput.HasTerms)
                 {
-                    var browse = snapshot
-                        .Entries.Select(static entry => ToSearchMatch(entry, SearchScoreMinimum))
-                        .Where(match => request.IncludeDisabledTools || match.IsEnabledByDefault)
-                        .Take(limit)
-                        .ToList();
+                    var browse = CreateBrowseSearchMatches(
+                        snapshot.Entries,
+                        request.IncludeDisabledTools,
+                        limit
+                    );
                     result = new McpGatewaySearchResult(browse, diagnostics, SearchModeBrowse);
                 }
                 else
@@ -112,34 +118,31 @@ internal sealed partial class McpGatewayRuntime
                         cancellationToken
                     );
 
-                    var matches = rankedSearch
-                        .Ranked.Take(limit)
-                        .Select(item => ToSearchMatch(item.Entry, item.Score))
-                        .ToList();
-                    var relatedMatches = rankedSearch
-                        .Related.Select(item => ToSearchMatch(item.Entry, item.Score))
-                        .ToList();
-                    var nextStepMatches = rankedSearch
-                        .NextSteps.Select(item => ToSearchMatch(item.Entry, item.Score))
-                        .ToList();
+                    var matches = MapScoredSearchMatches(
+                        rankedSearch.Ranked,
+                        request.IncludeDisabledTools,
+                        limit
+                    );
+                    var relatedMatches = MapScoredSearchMatches(
+                        rankedSearch.Related,
+                        request.IncludeDisabledTools,
+                        limit
+                    );
+                    var nextStepMatches = MapScoredSearchMatches(
+                        rankedSearch.NextSteps,
+                        request.IncludeDisabledTools,
+                        limit
+                    );
 
                     rankedMetrics = rankedSearch.Metrics;
                     result = new McpGatewaySearchResult(
-                        FilterSearchMatches(matches, request.IncludeDisabledTools, limit),
+                        matches,
                         diagnostics,
                         rankedSearch.RankingMode
                     )
                     {
-                        RelatedMatches = FilterSearchMatches(
-                            relatedMatches,
-                            request.IncludeDisabledTools,
-                            limit
-                        ),
-                        NextStepMatches = FilterSearchMatches(
-                            nextStepMatches,
-                            request.IncludeDisabledTools,
-                            limit
-                        ),
+                        RelatedMatches = relatedMatches,
+                        NextStepMatches = nextStepMatches,
                         FocusedGraphNodeCount = rankedSearch.FocusedGraphNodeCount,
                         FocusedGraphEdgeCount = rankedSearch.FocusedGraphEdgeCount,
                         UsedSchemaSearch = rankedSearch.UsedSchemaSearch,
@@ -176,15 +179,53 @@ internal sealed partial class McpGatewayRuntime
         return result;
     }
 
-    private static IReadOnlyList<McpGatewaySearchMatch> FilterSearchMatches(
-        IReadOnlyList<McpGatewaySearchMatch> matches,
+    private static IReadOnlyList<McpGatewaySearchMatch> CreateBrowseSearchMatches(
+        IReadOnlyList<ToolCatalogEntry> entries,
         bool includeDisabledTools,
         int limit
-    ) =>
-        matches
-            .Where(match => includeDisabledTools || match.IsEnabledByDefault)
-            .Take(limit)
-            .ToList();
+    )
+    {
+        var matches = new List<McpGatewaySearchMatch>(Math.Min(entries.Count, limit));
+        foreach (var entry in entries)
+        {
+            if (!includeDisabledTools && !entry.Descriptor.IsEnabledByDefault)
+            {
+                continue;
+            }
+
+            matches.Add(ToSearchMatch(entry, SearchScoreMinimum));
+            if (matches.Count >= limit)
+            {
+                break;
+            }
+        }
+
+        return matches;
+    }
+
+    private static IReadOnlyList<McpGatewaySearchMatch> MapScoredSearchMatches(
+        IReadOnlyList<ScoredToolEntry> scoredEntries,
+        bool includeDisabledTools,
+        int limit
+    )
+    {
+        var matches = new List<McpGatewaySearchMatch>(Math.Min(scoredEntries.Count, limit));
+        foreach (var scoredEntry in scoredEntries)
+        {
+            if (!includeDisabledTools && !scoredEntry.Entry.Descriptor.IsEnabledByDefault)
+            {
+                continue;
+            }
+
+            matches.Add(ToSearchMatch(scoredEntry.Entry, scoredEntry.Score));
+            if (matches.Count >= limit)
+            {
+                break;
+            }
+        }
+
+        return matches;
+    }
 
     private static McpGatewaySearchMatch ToSearchMatch(ToolCatalogEntry entry, double score) =>
         new(

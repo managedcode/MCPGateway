@@ -100,7 +100,7 @@ internal sealed partial class McpGatewayRuntime
         AppendYamlScalar(builder, GraphYamlSummaryKey, descriptor.Description);
         AppendYamlScalar(builder, GraphYamlDescriptionKey, descriptor.Description);
         AppendYamlList(builder, GraphYamlTagsKey, BuildToolGraphTags(descriptor));
-        AppendYamlList(builder, GraphYamlGroupsKey, graphDocument.Groups.ToArray());
+        AppendYamlList(builder, GraphYamlGroupsKey, graphDocument.Groups);
         AppendYamlList(builder, GraphYamlRelatedKey, relatedUris);
         AppendYamlList(builder, GraphYamlNextStepsKey, nextStepUris);
         builder.AppendLine(GraphMarkdownFrontMatterDelimiter);
@@ -109,16 +109,24 @@ internal sealed partial class McpGatewayRuntime
     private static IReadOnlyList<string> SelectRelatedToolUris(
         ToolGraphDocumentSource document,
         IReadOnlyList<ToolGraphDocumentSource> documents
-    ) =>
-        documents
-            .Where(candidate =>
-                !ReferenceEquals(candidate, document) && SharesToolGraphGroup(document, candidate)
-            )
-            .OrderByDescending(candidate => CalculateToolGraphAffinity(document, candidate))
-            .ThenBy(candidate => candidate.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
-            .Take(GraphMaxRelatedToolsPerDocument)
-            .Select(static candidate => candidate.DocumentUri.AbsoluteUri)
-            .ToArray();
+    )
+    {
+        var candidates = new List<ToolGraphAffinityCandidate>(documents.Count);
+        foreach (var candidate in documents)
+        {
+            if (!ReferenceEquals(candidate, document) && SharesToolGraphGroup(document, candidate))
+            {
+                candidates.Add(
+                    new ToolGraphAffinityCandidate(
+                        candidate,
+                        CalculateToolGraphAffinity(document, candidate)
+                    )
+                );
+            }
+        }
+
+        return SelectToolGraphCandidateUris(candidates, GraphMaxRelatedToolsPerDocument);
+    }
 
     private static IReadOnlyList<string> SelectNextStepToolUris(
         ToolGraphDocumentSource document,
@@ -136,8 +144,10 @@ internal sealed partial class McpGatewayRuntime
             return [];
         }
 
-        return documents
-            .Where(candidate =>
+        var candidates = new List<ToolGraphAffinityCandidate>(documents.Count);
+        foreach (var candidate in documents)
+        {
+            if (
                 !ReferenceEquals(candidate, document)
                 && string.Equals(
                     candidate.Operation,
@@ -146,11 +156,57 @@ internal sealed partial class McpGatewayRuntime
                 )
                 && SharesToolGraphGroup(document, candidate)
             )
-            .OrderByDescending(candidate => CalculateToolGraphAffinity(document, candidate))
-            .ThenBy(candidate => candidate.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
-            .Take(GraphMaxNextStepToolsPerDocument)
-            .Select(static candidate => candidate.DocumentUri.AbsoluteUri)
-            .ToArray();
+            {
+                candidates.Add(
+                    new ToolGraphAffinityCandidate(
+                        candidate,
+                        CalculateToolGraphAffinity(document, candidate)
+                    )
+                );
+            }
+        }
+
+        return SelectToolGraphCandidateUris(candidates, GraphMaxNextStepToolsPerDocument);
+    }
+
+    private static IReadOnlyList<string> SelectToolGraphCandidateUris(
+        List<ToolGraphAffinityCandidate> candidates,
+        int maxResults
+    )
+    {
+        if (candidates.Count == 0 || maxResults == 0)
+        {
+            return [];
+        }
+
+        candidates.Sort(CompareToolGraphAffinityCandidates);
+        if (candidates.Count > maxResults)
+        {
+            candidates.RemoveRange(maxResults, candidates.Count - maxResults);
+        }
+
+        var uris = new string[candidates.Count];
+        for (var index = 0; index < candidates.Count; index++)
+        {
+            uris[index] = candidates[index].Document.DocumentUri.AbsoluteUri;
+        }
+
+        return uris;
+    }
+
+    private static int CompareToolGraphAffinityCandidates(
+        ToolGraphAffinityCandidate left,
+        ToolGraphAffinityCandidate right
+    )
+    {
+        var affinityComparison = right.Affinity.CompareTo(left.Affinity);
+        return affinityComparison != 0
+            ? affinityComparison
+            : string.Compare(
+                left.Document.Descriptor.ToolName,
+                right.Document.Descriptor.ToolName,
+                StringComparison.OrdinalIgnoreCase
+            );
     }
 
     private static bool SharesToolGraphGroup(
@@ -315,24 +371,41 @@ internal sealed partial class McpGatewayRuntime
         McpGatewayToolDescriptor descriptor
     )
     {
-        var terms = new List<string>();
+        var terms = new List<string>(GraphDefaultTermCollectionCapacity);
         AddGraphCapabilityTerms(terms, descriptor.ToolName, maxTerms: 3);
         AddGraphCapabilityTerms(terms, descriptor.DisplayName, maxTerms: 2);
-        AddGraphCapabilityTerms(terms, string.Join(' ', descriptor.SearchAliases), maxTerms: 3);
-        AddGraphCapabilityTerms(terms, string.Join(' ', descriptor.SearchKeywords), maxTerms: 3);
-        AddGraphCapabilityTerms(terms, string.Join(' ', descriptor.Categories), maxTerms: 3);
-        AddGraphCapabilityTerms(terms, string.Join(' ', descriptor.Tags), maxTerms: 3);
-        AddGraphCapabilityTerms(terms, string.Join(' ', descriptor.DataSources), maxTerms: 2);
+        AddGraphCapabilityTerms(terms, descriptor.SearchAliases, maxTerms: 3);
+        AddGraphCapabilityTerms(terms, descriptor.SearchKeywords, maxTerms: 3);
+        AddGraphCapabilityTerms(terms, descriptor.Categories, maxTerms: 3);
+        AddGraphCapabilityTerms(terms, descriptor.Tags, maxTerms: 3);
+        AddGraphCapabilityTerms(terms, descriptor.DataSources, maxTerms: 2);
 
         if (terms.Count == 0)
         {
             AddGraphCapabilityTerms(terms, descriptor.Description, maxTerms: 3);
         }
 
-        return terms.Distinct(StringComparer.OrdinalIgnoreCase).Take(4).ToArray();
+        return DeduplicateToolGraphCapabilityTerms(terms);
     }
 
     private static void AddGraphCapabilityTerms(
+        ICollection<string> terms,
+        IReadOnlyList<string> values,
+        int maxTerms
+    )
+    {
+        var added = 0;
+        for (var index = 0; index < values.Count; index++)
+        {
+            added += AddGraphCapabilityTerms(terms, values[index], maxTerms - added);
+            if (added >= maxTerms)
+            {
+                return;
+            }
+        }
+    }
+
+    private static int AddGraphCapabilityTerms(
         ICollection<string> terms,
         string? value,
         int maxTerms
@@ -349,9 +422,39 @@ internal sealed partial class McpGatewayRuntime
 
             if (added >= maxTerms)
             {
-                return;
+                return added;
             }
         }
+
+        return added;
+    }
+
+    private static IReadOnlyList<string> DeduplicateToolGraphCapabilityTerms(
+        IReadOnlyList<string> terms
+    )
+    {
+        if (terms.Count == 0)
+        {
+            return [];
+        }
+
+        var distinct = new List<string>(Math.Min(terms.Count, GraphMaxCapabilityTerms));
+        var seenTerms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var term in terms)
+        {
+            if (!seenTerms.Add(term))
+            {
+                continue;
+            }
+
+            distinct.Add(term);
+            if (distinct.Count >= GraphMaxCapabilityTerms)
+            {
+                break;
+            }
+        }
+
+        return distinct.ToArray();
     }
 
     private static bool IsGraphCapabilityTerm(string term) =>
@@ -363,103 +466,45 @@ internal sealed partial class McpGatewayRuntime
     private static string ResolveToolGraphOperation(McpGatewayToolDescriptor descriptor)
     {
         var identityTerms = BuildOrderedGraphTerms(
-                string.Concat(
-                    HumanizeIdentifier(descriptor.ToolName),
-                    " ",
-                    HumanizeIdentifier(descriptor.DisplayName ?? string.Empty)
-                )
+            string.Concat(
+                HumanizeIdentifier(descriptor.ToolName),
+                " ",
+                HumanizeIdentifier(descriptor.DisplayName ?? string.Empty)
             )
-            .ToArray();
+        );
 
-        if (identityTerms.Any(GraphInspectionTerms.Contains))
+        if (ContainsAnyGraphTerm(identityTerms, GraphInspectionTerms))
         {
             return GraphRelatedOperationInspect;
         }
 
-        if (identityTerms.Any(GraphActionTerms.Contains))
+        if (ContainsAnyGraphTerm(identityTerms, GraphActionTerms))
         {
             return GraphRelatedOperationAct;
         }
 
-        if (identityTerms.Any(GraphDiscoveryTerms.Contains))
+        if (ContainsAnyGraphTerm(identityTerms, GraphDiscoveryTerms))
         {
             return GraphRelatedOperationDiscover;
         }
 
-        var descriptionTerms = BuildOrderedGraphTerms(descriptor.Description).ToArray();
-        if (descriptionTerms.Any(GraphDiscoveryTerms.Contains))
+        var descriptionTerms = BuildOrderedGraphTerms(descriptor.Description);
+        if (ContainsAnyGraphTerm(descriptionTerms, GraphDiscoveryTerms))
         {
             return GraphRelatedOperationDiscover;
         }
 
-        if (descriptionTerms.Any(GraphInspectionTerms.Contains))
+        if (ContainsAnyGraphTerm(descriptionTerms, GraphInspectionTerms))
         {
             return GraphRelatedOperationInspect;
         }
 
-        if (descriptionTerms.Any(GraphActionTerms.Contains))
+        if (ContainsAnyGraphTerm(descriptionTerms, GraphActionTerms))
         {
             return GraphRelatedOperationAct;
         }
 
         return GraphRelatedOperationOther;
-    }
-
-    private static IEnumerable<string> BuildOrderedGraphTerms(string? text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            yield break;
-        }
-
-        var terms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (
-            var token in text.Split(
-                TokenSeparators,
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
-            )
-        )
-        {
-            if (token.Length < 2)
-            {
-                continue;
-            }
-
-            var normalized = token.ToLowerInvariant();
-            if (IgnoredSearchTerms.Contains(normalized))
-            {
-                continue;
-            }
-
-            if (terms.Add(normalized))
-            {
-                yield return normalized;
-            }
-
-            var singular = NormalizeGraphPluralTerm(normalized);
-            if (
-                !string.Equals(singular, normalized, StringComparison.OrdinalIgnoreCase)
-                && terms.Add(singular)
-            )
-            {
-                yield return singular;
-            }
-        }
-    }
-
-    private static string NormalizeGraphPluralTerm(string normalized)
-    {
-        if (normalized.Length > 3 && normalized.EndsWith(PluralSuffixIes, StringComparison.Ordinal))
-        {
-            return $"{normalized[..^3]}y";
-        }
-
-        if (normalized.Length > 3 && normalized.EndsWith(PluralSuffixEs, StringComparison.Ordinal))
-        {
-            return normalized[..^2];
-        }
-
-        return normalized.Length > 3 && normalized.EndsWith('s') ? normalized[..^1] : normalized;
     }
 
     private static void AppendGraphLine(StringBuilder builder, string label, string value)
@@ -479,7 +524,7 @@ internal sealed partial class McpGatewayRuntime
     private static void AppendYamlList(
         StringBuilder builder,
         string key,
-        IReadOnlyList<string> values
+        IReadOnlyCollection<string> values
     )
     {
         if (values.Count == 0)

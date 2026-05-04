@@ -30,7 +30,7 @@ Out of scope:
 - `IMcpGatewayFactory` for isolated custom gateway instances created from host DI
 - `McpGatewayToolSet` for reusable search, route, and invoke meta-tools
 
-`McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default schema-aware Markdown-LD SPARQL graph search with ranked BM25 candidate selection for large catalogs and ranked BM25/fuzzy graph fallback for focused noisy queries, vector-first `Auto` search with bounded Markdown-LD supplementation, or explicit embedding-first search, optionally rewrites queries through a keyed `IChatClient`, emits built-in .NET telemetry for build/search operations including vector token usage, calibrates user-facing search confidence before returning matches, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
+`McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default schema-aware Markdown-LD SPARQL graph search with gateway-built ranked candidate selection for large catalogs and ranked candidate/fuzzy graph fallback for focused noisy queries, vector-first `Auto` search with bounded Markdown-LD supplementation, or explicit embedding-first search, optionally rewrites queries through a keyed `IChatClient`, emits built-in .NET telemetry for build/search operations including vector token usage, calibrates user-facing search confidence before returning matches, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
 
 Graph-specific search and indexing operations deliberately sit on `IMcpGatewayGraphSearch` and built-in graph tools instead of expanding the MCP-facing `IMcpGateway` contract. That surface exposes schema/profile inspection, generated SPARQL, graph evidence, explicit allowlisted federated SPARQL, mapped gateway tool matches, and runtime graph export while normal gateway search still returns the stable `McpGatewaySearchResult` and invocation still uses the same `ToolId` path. Non-federated direct graph tool search reuses the same candidate-backed schema path as normal graph search so agents cannot bypass the large-catalog optimization by calling `gateway_graph_schema_search`.
 
@@ -96,7 +96,7 @@ flowchart LR
     Runtime --> Store["Optional embedding store"]
     Runtime --> Graph["Markdown-LD graph index"]
     Graph --> SchemaSparql["Schema-aware SPARQL search"]
-    Graph --> RankedBm25["Ranked BM25 and fuzzy fallback"]
+    Graph --> RankedCandidates["Ranked candidate and fuzzy fallback"]
     Graph --> FederatedSparql["Allowlisted federated SPARQL"]
     Runtime --> Normalizer["Optional keyed search IChatClient"]
 ```
@@ -163,7 +163,7 @@ flowchart LR
     InMemorySearchCache --> MemoryCache["IMemoryCache"]
     RuntimeSearch --> MarkdownLd["ManagedCode.MarkdownLd.Kb"]
     MarkdownLd --> SchemaSparql["Schema search and generated SPARQL"]
-    MarkdownLd --> RankedSearch["Ranked BM25 / fuzzy search"]
+    MarkdownLd --> RankedSearch["Ranked candidate / fuzzy search"]
     MarkdownLd --> Federation["Federated SPARQL execution"]
     Warmup["Hosting/Internal/Warmup/*"] --> McpGateway
     InMemoryStore["McpGatewayInMemoryToolEmbeddingStore"] --> MemoryCache["IMemoryCache"]
@@ -175,7 +175,7 @@ flowchart LR
 - Benchmarks project: [`benchmarks/ManagedCode.MCPGateway.Benchmarks/`](../../benchmarks/ManagedCode.MCPGateway.Benchmarks/) owns BenchmarkDotNet scenarios for graph search, graph index build, and reusable meta-tool allocation measurements.
 - Discovery slice: [`src/ManagedCode.MCPGateway/Discovery/`](../../src/ManagedCode.MCPGateway/Discovery/) owns reusable meta-tools, category-first routing, discovered-tool projection, auto-discovery chat integration, and discovery-specific registration/configuration.
 - Catalog slice: [`src/ManagedCode.MCPGateway/Catalog/`](../../src/ManagedCode.MCPGateway/Catalog/) owns catalog contracts, models, mutable registration state, source adapters, descriptor creation, and index-building logic.
-- Search slice: [`src/ManagedCode.MCPGateway/Search/`](../../src/ManagedCode.MCPGateway/Search/) owns search contracts, models, graph-search API contracts, runtime cache/store abstractions, process-local cache/store implementations, query normalization, graph schema/profile description, schema-aware SPARQL graph retrieval, ranked BM25/fuzzy graph support, explicit graph federation, graph export, vector ranking, and search confidence logic.
+- Search slice: [`src/ManagedCode.MCPGateway/Search/`](../../src/ManagedCode.MCPGateway/Search/) owns search contracts, models, graph-search API contracts, runtime cache/store abstractions, process-local cache/store implementations, query normalization, graph schema/profile description, schema-aware SPARQL graph retrieval, ranked candidate/fuzzy graph support, explicit graph federation, graph export, vector ranking, and search confidence logic.
 - Invocation slice: [`src/ManagedCode.MCPGateway/Invocation/`](../../src/ManagedCode.MCPGateway/Invocation/) owns invocation request/result contracts and runtime execution helpers.
 - Prompts slice: [`src/ManagedCode.MCPGateway/Prompts/`](../../src/ManagedCode.MCPGateway/Prompts/) owns prompt contracts, gateway-owned prompt composition, prompt completion metadata, and the aggregated prompt catalog implementation.
 - Resources slice: [`src/ManagedCode.MCPGateway/Resources/`](../../src/ManagedCode.MCPGateway/Resources/) owns resource contracts and the aggregated resource catalog implementation.
@@ -186,7 +186,7 @@ flowchart LR
 - Public contracts stay explicit, but each feature slice owns the contracts and internal helpers for its own behavior.
 - `Gateway` is the orchestration slice only. It may delegate to catalog, search, invocation, prompts, discovery, and hosting collaborators, but it must not absorb their internal state or transport logic.
 - `Catalog` owns mutable source registration state, source adapters, descriptor creation, and index-building orchestration.
-- `Search` owns query shaping, ranking, graph schema/profile description, schema-aware SPARQL graph retrieval, ranked BM25/fuzzy graph support, explicit federated graph retrieval, graph export, vector retrieval, confidence calibration, and process-local cache/store implementations.
+- `Search` owns query shaping, ranking, graph schema/profile description, schema-aware SPARQL graph retrieval, ranked candidate/fuzzy graph support, explicit federated graph retrieval, graph export, vector retrieval, confidence calibration, and process-local cache/store implementations.
 - `Invocation` owns tool-target resolution, argument preparation, invocation, and result normalization.
 - `Prompts` owns prompt listing, prompt retrieval, gateway-owned prompt composition, and explicit prompt-overlay behavior for registered MCP sources.
 - `Resources` owns resource listing, resource-template listing, resource reads, and gateway-owned URI rewriting for downstream MCP export.
@@ -199,7 +199,7 @@ flowchart LR
 - Embedding support must stay optional and isolated behind `IMcpGatewayToolEmbeddingStore` and embedding-generator abstractions.
 - Process-local runtime search caching must stay behind `IMcpGatewaySearchCache`, with a no-op default and an explicit opt-in `IMemoryCache` implementation for hosts that want local reuse.
 - The built-in process-local embedding store may depend on `IMemoryCache`, but cross-instance persistence and cache replication must stay behind host-provided `IMcpGatewayToolEmbeddingStore` implementations.
-- Markdown-LD graph search is the default internal retrieval strategy. It may depend on `ManagedCode.MarkdownLd.Kb`, uses schema-aware SPARQL as the primary graph path in hybrid/schema-aware mode, uses ranked BM25 candidate selection to bound large-catalog schema search, uses ranked BM25/fuzzy graph search only as focused hybrid support or fallback, still returns the same public `McpGatewaySearchMatch` contracts, calibrates user-facing confidence at the gateway layer, and must not create a separate invocation surface.
+- Markdown-LD graph search is the default internal retrieval strategy. It may depend on `ManagedCode.MarkdownLd.Kb`, uses schema-aware SPARQL as the primary graph path in hybrid/schema-aware mode, uses gateway-built ranked candidate selection to bound large-catalog schema search, uses ranked candidate/fuzzy graph search only as focused hybrid support or fallback, still returns the same public `McpGatewaySearchMatch` contracts, calibrates user-facing confidence at the gateway layer, and must not create a separate invocation surface.
 - Graph-specific schema/profile inspection, evidence, generated SPARQL, explicit federated search, explicit index-build tooling, and runtime graph export belong to `IMcpGatewayGraphSearch` and `McpGatewayToolSet` graph tools, not to the MCP-facing `IMcpGateway` facade.
 - Federated graph search must use explicit configured endpoint allowlists and local graph bindings; the runtime must not perform hidden remote SPARQL discovery from the normal search path.
 - Markdown-LD graph sources may be generated from the live catalog at index build time, loaded from a file-system path, or provided through a host-supplied document factory configured in `McpGatewayOptions`. All modes must still map graph documents back to the current catalog before returning matches.

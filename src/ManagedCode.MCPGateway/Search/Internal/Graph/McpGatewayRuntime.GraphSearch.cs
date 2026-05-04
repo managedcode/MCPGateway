@@ -123,11 +123,12 @@ internal sealed partial class McpGatewayRuntime
     {
         var graphIndex =
             snapshot.GraphIndex ?? throw new InvalidOperationException(GraphUnavailableMessage);
+        var schemaQuery = NormalizeGraphSchemaQuery(graphIndex, searchInput.GraphQuery);
         var candidateLimit = CalculateGraphSearchCandidateLimit(limit, snapshot.Entries.Count);
         var focusedSearch = await SearchFocusedGraphAsync(
             graphIndex,
             searchInput.GraphQuery,
-            searchInput.SchemaQuery,
+            schemaQuery,
             candidateLimit,
             diagnostics,
             enableFuzzySchemaFallback,
@@ -141,10 +142,7 @@ internal sealed partial class McpGatewayRuntime
             scoreContext,
             new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         );
-        var primaryToolIds = primary
-            .Take(limit)
-            .Select(static item => item.Entry.Descriptor.ToolId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var primaryToolIds = CreateRankedToolIdSet(primary, limit);
         var related = MapFocusedGraphMatches(
             graphIndex,
             focusedSearch.RelatedMatches,
@@ -220,19 +218,19 @@ internal sealed partial class McpGatewayRuntime
 
         if (HasMappedPrimaryGraphMatch(graphIndex, schemaSearch.Result.Matches))
         {
-            if (!CanUseRankedBm25GraphSearch(graphIndex))
+            if (CanUseRankedCandidateGraphSearch(graphIndex))
             {
-                return schemaFocusedSearch;
+                var rankedFocusedSearch = SearchFocusedGraphByRankedCandidates(
+                        graphIndex,
+                        query,
+                        limit,
+                        enableFuzzyTokenMatching: false,
+                        cancellationToken
+                    );
+                return MergeHybridFocusedGraphSearch(rankedFocusedSearch, schemaSearch.Result);
             }
 
-            var rankedFocusedSearch = SearchFocusedGraphByRankedBm25(
-                    graphIndex,
-                    query,
-                    limit,
-                    enableFuzzyTokenMatching: false,
-                    cancellationToken
-                );
-            return MergeHybridFocusedGraphSearch(rankedFocusedSearch, schemaSearch.Result);
+            return schemaFocusedSearch;
         }
 
         diagnostics.Add(
@@ -249,36 +247,27 @@ internal sealed partial class McpGatewayRuntime
             };
         }
 
-        if (!CanUseRankedBm25GraphSearch(graphIndex))
+        if (CanUseRankedCandidateGraphSearch(graphIndex))
         {
-            if (!graphIndex.CanSearchByTokenDistance)
-            {
-                return new FocusedGraphSearch([], [], [], schemaFocusedSearch.FocusedGraph, true)
-                {
-                    UsedSchemaFallback = true,
-                };
-            }
-
-            var tokenDistanceFallback = await SearchFocusedGraphByTokenDistanceAsync(
-                    graphIndex,
-                    query,
-                    limit,
-                    cancellationToken
-                )
-                .ConfigureAwait(false);
-            return tokenDistanceFallback with { UsedSchemaSearch = true, UsedSchemaFallback = true };
-        }
-
-        var fallback = SearchFocusedGraphByRankedBm25(
+            var fallback = SearchFocusedGraphByRankedCandidates(
                 graphIndex,
                 query,
                 limit,
                 enableFuzzyTokenMatching: true,
                 cancellationToken
             );
-        if (fallback.PrimaryMatches.Count > 0 || !graphIndex.CanSearchByTokenDistance)
+            if (fallback.PrimaryMatches.Count > 0 || !graphIndex.CanSearchByTokenDistance)
+            {
+                return fallback with { UsedSchemaSearch = true, UsedSchemaFallback = true };
+            }
+        }
+
+        if (!graphIndex.CanSearchByTokenDistance)
         {
-            return fallback with { UsedSchemaSearch = true, UsedSchemaFallback = true };
+            return new FocusedGraphSearch([], [], [], schemaFocusedSearch.FocusedGraph, true)
+            {
+                UsedSchemaFallback = true,
+            };
         }
 
         var rankedEmptyTokenFallback = await SearchFocusedGraphByTokenDistanceAsync(
@@ -457,7 +446,12 @@ internal sealed partial class McpGatewayRuntime
             }
         }
 
-        var mappedMatches = bestScores.Values.ToList();
+        var mappedMatches = new List<ScoredToolEntry>(bestScores.Count);
+        foreach (var match in bestScores.Values)
+        {
+            mappedMatches.Add(match);
+        }
+
         mappedMatches.Sort(CompareScoredToolEntries);
         return mappedMatches;
     }

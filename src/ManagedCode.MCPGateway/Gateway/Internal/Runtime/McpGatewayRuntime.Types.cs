@@ -19,14 +19,14 @@ internal sealed partial class McpGatewayRuntime
         public static InvocationResolution Fail(string error) => new(false, null, error);
     }
 
-    private sealed record ToolEmbeddingCandidate(
+    private readonly record struct ToolEmbeddingCandidate(
         int Index,
         McpGatewayToolEmbeddingLookup Lookup,
         string SourceId,
         string ToolName
     );
 
-    private sealed record ScoredToolEntry(ToolCatalogEntry Entry, double Score);
+    private readonly record struct ScoredToolEntry(ToolCatalogEntry Entry, double Score);
 
     private sealed record ToolCatalogEntry(
         McpGatewayToolDescriptor Descriptor,
@@ -38,7 +38,7 @@ internal sealed partial class McpGatewayRuntime
         double Magnitude = ToolEmbeddingDefaultMagnitude
     );
 
-    private sealed record ToolSearchTermIndex(
+    private readonly record struct ToolSearchTermIndex(
         IReadOnlySet<string> SearchBoostTerms,
         IReadOnlyList<GraphConfidenceDescriptorTerm> ConfidenceTerms
     );
@@ -58,15 +58,21 @@ internal sealed partial class McpGatewayRuntime
         public bool HasConfidenceTerms => ConfidenceTerms.Count > 0;
     }
 
-    private sealed record GraphConfidenceDescriptorTerm(
+    private readonly record struct GraphConfidenceDescriptorTerm(
         string Value,
         IReadOnlySet<string> Bigrams
     );
 
-    private sealed record GraphConfidenceQueryTerm(
+    private readonly record struct GraphConfidenceQueryTerm(
         string Value,
         double Weight,
         IReadOnlySet<string> Bigrams
+    );
+
+    private readonly record struct GraphSchemaQueryTerm(
+        string Value,
+        int OriginalIndex,
+        double Weight
     );
 
     private sealed record ToolCatalogSnapshot(
@@ -108,7 +114,7 @@ internal sealed partial class McpGatewayRuntime
         );
     }
 
-    private sealed record GraphCandidateSearchEntry(
+    private readonly record struct GraphCandidateSearchEntry(
         string NodeId,
         string Label,
         string? Description,
@@ -132,11 +138,16 @@ internal sealed partial class McpGatewayRuntime
         );
     }
 
-    private sealed record GraphNavigationLink(
+    private readonly record struct GraphNavigationLink(
         string NodeId,
         string SourceNodeId,
         string ViaPredicateLabel,
         double Score
+    );
+
+    private readonly record struct ToolGraphAffinityCandidate(
+        ToolGraphDocumentSource Document,
+        int Affinity
     );
 
     private sealed record ToolGraphDocumentSource(
@@ -178,8 +189,6 @@ internal sealed partial class McpGatewayRuntime
 
         public string GraphQuery =>
             BuildEffectiveQuery(NormalizedQuery ?? OriginalQuery, ContextSummary, FlattenedContext);
-
-        public string SchemaQuery => NormalizeGraphSchemaQuery(GraphQuery);
 
         public string BoostQuery => NormalizedQuery ?? OriginalQuery ?? VectorQuery;
 
@@ -307,7 +316,7 @@ internal sealed partial class McpGatewayRuntime
     }
 }
 
-internal sealed record VectorTokenUsage(long InputTokenCount, long TotalTokenCount)
+internal readonly record struct VectorTokenUsage(long InputTokenCount, long TotalTokenCount)
 {
     public static VectorTokenUsage Zero { get; } = new(0, 0);
 }

@@ -25,7 +25,7 @@ Constraints:
 - keep `Graph` as the default strategy
 - keep the gateway library-first and MCP-tool-first
 - do not introduce Microsoft Agentic Framework
-- do not expose a separate public BM25 strategy in this task; BM25/fuzzy support remains inside the Markdown-LD graph path
+- do not expose a separate public BM25 strategy in this task; ranked candidate/fuzzy support remains inside the Markdown-LD graph path
 - keep vector search optional and host-provided
 
 ## Decision

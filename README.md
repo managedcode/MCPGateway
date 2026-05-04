@@ -102,7 +102,7 @@ Default behavior:
 - `MaxSearchResults = 15`
 - the index is built lazily on first list, search, or invoke
 
-`Hybrid` means the Markdown-LD graph path runs schema-aware SPARQL search first, then uses the `ManagedCode.MarkdownLd.Kb` ranked BM25 path as supporting evidence and fuzzy fallback for noisy queries. It is not a tokenizer-only search path.
+`Hybrid` means the Markdown-LD graph path runs schema-aware SPARQL search first, then uses the gateway-built ranked graph candidate path as supporting evidence and fuzzy fallback for noisy queries. It is not a tokenizer-only search path.
 
 ## Register Tools And Sources
 
@@ -533,7 +533,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges ranked BM25 graph results as supporting evidence for small focused catalogs. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in the BM25 fallback for small catalogs so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Larger catalogs stay schema-first and use the cheaper token-distance fallback when a fuzzy unbounded BM25 pass would be too expensive.
+Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges gateway-ranked graph candidate results as supporting evidence. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in that candidate fallback so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Large catalogs use a bounded candidate-backed schema path instead of an unbounded full-graph SPARQL pass.
 
 ```csharp
 services.AddMcpGateway(options =>
@@ -979,18 +979,19 @@ Run focused BenchmarkDotNet commands one at a time so generated benchmark build 
 
 CI runs the full BenchmarkDotNet suite with `--filter "*"` after the build/test gate and uploads the complete benchmark reports as `benchmark-results`. The release workflow also runs the full suite before package creation and uploads `release-benchmark-results`. These benchmark jobs are intentionally not smoke tests or reduced benchmark subsets.
 
-Latest full local BenchmarkDotNet snapshot on Apple M2 Pro, .NET SDK `10.0.201`, runtime `.NET 10.0.5`:
+Latest full local BenchmarkDotNet snapshot on May 4, 2026, Apple M2 Pro, .NET SDK `10.0.201`, runtime `.NET 10.0.5`. Benchmark setup, cleanup, and measured async paths run async end-to-end without sync-over-async blocking:
 
 | Scenario | Mean | Allocated |
 | --- | ---: | ---: |
-| `BuildGraphIndex` | 620.0 ms | 499.81 MB |
-| `SearchWeatherGraph` | 25.72 ms | 25.92 MB |
-| `SearchPortfolioGraph` | 27.35 ms | 26.29 MB |
-| `SearchArchiveGraph` | 191.23 ms | 130.75 MB |
-| `SearchWeatherGraphTool` | 27.57 ms | 25.92 MB |
-| `CreateGatewayTools` | 582.8 ns | 936 B |
-| `CreateGraphTools` | 1.114 us | 1,528 B |
-| `CreateDiscoveredTools` | 802.5 ns | 3,192 B |
+| `BuildGraphIndex` | 608.6 ms | 500.46 MB |
+| `SearchWeatherGraph` | 25.22 ms | 25.88 MB |
+| `SearchPortfolioGraph` | 24.55 ms | 26.07 MB |
+| `SearchArchiveGraph` | 122.17 ms | 108.64 MB |
+| `SearchWeatherGraphTool` | 24.40 ms | 25.92 MB |
+| `SearchArchiveGraphTool` | 111.05 ms | 108.10 MB |
+| `CreateGatewayTools` | 568.5 ns | 936 B |
+| `CreateGraphTools` | 1.094 us | 1,528 B |
+| `CreateDiscoveredTools` | 786.0 ns | 3,192 B |
 
 See [docs/Performance/Benchmarks.md](docs/Performance/Benchmarks.md) for benchmark scope and optimization policy.
 

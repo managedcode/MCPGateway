@@ -18,7 +18,7 @@ In scope:
 Out of scope:
 
 - changing the default `Graph` strategy
-- introducing a new public BM25 or tokenizer strategy; BM25/fuzzy support stays internal to the Markdown-LD graph path
+- introducing a new public BM25 or tokenizer strategy; ranked candidate/fuzzy support stays internal to the Markdown-LD graph path
 - tool quarantine, moderation, or remote policy enforcement
 - agent-to-agent protocol support
 

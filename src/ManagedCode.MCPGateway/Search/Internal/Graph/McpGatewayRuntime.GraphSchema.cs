@@ -213,12 +213,95 @@ internal sealed partial class McpGatewayRuntime
 
     private static string NormalizeGraphSchemaQuery(string graphQuery)
     {
-        var schemaTerms = BuildOrderedGraphTerms(graphQuery)
-            .Where(IsGraphSchemaSearchQueryTerm)
-            .Take(GraphSchemaQueryMaxTerms)
-            .ToArray();
-        return schemaTerms.Length == 0 ? graphQuery : string.Join(' ', schemaTerms);
+        var schemaTerms = BuildOrderedGraphTerms(
+            graphQuery,
+            GraphSchemaQueryMaxTerms,
+            IsGraphSchemaSearchQueryTerm
+        );
+        return schemaTerms.Count == 0 ? graphQuery : string.Join(' ', schemaTerms);
     }
+
+    private static string NormalizeGraphSchemaQuery(
+        ToolGraphSearchIndex graphIndex,
+        string graphQuery
+    )
+    {
+        var schemaTerms = BuildOrderedGraphTerms(
+            graphQuery,
+            GraphSchemaQueryMaxTerms,
+            IsGraphSchemaSearchQueryTerm
+        );
+        if (schemaTerms.Count == 0)
+        {
+            return graphQuery;
+        }
+
+        if (!ShouldUseCandidateSchemaSearch(graphIndex))
+        {
+            return string.Join(' ', schemaTerms);
+        }
+
+        var selectedTerms = SelectGraphSchemaQueryTerms(graphIndex.CandidateSearch, schemaTerms);
+        return string.Join(' ', selectedTerms);
+    }
+
+    private static IReadOnlyList<string> SelectGraphSchemaQueryTerms(
+        GraphCandidateSearchIndex candidateSearch,
+        IReadOnlyList<string> schemaTerms
+    )
+    {
+        if (schemaTerms.Count <= 1)
+        {
+            return schemaTerms;
+        }
+
+        var scoredTerms = new List<GraphSchemaQueryTerm>(schemaTerms.Count);
+        var hasDistinctiveTerm = false;
+        for (var index = 0; index < schemaTerms.Count; index++)
+        {
+            var term = schemaTerms[index];
+            var weight = ResolveGraphCandidateTermWeight(
+                term,
+                candidateSearch.InverseDocumentFrequency
+            );
+            hasDistinctiveTerm |= weight >= GraphSchemaDistinctiveTermMinimumWeight;
+            scoredTerms.Add(new GraphSchemaQueryTerm(term, index, weight));
+        }
+
+        var maxTerms = hasDistinctiveTerm
+            ? GraphSchemaDistinctiveQueryMaxTerms
+            : GraphSchemaBroadQueryMaxTerms;
+        scoredTerms.Sort(CompareGraphSchemaQueryTermsByWeight);
+        if (scoredTerms.Count > maxTerms)
+        {
+            scoredTerms.RemoveRange(maxTerms, scoredTerms.Count - maxTerms);
+        }
+
+        scoredTerms.Sort(CompareGraphSchemaQueryTermsByOriginalIndex);
+        var selectedTerms = new string[scoredTerms.Count];
+        for (var index = 0; index < scoredTerms.Count; index++)
+        {
+            selectedTerms[index] = scoredTerms[index].Value;
+        }
+
+        return selectedTerms;
+    }
+
+    private static int CompareGraphSchemaQueryTermsByWeight(
+        GraphSchemaQueryTerm left,
+        GraphSchemaQueryTerm right
+    )
+    {
+        var weightComparison = right.Weight.CompareTo(left.Weight);
+        return weightComparison != 0
+            ? weightComparison
+            : left.OriginalIndex.CompareTo(right.OriginalIndex);
+    }
+
+    private static int CompareGraphSchemaQueryTermsByOriginalIndex(
+        GraphSchemaQueryTerm left,
+        GraphSchemaQueryTerm right
+    ) => left.OriginalIndex.CompareTo(right.OriginalIndex);
 
     private static bool IsGraphSchemaSearchQueryTerm(string term) =>
         !GraphGenericTerms.Contains(term)

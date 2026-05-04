@@ -8,18 +8,18 @@ namespace ManagedCode.MCPGateway.Benchmarks;
 public class McpGatewayIndexBuildBenchmarks
 {
     [Benchmark]
-    public int BuildGraphIndex()
+    public async Task<int> BuildGraphIndex()
     {
         var serviceProvider = BenchmarkCatalog.CreateGraphServiceProvider();
         try
         {
             var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
-            var result = gateway.BuildIndexAsync().GetAwaiter().GetResult();
+            var result = await gateway.BuildIndexAsync();
             return result.ToolCount + result.GraphNodeCount + result.GraphEdgeCount;
         }
         finally
         {
-            serviceProvider.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            await serviceProvider.DisposeAsync();
         }
     }
 }

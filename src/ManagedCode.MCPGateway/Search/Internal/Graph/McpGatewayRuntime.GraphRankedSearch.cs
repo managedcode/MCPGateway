@@ -4,7 +4,7 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
-    private static FocusedGraphSearch SearchFocusedGraphByRankedBm25(
+    private static FocusedGraphSearch SearchFocusedGraphByRankedCandidates(
         ToolGraphSearchIndex graphIndex,
         string query,
         int limit,

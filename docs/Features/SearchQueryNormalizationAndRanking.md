@@ -42,7 +42,7 @@ Out of scope:
 3. `Auto` may exist as an explicit policy mode, but it must not be documented as the default or as a third retrieval engine.
 4. `Auto` must run vector ranking first when vectors are available and usable, then use Markdown-LD graph search only for bounded related or next-step supplementation.
 5. Graph mode must use `ManagedCode.MarkdownLd.Kb` schema-aware SPARQL search as the primary path when `MarkdownLdGraphSearchMode` is `Hybrid` or `SchemaAware`.
-6. Hybrid graph mode may use `ManagedCode.MarkdownLd.Kb` ranked BM25 and fuzzy token matching only as support or fallback on focused catalogs; larger catalogs must avoid unbounded BM25 passes and use schema or token-distance graph behavior instead.
+6. Hybrid graph mode may use gateway-built ranked candidate and fuzzy token matching only as support or fallback; larger catalogs must avoid unbounded full-graph passes and use bounded candidate-backed schema behavior instead.
 7. Token-based retrieval must come from `ManagedCode.MarkdownLd.Kb` inside the graph path; the package must not expose a separate local `Tokenizer` strategy.
 8. Markdown-LD graph mode must support generated tool documents at index build/startup and file-system graph sources through a configured path.
 9. Markdown-LD graph mode should also allow host-supplied Markdown-LD documents so developers can control graph authoring without replacing the gateway runtime.
@@ -204,7 +204,7 @@ Test mapping:
 
 1. Keep search-normalization configuration in `McpGatewayOptions` and a keyed DI service key for the optional normalizer chat client.
 2. Keep normalization in the search pipeline with graceful fallback and diagnostics.
-3. Use `ManagedCode.MarkdownLd.Kb` as the Markdown-LD graph, schema-aware SPARQL, federated SPARQL, ranked BM25/fuzzy, and token-distance search implementation.
+3. Use `ManagedCode.MarkdownLd.Kb` as the Markdown-LD graph, schema-aware SPARQL, federated SPARQL, and token-distance implementation while keeping gateway-built ranked candidate/fuzzy support inside the graph path.
 4. Support generated and file-system graph sources in the runtime graph index.
 5. Keep deterministic tests for query normalization, generated graph, schema SPARQL, federated graph search, file-backed graph, vector fallback, vector-first auto supplementation, telemetry, and performance regression coverage.
 6. Update `README.md` with configuration, telemetry, and operational guidance.

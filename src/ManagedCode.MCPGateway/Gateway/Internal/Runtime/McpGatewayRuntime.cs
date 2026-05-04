@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Text;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
@@ -59,7 +60,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const string GraphUnavailableMessage = "Markdown-LD graph ranking is unavailable.";
     private const string GraphSearchFailedMessageTemplate = "Markdown-LD graph ranking failed: {0}";
     private const string GraphSchemaFallbackMessage =
-        "Markdown-LD schema-aware ranking found no mapped gateway tools. Ranked BM25 graph ranking with fuzzy token matching was used.";
+        "Markdown-LD schema-aware ranking found no mapped gateway tools. Ranked graph candidate search with fuzzy token matching was used.";
     private const string GraphSchemaTokenDistanceFallbackMessage =
         "Markdown-LD schema-aware ranking found no mapped gateway tools. Token-distance graph ranking was used.";
     private const string GraphSchemaNoSupplementMessage =
@@ -329,15 +330,21 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const int GraphFocusedRelatedResultsLimit = 6;
     private const int GraphFocusedNextStepResultsLimit = 6;
     private const int GraphSchemaQueryMaxTerms = 14;
+    private const int GraphSchemaDistinctiveQueryMaxTerms = 4;
+    private const int GraphSchemaBroadQueryMaxTerms = 1;
     private const int SearchQueryNormalizationMaxOutputTokens = 96;
     private const int GraphConfidenceMaxQueryTerms = 8;
     private const int GraphConfidenceTermWeightCap = 12;
     private const int GraphMinimumFuzzyTermLength = 4;
     private const int GraphRankedSearchMaxFuzzyEditDistance = 1;
-    private const int GraphRankedBm25MaximumUnboundedCatalogSize = 32;
+    private const int GraphCandidateSchemaSearchCatalogThreshold = 32;
     private const int GraphSearchCandidateMultiplier = 1;
     private const int GraphSearchMinimumCandidateWindow = 5;
     private const int GraphSchemaCandidateMinimumWindow = 5;
+    private const int GraphMinimumTermLength = 2;
+    private const int GraphPluralNormalizationMinimumLength = 3;
+    private const int GraphDefaultTermCollectionCapacity = 8;
+    private const int GraphMaxCapabilityTerms = 4;
     private const int FederatedSparqlQueryTimeoutMilliseconds = 15000;
     private const double SearchScoreMinimum = 0d;
     private const double SearchScoreMaximum = 1d;
@@ -358,6 +365,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const double GraphCandidateIdfBaseWeight = 1d;
     private const double GraphCandidateDefaultTermWeight = 1d;
     private const double GraphCandidateFuzzyScoreMultiplier = 0.6d;
+    private const double GraphSchemaDistinctiveTermMinimumWeight = 1.25d;
     private const double GraphRankedSharedGroupRelatedScore = 0.7d;
     private const double GraphNavigationRelatedScore = 0.9d;
     private const double GraphNavigationNextStepScore = 0.8d;
@@ -419,9 +427,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         '?',
         '!',
     ];
-    private static readonly IReadOnlySet<string> IgnoredSearchTerms = new HashSet<string>(
-        StringComparer.OrdinalIgnoreCase
-    )
+    private static readonly FrozenSet<string> IgnoredSearchTerms = new[]
     {
         "a",
         "an",
@@ -462,10 +468,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         "true",
         "user",
         "with",
-    };
-    private static readonly IReadOnlySet<string> GraphDiscoveryTerms = new HashSet<string>(
-        StringComparer.OrdinalIgnoreCase
-    )
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> GraphDiscoveryTerms = new[]
     {
         GraphOperationTermSearch,
         GraphOperationTermFind,
@@ -473,10 +477,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         GraphOperationTermQuery,
         GraphOperationTermDiscover,
         GraphOperationTermBrowse,
-    };
-    private static readonly IReadOnlySet<string> GraphInspectionTerms = new HashSet<string>(
-        StringComparer.OrdinalIgnoreCase
-    )
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> GraphInspectionTerms = new[]
     {
         GraphOperationTermGet,
         GraphOperationTermRead,
@@ -488,10 +490,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         GraphOperationTermInspect,
         GraphOperationTermStatus,
         GraphOperationTermRetrieve,
-    };
-    private static readonly IReadOnlySet<string> GraphActionTerms = new HashSet<string>(
-        StringComparer.OrdinalIgnoreCase
-    )
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> GraphActionTerms = new[]
     {
         GraphOperationTermCreate,
         GraphOperationTermUpdate,
@@ -505,16 +505,14 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         GraphOperationTermInvoke,
         GraphOperationTermRun,
         GraphOperationTermExecute,
-    };
-    private static readonly IReadOnlySet<string> GraphGenericTerms = new HashSet<string>(
-        StringComparer.OrdinalIgnoreCase
-    )
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
+    private static readonly FrozenSet<string> GraphGenericTerms = new[]
     {
         GraphGenericToolTerm,
         GraphGenericToolsTerm,
         GraphGenericMcpTerm,
         GraphGenericGatewayTerm,
-    };
+    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
     private static readonly CompositeFormat SourceLoadFailedMessageFormat = CompositeFormat.Parse(
         SourceLoadFailedMessageTemplate
     );

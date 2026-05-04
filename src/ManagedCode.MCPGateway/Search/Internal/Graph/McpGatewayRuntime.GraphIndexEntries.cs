@@ -14,14 +14,7 @@ internal sealed partial class McpGatewayRuntime
         var entriesBySourcePath = new Dictionary<string, ToolCatalogEntry>(
             StringComparer.OrdinalIgnoreCase
         );
-        var entriesByToolName = entries
-            .GroupBy(static entry => entry.Descriptor.ToolName, StringComparer.OrdinalIgnoreCase)
-            .Where(static group => group.Count() == 1)
-            .ToDictionary(
-                static group => group.Key,
-                static group => group.Single(),
-                StringComparer.OrdinalIgnoreCase
-            );
+        var entriesByToolName = CreateUniqueEntriesByToolName(entries);
 
         foreach (var entry in entries)
         {
@@ -55,6 +48,37 @@ internal sealed partial class McpGatewayRuntime
         }
 
         return entriesByNodeId;
+    }
+
+    private static IReadOnlyDictionary<string, ToolCatalogEntry> CreateUniqueEntriesByToolName(
+        IReadOnlyList<ToolCatalogEntry> entries
+    )
+    {
+        var countsByToolName = new Dictionary<string, int>(
+            entries.Count,
+            StringComparer.OrdinalIgnoreCase
+        );
+        var entriesByToolName = new Dictionary<string, ToolCatalogEntry>(
+            entries.Count,
+            StringComparer.OrdinalIgnoreCase
+        );
+
+        foreach (var entry in entries)
+        {
+            var toolName = entry.Descriptor.ToolName;
+            var count = countsByToolName.GetValueOrDefault(toolName);
+            countsByToolName[toolName] = count + 1;
+            if (count == 0)
+            {
+                entriesByToolName[toolName] = entry;
+            }
+            else
+            {
+                entriesByToolName.Remove(toolName);
+            }
+        }
+
+        return entriesByToolName;
     }
 
     private static bool TryResolveEntryByGraphFileName(

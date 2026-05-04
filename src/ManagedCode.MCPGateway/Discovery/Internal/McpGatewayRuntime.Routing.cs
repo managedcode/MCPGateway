@@ -42,18 +42,21 @@ internal sealed partial class McpGatewayRuntime
         );
         var preferReadOnly = request.PreferReadOnly ?? InferReadOnlyPreference(request);
 
-        var routedCandidates = searchResult
-            .Matches.Where(match => request.IncludeDisabledTools || match.IsEnabledByDefault)
-            .Select(match => new RoutedMatch(match, CalculateRouteScore(match, preferReadOnly)))
-            .OrderByDescending(static item => item.Score)
-            .ThenBy(static item => item.Match.ToolName, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var routedCandidates = new List<RoutedMatch>(searchResult.Matches.Count);
+        foreach (var match in searchResult.Matches)
+        {
+            if (!request.IncludeDisabledTools && !match.IsEnabledByDefault)
+            {
+                continue;
+            }
+
+            routedCandidates.Add(new RoutedMatch(match, CalculateRouteScore(match, preferReadOnly)));
+        }
+
+        routedCandidates.Sort(CompareRoutedMatches);
 
         var categories = BuildRouteCategories(routedCandidates, maxCategories, maxToolsPerCategory);
-        var suggestedMatches = categories
-            .SelectMany(static category => category.Tools)
-            .DistinctBy(static match => match.ToolId, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        var suggestedMatches = BuildSuggestedRouteMatches(categories);
 
         return new McpGatewayToolRouteResult(
             categories,
@@ -84,24 +87,89 @@ internal sealed partial class McpGatewayRuntime
             }
         }
 
-        return grouped
-            .Select(pair => new McpGatewayToolRouteCategory(
-                pair.Key,
-                pair.Value.Max(static candidate => candidate.Score),
-                pair.Value.OrderByDescending(static candidate => candidate.Score)
-                    .ThenBy(
-                        static candidate => candidate.Match.ToolName,
-                        StringComparer.OrdinalIgnoreCase
-                    )
-                    .Select(static candidate => candidate.Match)
-                    .DistinctBy(static match => match.ToolId, StringComparer.OrdinalIgnoreCase)
-                    .Take(maxToolsPerCategory)
-                    .ToList()
-            ))
-            .OrderByDescending(static category => category.Score)
-            .ThenBy(static category => category.Category, StringComparer.OrdinalIgnoreCase)
-            .Take(maxCategories)
-            .ToList();
+        var categories = new List<McpGatewayToolRouteCategory>(grouped.Count);
+        foreach (var (category, candidates) in grouped)
+        {
+            candidates.Sort(CompareRoutedMatches);
+            categories.Add(
+                new McpGatewayToolRouteCategory(
+                    category,
+                    candidates[0].Score,
+                    SelectRouteCategoryTools(candidates, maxToolsPerCategory)
+                )
+            );
+        }
+
+        categories.Sort(CompareRouteCategories);
+        if (categories.Count > maxCategories)
+        {
+            categories.RemoveRange(maxCategories, categories.Count - maxCategories);
+        }
+
+        return categories;
+    }
+
+    private static IReadOnlyList<McpGatewaySearchMatch> SelectRouteCategoryTools(
+        IReadOnlyList<RoutedMatch> candidates,
+        int maxToolsPerCategory
+    )
+    {
+        var tools = new List<McpGatewaySearchMatch>(Math.Min(candidates.Count, maxToolsPerCategory));
+        var seenToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates)
+        {
+            if (!seenToolIds.Add(candidate.Match.ToolId))
+            {
+                continue;
+            }
+
+            tools.Add(candidate.Match);
+            if (tools.Count >= maxToolsPerCategory)
+            {
+                break;
+            }
+        }
+
+        return tools;
+    }
+
+    private static IReadOnlyList<McpGatewaySearchMatch> BuildSuggestedRouteMatches(
+        IReadOnlyList<McpGatewayToolRouteCategory> categories
+    )
+    {
+        var suggestedMatches = new List<McpGatewaySearchMatch>();
+        var seenToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var category in categories)
+        {
+            foreach (var match in category.Tools)
+            {
+                if (seenToolIds.Add(match.ToolId))
+                {
+                    suggestedMatches.Add(match);
+                }
+            }
+        }
+
+        return suggestedMatches;
+    }
+
+    private static int CompareRoutedMatches(RoutedMatch left, RoutedMatch right)
+    {
+        var scoreComparison = right.Score.CompareTo(left.Score);
+        return scoreComparison != 0
+            ? scoreComparison
+            : string.Compare(left.Match.ToolName, right.Match.ToolName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int CompareRouteCategories(
+        McpGatewayToolRouteCategory left,
+        McpGatewayToolRouteCategory right
+    )
+    {
+        var scoreComparison = right.Score.CompareTo(left.Score);
+        return scoreComparison != 0
+            ? scoreComparison
+            : string.Compare(left.Category, right.Category, StringComparison.OrdinalIgnoreCase);
     }
 
     private static IEnumerable<string> ResolveRouteCategories(McpGatewaySearchMatch match)
@@ -139,16 +207,16 @@ internal sealed partial class McpGatewayRuntime
 
     private static bool? InferReadOnlyPreference(McpGatewayToolRouteRequest request)
     {
-        var terms = BuildOrderedGraphTerms(
-                string.Concat(request.Query, " ", request.ContextSummary)
-            )
-            .ToArray();
-        if (terms.Any(GraphActionTerms.Contains))
+        var terms = BuildOrderedGraphTerms(string.Concat(request.Query, " ", request.ContextSummary));
+        if (ContainsAnyGraphTerm(terms, GraphActionTerms))
         {
             return false;
         }
 
-        if (terms.Any(GraphDiscoveryTerms.Contains) || terms.Any(GraphInspectionTerms.Contains))
+        if (
+            ContainsAnyGraphTerm(terms, GraphDiscoveryTerms)
+            || ContainsAnyGraphTerm(terms, GraphInspectionTerms)
+        )
         {
             return true;
         }
@@ -222,5 +290,5 @@ internal sealed partial class McpGatewayRuntime
         return score;
     }
 
-    private sealed record RoutedMatch(McpGatewaySearchMatch Match, double Score);
+    private readonly record struct RoutedMatch(McpGatewaySearchMatch Match, double Score);
 }

@@ -348,14 +348,11 @@ internal sealed partial class McpGatewayRuntime
         int limit
     )
     {
-        var primaryToolIds = vectorRanked
-            .Ranked.Take(limit)
-            .Select(static item => item.Entry.Descriptor.ToolId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var candidateToolIds = vectorRanked
-            .Ranked.Take(CalculateAutoSupplementCandidateWindow(limit, vectorRanked.Ranked.Count))
-            .Select(static item => item.Entry.Descriptor.ToolId)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var primaryToolIds = CreateRankedToolIdSet(vectorRanked.Ranked, limit);
+        var candidateToolIds = CreateRankedToolIdSet(
+            vectorRanked.Ranked,
+            CalculateAutoSupplementCandidateWindow(limit, vectorRanked.Ranked.Count)
+        );
 
         foreach (var toolId in primaryToolIds)
         {
@@ -363,7 +360,8 @@ internal sealed partial class McpGatewayRuntime
         }
 
         var related = CollectSupplementMatches(
-            [.. graphRanked.Ranked, .. graphRanked.Related],
+            graphRanked.Ranked,
+            graphRanked.Related,
             candidateToolIds,
             primaryToolIds
         );
@@ -371,9 +369,11 @@ internal sealed partial class McpGatewayRuntime
             primaryToolIds,
             StringComparer.OrdinalIgnoreCase
         );
-        nextStepExcludedToolIds.UnionWith(
-            related.Select(static item => item.Entry.Descriptor.ToolId)
-        );
+        foreach (var relatedMatch in related)
+        {
+            nextStepExcludedToolIds.Add(relatedMatch.Entry.Descriptor.ToolId);
+        }
+
         var nextSteps = CollectSupplementMatches(
             graphRanked.NextSteps,
             candidateToolIds,
@@ -414,17 +414,57 @@ internal sealed partial class McpGatewayRuntime
             )
         );
 
+    private static HashSet<string> CreateRankedToolIdSet(
+        IReadOnlyList<ScoredToolEntry> ranked,
+        int limit
+    )
+    {
+        var count = Math.Min(ranked.Count, limit);
+        var toolIds = new HashSet<string>(count, StringComparer.OrdinalIgnoreCase);
+        for (var index = 0; index < count; index++)
+        {
+            toolIds.Add(ranked[index].Entry.Descriptor.ToolId);
+        }
+
+        return toolIds;
+    }
+
     private static IReadOnlyList<ScoredToolEntry> CollectSupplementMatches(
-        IEnumerable<ScoredToolEntry> graphMatches,
+        IReadOnlyList<ScoredToolEntry> primaryGraphMatches,
+        IReadOnlyList<ScoredToolEntry> secondaryGraphMatches,
         IReadOnlySet<string> candidateToolIds,
         IReadOnlySet<string> excludedToolIds
     )
     {
         var matches = new List<ScoredToolEntry>();
         var seenToolIds = new HashSet<string>(excludedToolIds, StringComparer.OrdinalIgnoreCase);
+        AddSupplementMatches(matches, primaryGraphMatches, candidateToolIds, seenToolIds);
+        AddSupplementMatches(matches, secondaryGraphMatches, candidateToolIds, seenToolIds);
+        return matches;
+    }
 
-        foreach (var match in graphMatches)
+    private static IReadOnlyList<ScoredToolEntry> CollectSupplementMatches(
+        IReadOnlyList<ScoredToolEntry> graphMatches,
+        IReadOnlySet<string> candidateToolIds,
+        IReadOnlySet<string> excludedToolIds
+    )
+    {
+        var matches = new List<ScoredToolEntry>();
+        var seenToolIds = new HashSet<string>(excludedToolIds, StringComparer.OrdinalIgnoreCase);
+        AddSupplementMatches(matches, graphMatches, candidateToolIds, seenToolIds);
+        return matches;
+    }
+
+    private static void AddSupplementMatches(
+        ICollection<ScoredToolEntry> matches,
+        IReadOnlyList<ScoredToolEntry> graphMatches,
+        IReadOnlySet<string> candidateToolIds,
+        ISet<string> seenToolIds
+    )
+    {
+        for (var index = 0; index < graphMatches.Count; index++)
         {
+            var match = graphMatches[index];
             var toolId = match.Entry.Descriptor.ToolId;
             if (!candidateToolIds.Contains(toolId) || !seenToolIds.Add(toolId))
             {
@@ -433,8 +473,6 @@ internal sealed partial class McpGatewayRuntime
 
             matches.Add(match);
         }
-
-        return matches;
     }
 
     private static RankedSearchMetrics CombineRankedSearchMetrics(

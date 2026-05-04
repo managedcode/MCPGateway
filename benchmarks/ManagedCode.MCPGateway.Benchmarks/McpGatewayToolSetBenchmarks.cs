@@ -9,18 +9,15 @@ public class McpGatewayToolSetBenchmarks
     private IReadOnlyList<McpGatewaySearchMatch> _matches = [];
 
     [GlobalSetup]
-    public void GlobalSetup()
+    public async Task GlobalSetup()
     {
-        _host = BenchmarkCatalog.CreateBuiltGraphGatewayAsync().GetAwaiter().GetResult();
-        var search = _host
-            .Gateway.SearchAsync(BenchmarkCatalog.WeatherQuery, maxResults: 10)
-            .GetAwaiter()
-            .GetResult();
+        _host = await BenchmarkCatalog.CreateBuiltGraphGatewayAsync();
+        var search = await _host.Gateway.SearchAsync(BenchmarkCatalog.WeatherQuery, maxResults: 10);
         _matches = search.Matches;
     }
 
     [GlobalCleanup]
-    public void GlobalCleanup() => _host.DisposeAsync().AsTask().GetAwaiter().GetResult();
+    public async Task GlobalCleanup() => await _host.DisposeAsync();
 
     [Benchmark]
     public int CreateGatewayTools() => _host.ToolSet.CreateTools().Count;

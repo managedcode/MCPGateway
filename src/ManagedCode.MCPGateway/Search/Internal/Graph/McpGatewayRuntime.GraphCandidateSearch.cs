@@ -138,8 +138,8 @@ internal sealed partial class McpGatewayRuntime
             return [];
         }
 
-        var queryTerms = BuildOrderedGraphTerms(query).Take(GraphSchemaQueryMaxTerms).ToArray();
-        if (queryTerms.Length == 0)
+        var queryTerms = BuildOrderedGraphTerms(query, GraphSchemaQueryMaxTerms);
+        if (queryTerms.Count == 0)
         {
             return [];
         }
@@ -153,7 +153,7 @@ internal sealed partial class McpGatewayRuntime
             return [];
         }
 
-        var matches = new List<KnowledgeGraphRankedSearchMatch>();
+        var matches = new List<KnowledgeGraphRankedSearchMatch>(limit);
         foreach (var candidate in index.Entries)
         {
             var score = ScoreGraphCandidate(
@@ -172,25 +172,84 @@ internal sealed partial class McpGatewayRuntime
                 SearchScoreMinimum,
                 SearchScoreMaximum
             );
-            matches.Add(
-                new KnowledgeGraphRankedSearchMatch(
-                    candidate.NodeId,
-                    candidate.Label,
-                    candidate.Description,
-                    KnowledgeGraphRankedSearchSource.Bm25,
-                    normalizedScore,
-                    CanonicalScore: normalizedScore
-                )
+            AddGraphCandidateMatch(
+                matches,
+                candidate,
+                normalizedScore,
+                limit
             );
         }
 
         matches.Sort(CompareGraphCandidateMatches);
-        if (matches.Count > limit)
+        return matches.ToArray();
+    }
+
+    private static void AddGraphCandidateMatch(
+        List<KnowledgeGraphRankedSearchMatch> matches,
+        GraphCandidateSearchEntry candidate,
+        double normalizedScore,
+        int limit
+    )
+    {
+        if (limit <= 0)
         {
-            matches.RemoveRange(limit, matches.Count - limit);
+            return;
         }
 
-        return matches.ToArray();
+        if (matches.Count < limit)
+        {
+            matches.Add(CreateGraphCandidateMatch(candidate, normalizedScore));
+            return;
+        }
+
+        var worstIndex = FindWorstGraphCandidateMatchIndex(matches);
+        if (!IsGraphCandidateMatchBetter(normalizedScore, candidate.Label, matches[worstIndex]))
+        {
+            return;
+        }
+
+        matches[worstIndex] = CreateGraphCandidateMatch(candidate, normalizedScore);
+    }
+
+    private static KnowledgeGraphRankedSearchMatch CreateGraphCandidateMatch(
+        GraphCandidateSearchEntry candidate,
+        double normalizedScore
+    ) =>
+        new(
+            candidate.NodeId,
+            candidate.Label,
+            candidate.Description,
+            KnowledgeGraphRankedSearchSource.Bm25,
+            normalizedScore,
+            CanonicalScore: normalizedScore
+        );
+
+    private static int FindWorstGraphCandidateMatchIndex(
+        IReadOnlyList<KnowledgeGraphRankedSearchMatch> matches
+    )
+    {
+        var worstIndex = 0;
+        for (var index = 1; index < matches.Count; index++)
+        {
+            if (CompareGraphCandidateMatches(matches[index], matches[worstIndex]) > 0)
+            {
+                worstIndex = index;
+            }
+        }
+
+        return worstIndex;
+    }
+
+    private static bool IsGraphCandidateMatchBetter(
+        double score,
+        string label,
+        KnowledgeGraphRankedSearchMatch current
+    )
+    {
+        var scoreComparison = score.CompareTo(current.Score);
+        return scoreComparison != 0
+            ? scoreComparison > 0
+            : string.Compare(label, current.Label, StringComparison.OrdinalIgnoreCase) < 0;
     }
 
     private static double CalculateMaximumGraphCandidateScore(
@@ -242,7 +301,7 @@ internal sealed partial class McpGatewayRuntime
             ? weight
             : GraphCandidateDefaultTermWeight;
 
-    private static bool HasFuzzyGraphCandidateTerm(IEnumerable<string> candidateTerms, string term)
+    private static bool HasFuzzyGraphCandidateTerm(IReadOnlySet<string> candidateTerms, string term)
     {
         if (term.Length < GraphMinimumFuzzyTermLength)
         {

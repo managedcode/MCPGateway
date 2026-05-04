@@ -51,7 +51,7 @@ internal sealed partial class McpGatewayRuntime
     }
 
     private static bool ShouldUseCandidateSchemaSearch(ToolGraphSearchIndex graphIndex) =>
-        graphIndex.SearchableNodeIds.Count > GraphRankedBm25MaximumUnboundedCatalogSize;
+        graphIndex.SearchableNodeIds.Count > GraphCandidateSchemaSearchCatalogThreshold;
 
     private static IReadOnlySet<string> SelectSchemaCandidateNodeIds(
         ToolGraphSearchIndex graphIndex,
@@ -158,8 +158,8 @@ internal sealed partial class McpGatewayRuntime
         return new KnowledgeGraphSnapshot(nodes, edges);
     }
 
-    private static bool CanUseRankedBm25GraphSearch(ToolGraphSearchIndex graphIndex) =>
-        graphIndex.SearchableNodeIds.Count <= GraphRankedBm25MaximumUnboundedCatalogSize;
+    private static bool CanUseRankedCandidateGraphSearch(ToolGraphSearchIndex graphIndex) =>
+        graphIndex.CandidateSearch.Entries.Count > 0;
 
     private static string ResolveGraphSchemaFallbackMessage(
         ToolGraphSearchIndex graphIndex,
@@ -171,7 +171,7 @@ internal sealed partial class McpGatewayRuntime
             return GraphSchemaNoSupplementMessage;
         }
 
-        return CanUseRankedBm25GraphSearch(graphIndex)
+        return CanUseRankedCandidateGraphSearch(graphIndex)
             ? GraphSchemaFallbackMessage
             : GraphSchemaTokenDistanceFallbackMessage;
     }
