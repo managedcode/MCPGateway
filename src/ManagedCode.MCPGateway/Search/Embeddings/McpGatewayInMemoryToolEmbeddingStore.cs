@@ -3,25 +3,13 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace ManagedCode.MCPGateway;
 
-public sealed class McpGatewayInMemoryToolEmbeddingStore
-    : IMcpGatewayToolEmbeddingStore,
+public sealed class McpGatewayInMemoryToolEmbeddingStore(IMemoryCache cache)
+        : IMcpGatewayToolEmbeddingStore,
         IDisposable
 {
+    public const long DefaultSizeLimit = 8_192;
     private const long CacheEntrySize = 1;
-    private readonly IMemoryCache _cache;
-    private readonly IDisposable? _ownedCache;
-
-    public McpGatewayInMemoryToolEmbeddingStore()
-    {
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        _cache = cache;
-        _ownedCache = cache;
-    }
-
-    public McpGatewayInMemoryToolEmbeddingStore(IMemoryCache cache)
-    {
-        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-    }
+    private readonly IMemoryCache _cache = cache ?? throw new ArgumentNullException(nameof(cache));
 
     public Task<IReadOnlyList<McpGatewayToolEmbedding>> GetAsync(
         IReadOnlyList<McpGatewayToolEmbeddingLookup> lookups,
@@ -59,7 +47,7 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore
         return Task.CompletedTask;
     }
 
-    public void Dispose() => _ownedCache?.Dispose();
+    public void Dispose() { }
 
     private bool TryGetEmbedding(
         McpGatewayToolEmbeddingLookup lookup,

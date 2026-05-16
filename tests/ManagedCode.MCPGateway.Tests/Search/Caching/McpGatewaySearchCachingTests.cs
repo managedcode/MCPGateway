@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -176,7 +177,10 @@ public sealed partial class McpGatewaySearchTests
     [TUnit.Core.Test]
     public async Task SearchAsync_SharedSearchCacheSeparatesNormalizedQueriesByChatClientFingerprint()
     {
-        using var sharedSearchCache = new McpGatewayInMemorySearchCache();
+        using var sharedMemoryCache = new MemoryCache(
+            new MemoryCacheOptions { SizeLimit = McpGatewayInMemorySearchCache.DefaultSizeLimit }
+        );
+        using var sharedSearchCache = new McpGatewayInMemorySearchCache(sharedMemoryCache);
         var notificationChatClient = new TestChatClient(
             new TestChatClientOptions
             {
@@ -238,5 +242,38 @@ public sealed partial class McpGatewaySearchTests
                     || familySearch.Matches[0].ToolId == "local:storied_person_add_potential_parent"
             )
             .IsTrue();
+    }
+
+    [TUnit.Core.Test]
+    public async Task InMemorySearchCache_WorksWithSizeLimitedSharedMemoryCache()
+    {
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions { SizeLimit = 2 });
+        using var searchCache = new McpGatewayInMemorySearchCache(memoryCache);
+
+        await searchCache.SetNormalizedQueryAsync(
+            McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable,
+            "що там з нотіфікаціями",
+            "rewriter-a",
+            "notification inbox",
+            CancellationToken.None
+        );
+
+        var cached = await searchCache.TryGetNormalizedQueryAsync(
+            McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable,
+            "що там з нотіфікаціями",
+            "rewriter-a",
+            CancellationToken.None
+        );
+
+        await Assert.That(cached.found).IsTrue();
+        await Assert.That(cached.normalizedQuery).IsEqualTo("notification inbox");
+    }
+
+    [TUnit.Core.Test]
+    public async Task InMemorySearchCache_RequiresExplicitMemoryCache()
+    {
+        await Assert
+            .That(typeof(McpGatewayInMemorySearchCache).GetConstructor(Type.EmptyTypes))
+            .IsNull();
     }
 }

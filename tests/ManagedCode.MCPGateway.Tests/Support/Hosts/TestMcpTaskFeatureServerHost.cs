@@ -122,11 +122,10 @@ internal sealed class TestMcpTaskFeatureServerHost : IAsyncDisposable
     {
         _cancellationTokenSource.Cancel();
 
-        try
-        {
-            await _serverTask;
-        }
-        catch (OperationCanceledException) { }
+        await McpTestServerShutdown.AwaitServerStopAsync(
+            _serverTask,
+            _cancellationTokenSource.Token
+        );
 
         await Client.DisposeAsync();
         await Server.DisposeAsync();

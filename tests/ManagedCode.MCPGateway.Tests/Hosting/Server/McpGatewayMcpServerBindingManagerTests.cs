@@ -83,6 +83,97 @@ public sealed class McpGatewayMcpServerBindingManagerTests
         await Assert.That(binding.DisposeCount).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task PinAsync_CancelledOnlyWaiterCancelsPendingResolutionAndRemovesBinding()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+
+        var resolver = new CancellationTrackingBindingResolver();
+        var manager = new McpGatewayMcpServerBindingManager(resolver);
+        using var cancellation = new CancellationTokenSource();
+
+        var waiter = manager
+            .PinAsync(
+                requestServices: null,
+                serviceProvider,
+                gatewayServer.Server,
+                cancellation.Token
+            )
+            .AsTask();
+        await resolver.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await cancellation.CancelAsync();
+        var exception = await CaptureAsync(waiter);
+        await resolver.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(exception).IsTypeOf<OperationCanceledException>();
+        await Assert.That(manager.SessionBindingCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task PinAsync_ThrowsAfterManagerIsDisposed()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+
+        var resolver = new SequencedBindingResolver();
+        var manager = new McpGatewayMcpServerBindingManager(resolver);
+
+        await manager.DisposeAsync();
+        var exception = await CaptureAsync(
+            manager
+                .PinAsync(
+                    requestServices: null,
+                    serviceProvider,
+                    gatewayServer.Server,
+                    CancellationToken.None
+                )
+                .AsTask()
+        );
+
+        await Assert.That(exception).IsTypeOf<ObjectDisposedException>();
+        await Assert.That(manager.SessionBindingCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task DisposeAsync_DisposesAllBindingsWhenOneDisposeFails()
+    {
+        await using var firstServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var secondServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+
+        var failingBinding = new TrackingBinding(
+            "failing",
+            new InvalidOperationException("binding dispose failure")
+        );
+        var secondBinding = new TrackingBinding("second");
+        var resolver = new SequencedBindingResolver();
+        resolver.Enqueue().SetResult(failingBinding);
+        resolver.Enqueue().SetResult(secondBinding);
+        var manager = new McpGatewayMcpServerBindingManager(resolver);
+
+        _ = await manager.PinAsync(
+            requestServices: null,
+            serviceProvider,
+            firstServer.Server,
+            CancellationToken.None
+        );
+        _ = await manager.PinAsync(
+            requestServices: null,
+            serviceProvider,
+            secondServer.Server,
+            CancellationToken.None
+        );
+
+        var exception = await CaptureAsync(manager.DisposeAsync().AsTask());
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(exception!.Message).Contains("binding dispose failure");
+        await Assert.That(failingBinding.DisposeCount).IsEqualTo(1);
+        await Assert.That(secondBinding.DisposeCount).IsEqualTo(1);
+    }
+
     private static async Task<Exception?> CaptureAsync(Task action)
     {
         try
@@ -93,6 +184,42 @@ public sealed class McpGatewayMcpServerBindingManagerTests
         catch (Exception exception)
         {
             return exception;
+        }
+    }
+
+    private sealed class CancellationTrackingBindingResolver : IMcpGatewayServerBindingResolver
+    {
+        public TaskCompletionSource<object?> Cancelled { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+        public TaskCompletionSource<object?> Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+        public async ValueTask<IMcpGatewayServerBinding> ResolveAsync(
+            IServiceProvider? requestServices,
+            IServiceProvider serverServices,
+            ModelContextProtocol.Server.McpServer server,
+            CancellationToken cancellationToken = default
+        )
+        {
+            _ = requestServices;
+            _ = serverServices;
+            _ = server;
+            Started.TrySetResult(null);
+
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                Cancelled.TrySetResult(null);
+                throw;
+            }
+
+            return new TrackingBinding("unreachable");
         }
     }
 

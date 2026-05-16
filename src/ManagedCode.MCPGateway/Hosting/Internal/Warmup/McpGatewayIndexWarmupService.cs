@@ -11,26 +11,45 @@ internal sealed class McpGatewayIndexWarmupService(
 {
     private const string WarmupFailedLogMessage =
         "ManagedCode.MCPGateway background index warmup failed.";
+    private CancellationTokenSource? _warmupCancellation;
     private Task? _warmupTask;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _warmupTask = WarmAsync(cancellationToken);
+        _warmupCancellation?.Cancel();
+        _warmupCancellation?.Dispose();
+        _warmupCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _warmupTask = WarmAsync(_warmupCancellation.Token);
         return Task.CompletedTask;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        if (_warmupTask is null)
+        var warmupTask = _warmupTask;
+        var warmupCancellation = _warmupCancellation;
+        if (warmupTask is null)
         {
             return;
         }
 
+        warmupCancellation?.Cancel();
+
         try
         {
-            await _warmupTask.WaitAsync(cancellationToken);
+            await warmupTask.WaitAsync(cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (OperationCanceledException)
+            when (cancellationToken.IsCancellationRequested
+                || warmupCancellation?.IsCancellationRequested == true)
+        {
+            return;
+        }
+        finally
+        {
+            warmupCancellation?.Dispose();
+            _warmupCancellation = null;
+            _warmupTask = null;
+        }
     }
 
     private async Task WarmAsync(CancellationToken cancellationToken)
@@ -39,7 +58,10 @@ internal sealed class McpGatewayIndexWarmupService(
         {
             await gateway.BuildIndexAsync(cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
         catch (Exception ex)
         {
             logger.LogWarning(ex, WarmupFailedLogMessage);

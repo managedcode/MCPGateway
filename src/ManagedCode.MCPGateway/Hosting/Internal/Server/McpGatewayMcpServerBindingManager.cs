@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using ManagedCode.MCPGateway.Abstractions;
 
 namespace ManagedCode.MCPGateway;
@@ -9,6 +10,9 @@ internal sealed class McpGatewayMcpServerBindingManager(
 {
     private readonly ConcurrentDictionary<string, SessionBindingState> _sessionBindings =
         new(StringComparer.Ordinal);
+    private int _disposed;
+
+    internal int SessionBindingCount => _sessionBindings.Count;
 
     public async ValueTask<McpGatewayServerBindingLease> AcquireAsync(
         IServiceProvider? requestServices,
@@ -19,6 +23,7 @@ internal sealed class McpGatewayMcpServerBindingManager(
     {
         ArgumentNullException.ThrowIfNull(serverServices);
         ArgumentNullException.ThrowIfNull(server);
+        ThrowIfDisposed();
 
         var sessionKey = McpGatewayMcpServerIdentity.GetKey(server);
         if (_sessionBindings.TryGetValue(sessionKey, out var pinnedBinding))
@@ -48,12 +53,14 @@ internal sealed class McpGatewayMcpServerBindingManager(
     {
         ArgumentNullException.ThrowIfNull(serverServices);
         ArgumentNullException.ThrowIfNull(server);
+        ThrowIfDisposed();
 
         var sessionKey = McpGatewayMcpServerIdentity.GetKey(server);
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            ThrowIfDisposed();
 
             if (_sessionBindings.TryGetValue(sessionKey, out var existingBinding))
             {
@@ -84,6 +91,23 @@ internal sealed class McpGatewayMcpServerBindingManager(
             {
                 try
                 {
+                    if (Volatile.Read(ref _disposed) != 0)
+                    {
+                        if (
+                            _sessionBindings.TryRemove(
+                                new KeyValuePair<string, SessionBindingState>(
+                                    sessionKey,
+                                    createdBinding
+                                )
+                            )
+                        )
+                        {
+                            await createdBinding.DisposeAsync();
+                        }
+
+                        ThrowIfDisposed();
+                    }
+
                     return new McpGatewayServerBindingLease(
                         await WaitForBindingAsync(sessionKey, createdBinding, cancellationToken),
                         ownsBinding: false
@@ -95,6 +119,8 @@ internal sealed class McpGatewayMcpServerBindingManager(
                     throw;
                 }
             }
+
+            await createdBinding.DisposeAsync();
         }
     }
 
@@ -125,13 +151,28 @@ internal sealed class McpGatewayMcpServerBindingManager(
 
     public async ValueTask DisposeAsync()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         var bindings = _sessionBindings.Values.ToArray();
         _sessionBindings.Clear();
+        var cleanupExceptions = new List<Exception>();
 
         foreach (var bindingState in bindings)
         {
-            await bindingState.DisposeAsync();
+            try
+            {
+                await bindingState.DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                cleanupExceptions.Add(exception);
+            }
         }
+
+        ThrowIfCleanupFailed(cleanupExceptions);
     }
 
     internal readonly struct McpGatewayServerBindingLease(IMcpGatewayServerBinding binding, bool ownsBinding) : IAsyncDisposable
@@ -172,10 +213,33 @@ internal sealed class McpGatewayMcpServerBindingManager(
         }
     }
 
-    private sealed class SessionBindingState(Task<IMcpGatewayServerBinding> bindingTask)
+    private static void ThrowIfCleanupFailed(List<Exception> cleanupExceptions)
+    {
+        switch (cleanupExceptions.Count)
+        {
+            case 0:
+                return;
+            case 1:
+                ExceptionDispatchInfo.Capture(cleanupExceptions[0]).Throw();
+                break;
+            default:
+                throw new AggregateException(cleanupExceptions);
+        }
+    }
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+    }
+
+    private sealed class SessionBindingState(
+        Task<IMcpGatewayServerBinding> bindingTask,
+        CancellationTokenSource resolutionCancellation
+    )
         : IAsyncDisposable
     {
         private int _references = 1;
+        private int _disposed;
 
         public Task<IMcpGatewayServerBinding> BindingTask { get; } = bindingTask;
 
@@ -185,10 +249,23 @@ internal sealed class McpGatewayMcpServerBindingManager(
             IServiceProvider serverServices,
             ModelContextProtocol.Server.McpServer server,
             CancellationToken cancellationToken
-        ) =>
-            new(
-                resolver.ResolveAsync(requestServices, serverServices, server, cancellationToken).AsTask()
+        )
+        {
+            var resolutionCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken
             );
+            return new(
+                resolver
+                    .ResolveAsync(
+                        requestServices,
+                        serverServices,
+                        server,
+                        resolutionCancellation.Token
+                    )
+                    .AsTask(),
+                resolutionCancellation
+            );
+        }
 
         public void AddReference() => Interlocked.Increment(ref _references);
 
@@ -196,6 +273,13 @@ internal sealed class McpGatewayMcpServerBindingManager(
 
         public async ValueTask DisposeAsync()
         {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            {
+                return;
+            }
+
+            await resolutionCancellation.CancelAsync();
+
             IMcpGatewayServerBinding binding;
             try
             {
@@ -205,6 +289,10 @@ internal sealed class McpGatewayMcpServerBindingManager(
             {
                 // Resolution failures have nothing to dispose and should not fail cleanup.
                 return;
+            }
+            finally
+            {
+                resolutionCancellation.Dispose();
             }
 
             await binding.DisposeAsync();

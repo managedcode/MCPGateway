@@ -2,6 +2,7 @@ using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -68,6 +69,7 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
         await Assert.That(registration.SubscriptionCount).IsEqualTo(2);
         await Assert.That(registration.DisposedSubscriptionCount).IsEqualTo(2);
         await Assert.That(payload.Uri).IsEqualTo(exposedUri);
+        await Assert.That(manager.SubscriptionStateCount).IsEqualTo(0);
     }
 
     [Test]
@@ -91,7 +93,37 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
             cancellationSource.Token
         );
 
+        await WaitUntilAsync(() => manager.SubscriptionStateCount == 0);
         await Assert.That(registration.DisposedSubscriptionCount).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task SubscribeAsync_RemovesStateWhenSourceDoesNotSupportSubscriptions()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var manager = CreateManager(
+            serviceProvider,
+            new UnsupportedSubscriptionResourceSource("source-a")
+        );
+
+        Exception? exception = null;
+        try
+        {
+            await manager.SubscribeAsync(
+                requestServices: null,
+                gatewayServer.Server,
+                "docs://overview",
+                CancellationToken.None
+            );
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<McpException>();
+        await Assert.That(manager.SubscriptionStateCount).IsEqualTo(0);
     }
 
     [Test]
@@ -131,6 +163,82 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
         await Assert.That(exception).IsTypeOf<InvalidOperationException>();
         await Assert.That(exception!.Message).Contains("subscription dispose failure");
         await Assert.That(bindingDisposeCount).IsEqualTo(1);
+        await Assert.That(manager.SubscriptionStateCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task RemoveSessionAsync_ReleasesSubscriptionAndPinnedBinding()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        var registration = new TrackingResourceRegistration("source-a");
+        var bindingDisposeCount = 0;
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var manager = CreateManager(
+            serviceProvider,
+            new McpGatewayRegistrationBoundServerSource(registration),
+            () => Interlocked.Increment(ref bindingDisposeCount)
+        );
+
+        await manager.SubscribeAsync(
+            requestServices: null,
+            gatewayServer.Server,
+            "docs://overview",
+            CancellationToken.None
+        );
+
+        await manager.RemoveSessionAsync(gatewayServer.Server.SessionId ?? string.Empty);
+
+        await Assert.That(registration.DisposedSubscriptionCount).IsEqualTo(1);
+        await Assert.That(bindingDisposeCount).IsEqualTo(1);
+        await Assert.That(manager.SubscriptionStateCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task SubscribeAsync_ThrowsAfterManagerIsDisposed()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var manager = CreateManager(serviceProvider, new TrackingResourceRegistration("source-a"));
+
+        await manager.DisposeAsync();
+        var exception = await CaptureAsync(
+            manager.SubscribeAsync(
+                requestServices: null,
+                gatewayServer.Server,
+                "docs://overview",
+                CancellationToken.None
+            )
+        );
+
+        await Assert.That(exception).IsTypeOf<ObjectDisposedException>();
+        await Assert.That(manager.SubscriptionStateCount).IsEqualTo(0);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var timeoutAt = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            if (DateTimeOffset.UtcNow >= timeoutAt)
+            {
+                throw new TimeoutException("Condition was not satisfied within five seconds.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(25));
+        }
+    }
+
+    private static async Task<Exception?> CaptureAsync(Task action)
+    {
+        try
+        {
+            await action;
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
     }
 
     private static McpGatewayResourceSubscriptionManager CreateManager(
@@ -248,6 +356,24 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
                 ValueTask.FromException(
                     new InvalidOperationException("subscription dispose failure")
                 );
+        }
+    }
+
+    private sealed class UnsupportedSubscriptionResourceSource(string sourceId)
+        : TestMcpGatewayServerSource(sourceId)
+    {
+        public override Task<IAsyncDisposable?> SubscribeToResourceAsync(
+            string resourceUri,
+            Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
+            Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken = default
+        )
+        {
+            _ = resourceUri;
+            _ = onUpdated;
+            _ = loggerFactory;
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult<IAsyncDisposable?>(null);
         }
     }
 }

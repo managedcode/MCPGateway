@@ -88,6 +88,107 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
         await Assert.That(bindingDisposeCount).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task RemoveSessionAsync_ReleasesPromptSubscriptionAndBinding()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var promptSubscriptionDisposeCount = 0;
+        var bindingDisposeCount = 0;
+        var resolver = new SingleSourceServerBindingResolver(
+            new EmptySource("source-a"),
+            new StaticMcpGatewayResourceCatalog([]),
+            subscribeToPromptListChanges: _ =>
+                new CountingDisposable(() => Interlocked.Increment(ref promptSubscriptionDisposeCount)),
+            onDisposed: () => Interlocked.Increment(ref bindingDisposeCount)
+        );
+        var manager = new McpGatewayPromptListNotificationManager(
+            new McpGatewayMcpServerBindingManager(resolver),
+            serviceProvider,
+            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
+            NullLoggerFactory.Instance
+        );
+
+        await manager.RegisterDownstreamServerAsync(
+            requestServices: null,
+            gatewayServer.Server,
+            CancellationToken.None
+        );
+
+        await manager.RemoveSessionAsync(McpGatewayMcpServerIdentity.GetKey(gatewayServer.Server));
+
+        await Assert.That(promptSubscriptionDisposeCount).IsEqualTo(1);
+        await Assert.That(bindingDisposeCount).IsEqualTo(1);
+        await Assert.That(manager.SessionStateCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task RegisterDownstreamServerAsync_ReleasesBindingWhenInitialPromptSubscriptionFails()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var bindingDisposeCount = 0;
+        var resolver = new SingleSourceServerBindingResolver(
+            new ThrowingPromptSubscriptionSource("source-a"),
+            new StaticMcpGatewayResourceCatalog([]),
+            onDisposed: () => Interlocked.Increment(ref bindingDisposeCount)
+        );
+        var manager = new McpGatewayPromptListNotificationManager(
+            new McpGatewayMcpServerBindingManager(resolver),
+            serviceProvider,
+            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
+            NullLoggerFactory.Instance
+        );
+
+        Exception? exception = null;
+        try
+        {
+            await manager.RegisterDownstreamServerAsync(
+                requestServices: null,
+                gatewayServer.Server,
+                CancellationToken.None
+            );
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(exception!.Message).Contains("prompt upstream subscribe failure");
+        await Assert.That(bindingDisposeCount).IsEqualTo(1);
+        await Assert.That(manager.SessionStateCount).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task RegisterDownstreamServerAsync_ThrowsAfterManagerIsDisposed()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var resolver = new SingleSourceServerBindingResolver(
+            new EmptySource("source-a"),
+            new StaticMcpGatewayResourceCatalog([])
+        );
+        var manager = new McpGatewayPromptListNotificationManager(
+            new McpGatewayMcpServerBindingManager(resolver),
+            serviceProvider,
+            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
+            NullLoggerFactory.Instance
+        );
+
+        await manager.DisposeAsync();
+        var exception = await CaptureAsync(
+            manager.RegisterDownstreamServerAsync(
+                requestServices: null,
+                gatewayServer.Server,
+                CancellationToken.None
+            )
+        );
+
+        await Assert.That(exception).IsTypeOf<ObjectDisposedException>();
+        await Assert.That(manager.SessionStateCount).IsEqualTo(0);
+    }
+
     private static StaticMcpGatewayResourceCatalog CreateResourceCatalog() =>
         new(
             [
@@ -115,6 +216,19 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(25));
+        }
+    }
+
+    private static async Task<Exception?> CaptureAsync(Task action)
+    {
+        try
+        {
+            await action;
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
         }
     }
 
@@ -189,7 +303,36 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
         }
     }
 
+    private sealed class CountingDisposable(Action onDispose) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                onDispose();
+            }
+        }
+    }
+
     private sealed class EmptySource(string sourceId) : TestMcpGatewayServerSource(sourceId);
+
+    private sealed class ThrowingPromptSubscriptionSource(string sourceId)
+        : TestMcpGatewayServerSource(sourceId)
+    {
+        public override Task<IAsyncDisposable?> SubscribeToPromptListChangesAsync(
+            Func<PromptListChangedNotificationParams, CancellationToken, ValueTask> onChanged,
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken = default
+        )
+        {
+            _ = onChanged;
+            _ = loggerFactory;
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("prompt upstream subscribe failure");
+        }
+    }
 
     private sealed class ThrowingDisposable : IDisposable
     {

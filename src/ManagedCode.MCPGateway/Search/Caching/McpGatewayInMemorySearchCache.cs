@@ -3,25 +3,14 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace ManagedCode.MCPGateway;
 
-public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDisposable
+public sealed class McpGatewayInMemorySearchCache(IMemoryCache cache) : IMcpGatewaySearchCache, IDisposable
 {
+    public const long DefaultSizeLimit = 2_048;
+    private const long CacheEntrySize = 1;
     private static readonly TimeSpan NormalizedQueryCacheTtl = TimeSpan.FromMinutes(30);
     private static readonly TimeSpan QueryEmbeddingCacheTtl = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan SearchResultCacheTtl = TimeSpan.FromMinutes(5);
-    private readonly IMemoryCache _cache;
-    private readonly IDisposable? _ownedCache;
-
-    public McpGatewayInMemorySearchCache()
-    {
-        var cache = new MemoryCache(new MemoryCacheOptions());
-        _cache = cache;
-        _ownedCache = cache;
-    }
-
-    public McpGatewayInMemorySearchCache(IMemoryCache cache)
-    {
-        _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-    }
+    private readonly IMemoryCache _cache = cache ?? throw new ArgumentNullException(nameof(cache));
 
     public ValueTask<(bool found, string? normalizedQuery)> TryGetNormalizedQueryAsync(
         McpGatewaySearchQueryNormalization normalization,
@@ -187,10 +176,10 @@ public sealed class McpGatewayInMemorySearchCache : IMcpGatewaySearchCache, IDis
         return ValueTask.CompletedTask;
     }
 
-    public void Dispose() => _ownedCache?.Dispose();
+    public void Dispose() { }
 
     private static MemoryCacheEntryOptions CreateEntryOptions(TimeSpan slidingExpiration) =>
-        new() { SlidingExpiration = slidingExpiration };
+        new() { SlidingExpiration = slidingExpiration, Size = CacheEntrySize };
 
     private static McpGatewayQueryEmbedding CloneQueryEmbedding(
         McpGatewayQueryEmbedding embedding

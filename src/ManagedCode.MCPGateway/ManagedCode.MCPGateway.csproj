@@ -13,5 +13,6 @@
     <PackageReference Include="Microsoft.Extensions.Options" />
     <PackageReference Include="ManagedCode.MarkdownLd.Kb" />
     <PackageReference Include="ModelContextProtocol" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
   </ItemGroup>
 </Project>

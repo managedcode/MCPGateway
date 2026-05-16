@@ -1,9 +1,11 @@
 #pragma warning disable MCPEXP001
 
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -14,6 +16,7 @@ internal sealed class McpGatewayMcpServerTaskStore(
     McpGatewayMcpServerBindingManager bindingManager,
     McpGatewayMcpServerRequestResolver requestResolver,
     IServiceProvider serviceProvider,
+    IOptions<McpGatewayOptions> gatewayOptions,
     ILogger<McpGatewayMcpServerTaskStore> logger,
     ILoggerFactory loggerFactory
 ) : IMcpTaskStore, IAsyncDisposable
@@ -26,7 +29,7 @@ internal sealed class McpGatewayMcpServerTaskStore(
         "' was cancelled and has no stored result.";
     private static readonly TimeSpan TaskResultPollDelay = TimeSpan.FromMilliseconds(25);
 
-    private readonly InMemoryMcpTaskStore _innerStore = new();
+    private readonly InMemoryMcpTaskStore _innerStore = CreateInnerStore(gatewayOptions.Value);
     private readonly ConcurrentDictionary<TaskKey, TaskBinding> _bindings = new();
 
     public async Task<CallToolResult> CreateToolTaskAsync(
@@ -414,10 +417,54 @@ internal sealed class McpGatewayMcpServerTaskStore(
 
     public async ValueTask DisposeAsync()
     {
+        var cleanupExceptions = new List<Exception>();
         foreach (var (_, binding) in _bindings.ToArray())
         {
-            await ReleaseBindingAsync(binding);
+            try
+            {
+                await ReleaseBindingAsync(binding);
+            }
+            catch (Exception exception)
+            {
+                cleanupExceptions.Add(exception);
+            }
         }
+
+        try
+        {
+            _innerStore.Dispose();
+        }
+        catch (Exception exception)
+        {
+            cleanupExceptions.Add(exception);
+        }
+
+        ThrowIfCleanupFailed(cleanupExceptions);
+    }
+
+    internal async ValueTask RemoveSessionAsync(string sessionId)
+    {
+        ArgumentNullException.ThrowIfNull(sessionId);
+
+        var cleanupExceptions = new List<Exception>();
+        foreach (var (_, binding) in _bindings.ToArray())
+        {
+            if (!string.Equals(binding.SessionId, sessionId, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            try
+            {
+                await ReleaseBindingAsync(binding);
+            }
+            catch (Exception exception)
+            {
+                cleanupExceptions.Add(exception);
+            }
+        }
+
+        ThrowIfCleanupFailed(cleanupExceptions);
     }
 
     private async Task RunLocalToolTaskAsync(
@@ -484,29 +531,58 @@ internal sealed class McpGatewayMcpServerTaskStore(
             binding.ExitOperation();
         }
 
-        switch (finalStatus)
+        try
         {
-            case McpTaskStatus.Completed:
-            case McpTaskStatus.Failed:
-                await StoreTaskResultAsync(
-                    binding.DownstreamTaskId,
-                    finalStatus.Value,
-                    storedResult ?? default,
-                    binding.SessionId,
-                    CancellationToken.None
-                );
-                await ReleaseBindingAsync(binding);
-                break;
-            case McpTaskStatus.Cancelled:
-                await UpdateTaskStatusAsync(
-                    binding.DownstreamTaskId,
-                    McpTaskStatus.Cancelled,
-                    finalStatusMessage ?? TaskCancelledMessage,
-                    binding.SessionId,
-                    CancellationToken.None
-                );
-                await ReleaseBindingAsync(binding);
-                break;
+            switch (finalStatus)
+            {
+                case McpTaskStatus.Completed:
+                case McpTaskStatus.Failed:
+                    await StoreTaskResultAsync(
+                        binding.DownstreamTaskId,
+                        finalStatus.Value,
+                        storedResult ?? default,
+                        binding.SessionId,
+                        CancellationToken.None
+                    );
+                    await ReleaseBindingAsync(binding);
+                    break;
+                case McpTaskStatus.Cancelled:
+                    await UpdateTaskStatusAsync(
+                        binding.DownstreamTaskId,
+                        McpTaskStatus.Cancelled,
+                        finalStatusMessage ?? TaskCancelledMessage,
+                        binding.SessionId,
+                        CancellationToken.None
+                    );
+                    await ReleaseBindingAsync(binding);
+                    break;
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Failed to finalize gateway task execution for task '{TaskId}'. Releasing the task binding.",
+                binding.DownstreamTaskId
+            );
+
+            await ReleaseBindingAfterFinalizationFailureAsync(binding);
+        }
+    }
+
+    private async Task ReleaseBindingAfterFinalizationFailureAsync(TaskBinding binding)
+    {
+        try
+        {
+            await ReleaseBindingAsync(binding);
+        }
+        catch (Exception cleanupException)
+        {
+            logger.LogError(
+                cleanupException,
+                "Failed to release gateway task binding for task '{TaskId}' after finalization failed.",
+                binding.DownstreamTaskId
+            );
         }
     }
 
@@ -725,9 +801,9 @@ internal sealed class McpGatewayMcpServerTaskStore(
         }
 
         _bindings.TryRemove(TaskKey.Create(binding.SessionId, binding.DownstreamTaskId), out _);
+        binding.CancellationSource?.Cancel();
         await binding.WaitForOperationsToCompleteAsync();
 
-        binding.CancellationSource?.Cancel();
         binding.CancellationSource?.Dispose();
 
         if (binding.UpstreamStatusSubscription is not null)
@@ -743,6 +819,119 @@ internal sealed class McpGatewayMcpServerTaskStore(
         if (binding.OwnedBinding is not null)
         {
             await binding.OwnedBinding.DisposeAsync();
+        }
+    }
+
+    private static InMemoryMcpTaskStore CreateInnerStore(McpGatewayOptions gatewayOptions)
+    {
+        ArgumentNullException.ThrowIfNull(gatewayOptions);
+        ArgumentNullException.ThrowIfNull(gatewayOptions.McpTaskStore);
+
+        var options = gatewayOptions.McpTaskStore;
+        ValidateOptionalPositive(
+            options.TaskTimeToLive,
+            $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.TaskTimeToLive)}"
+        );
+        ValidateOptionalPositive(
+            options.MaximumTaskTimeToLive,
+            $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.MaximumTaskTimeToLive)}"
+        );
+        if (
+            options.TaskTimeToLive is { } taskTimeToLive
+            && options.MaximumTaskTimeToLive is { } maximumTaskTimeToLive
+            && taskTimeToLive > maximumTaskTimeToLive
+        )
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(gatewayOptions),
+                taskTimeToLive,
+                $"Option '{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.TaskTimeToLive)}' cannot be greater than '{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.MaximumTaskTimeToLive)}'."
+            );
+        }
+
+        ValidatePositive(
+            options.PollInterval,
+            $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.PollInterval)}"
+        );
+        ValidatePositive(
+            options.CleanupInterval,
+            $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.CleanupInterval)}"
+        );
+        ValidatePositive(
+            options.PageSize,
+            $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.PageSize)}"
+        );
+        ValidateOptionalPositive(
+            options.MaximumTasks,
+            $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.MaximumTasks)}"
+        );
+        ValidateOptionalPositive(
+            options.MaximumTasksPerSession,
+            $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(options.MaximumTasksPerSession)}"
+        );
+
+        return new InMemoryMcpTaskStore(
+            options.TaskTimeToLive,
+            options.MaximumTaskTimeToLive,
+            options.PollInterval,
+            options.CleanupInterval,
+            options.PageSize,
+            options.MaximumTasks,
+            options.MaximumTasksPerSession
+        );
+    }
+
+    private static void ValidatePositive(TimeSpan value, string optionName)
+    {
+        if (value <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(value),
+                value,
+                $"Option '{optionName}' must be greater than zero."
+            );
+        }
+    }
+
+    private static void ValidateOptionalPositive(TimeSpan? value, string optionName)
+    {
+        if (value is not null)
+        {
+            ValidatePositive(value.Value, optionName);
+        }
+    }
+
+    private static void ValidatePositive(int value, string optionName)
+    {
+        if (value <= 0)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(value),
+                value,
+                $"Option '{optionName}' must be greater than zero."
+            );
+        }
+    }
+
+    private static void ValidateOptionalPositive(int? value, string optionName)
+    {
+        if (value is not null)
+        {
+            ValidatePositive(value.Value, optionName);
+        }
+    }
+
+    private static void ThrowIfCleanupFailed(List<Exception> cleanupExceptions)
+    {
+        switch (cleanupExceptions.Count)
+        {
+            case 0:
+                return;
+            case 1:
+                ExceptionDispatchInfo.Capture(cleanupExceptions[0]).Throw();
+                break;
+            default:
+                throw new AggregateException(cleanupExceptions);
         }
     }
 

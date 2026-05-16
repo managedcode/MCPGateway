@@ -19,6 +19,8 @@ The repository now treats the official C# SDK as the MCP baseline. Stable MCP ex
 - completion requests for exported prompts and resource references will be resolved back to the owning upstream `SourceId` and proxied through the upstream MCP client
 - resource subscriptions will be created against the owning upstream MCP client and tracked per downstream MCP session plus exported gateway URI
 - upstream `notifications/resources/updated` messages received through those subscriptions will be forwarded to the subscribed downstream client, but with the exported gateway URI instead of the raw upstream URI
+- per-session resource subscription state will be removed when unsubscribe, subscribe failure, or notification-forwarding failure leaves no active upstream subscription
+- when hosted over the official SDK ASP.NET Core Streamable HTTP transport, per-session resource subscription state will also be removed from the gateway when the SDK-owned HTTP session ends
 - the gateway export will advertise MCP logging capability and accept `logging/setLevel`, relying on the SDK server runtime to track the latest requested logging level on the downstream server instance
 
 No new public catalog surface is introduced for these protocol features. They remain part of the downstream MCP export behavior owned by the `Hosting` slice.
@@ -30,6 +32,7 @@ Positive:
 - downstream MCP clients can now use prompt and resource completions against the aggregated gateway export
 - resource subscriptions become source-aware and continue to work when resource URIs are gateway-rewritten
 - forwarded resource update notifications keep downstream clients on gateway-owned URIs instead of leaking upstream transport details
+- per-session subscription bookkeeping does not grow permanently for resource URIs that have already been unsubscribed, failed during setup/forwarding, or belonged to an ended Streamable HTTP session
 - the exported MCP server behavior is closer to the stable SDK baseline without widening the public DI surface unnecessarily
 
 Trade-offs:
@@ -43,6 +46,8 @@ Trade-offs:
 - `WithMcpGatewayCatalog()` MUST export MCP `completion/complete`.
 - `WithMcpGatewayCatalog()` MUST export MCP `resources/subscribe` and `resources/unsubscribe`.
 - Forwarded `notifications/resources/updated` MUST use the exported gateway URI that the downstream client subscribed to, not the raw upstream URI.
+- Resource subscription bookkeeping MUST remove inactive session/resource entries after unsubscribe, setup failure, or forwarding failure.
+- Streamable HTTP hosting MUST compose the official SDK session lifecycle and remove gateway-owned subscription state when the SDK session ends.
 - Completion requests for exported prompts and resources MUST resolve back to the owning upstream `SourceId` before proxying.
 - `logging/setLevel` support MUST stay aligned with the official SDK server behavior instead of introducing a gateway-specific logging protocol.
 

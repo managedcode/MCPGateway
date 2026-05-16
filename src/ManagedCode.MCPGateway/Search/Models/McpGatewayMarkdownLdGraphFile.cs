@@ -33,19 +33,19 @@ public static class McpGatewayMarkdownLdGraphFile
 
     public static IReadOnlyList<McpGatewayMarkdownLdGraphDocument> CreateDocuments(
         IEnumerable<McpGatewayToolDescriptor> descriptors,
-        int maxDescriptorLength = 4096
+        int maxDescriptorLength = McpGatewayOptions.DefaultMaxDescriptorLength
     )
     {
         ArgumentNullException.ThrowIfNull(descriptors);
         return McpGatewayRuntime.CreateMarkdownLdGraphFileDocuments(
             descriptors.ToArray(),
-            Math.Max(256, maxDescriptorLength)
+            Math.Max(McpGatewayOptions.MinimumDescriptorLength, maxDescriptorLength)
         );
     }
 
     public static Task<McpGatewayMarkdownLdGraphExport> ExportAsync(
         IEnumerable<McpGatewayToolDescriptor> descriptors,
-        int maxDescriptorLength = 4096,
+        int maxDescriptorLength = McpGatewayOptions.DefaultMaxDescriptorLength,
         CancellationToken cancellationToken = default
     )
     {

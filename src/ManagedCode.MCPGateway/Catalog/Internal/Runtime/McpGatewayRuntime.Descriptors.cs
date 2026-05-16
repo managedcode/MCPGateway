@@ -111,7 +111,10 @@ internal sealed partial class McpGatewayRuntime
         AppendInputSchema(builder, descriptor.InputSchemaJson);
         AppendUsageExamples(builder, descriptor.UsageExamples);
         var document = builder.ToString().Trim();
-        var effectiveMaxLength = Math.Max(256, maxDescriptorLength);
+        var effectiveMaxLength = Math.Max(
+            McpGatewayOptions.MinimumDescriptorLength,
+            maxDescriptorLength
+        );
         return document.Length <= effectiveMaxLength ? document : document[..effectiveMaxLength];
     }
 

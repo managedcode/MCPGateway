@@ -1,5 +1,6 @@
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -9,7 +10,8 @@ public sealed partial class McpGatewaySearchTests
     [TUnit.Core.Test]
     public async Task BuildIndexAsync_ReusesStoredToolEmbeddingsOnNextBuild()
     {
-        var embeddingStore = new McpGatewayInMemoryToolEmbeddingStore();
+        using var embeddingCache = CreateMemoryCache();
+        using var embeddingStore = new McpGatewayInMemoryToolEmbeddingStore(embeddingCache);
         var firstEmbeddingGenerator = new TestEmbeddingGenerator();
 
         var firstBuildResult = await BuildSearchIndexAsync(embeddingStore, firstEmbeddingGenerator);
@@ -90,7 +92,8 @@ public sealed partial class McpGatewaySearchTests
     [TUnit.Core.Test]
     public async Task BuildIndexAsync_DisablesVectorSearchWhenStoreHasVectorsButQueryGeneratorIsMissing()
     {
-        var embeddingStore = new McpGatewayInMemoryToolEmbeddingStore();
+        using var embeddingCache = CreateMemoryCache();
+        using var embeddingStore = new McpGatewayInMemoryToolEmbeddingStore(embeddingCache);
         var initialEmbeddingGenerator = new TestEmbeddingGenerator();
 
         await SeedSearchEmbeddingsAsync(embeddingStore, initialEmbeddingGenerator);
@@ -176,4 +179,7 @@ public sealed partial class McpGatewaySearchTests
     {
         await BuildSearchIndexAsync(embeddingStore, embeddingGenerator);
     }
+
+    private static MemoryCache CreateMemoryCache() =>
+        new(new MemoryCacheOptions { SizeLimit = McpGatewayInMemoryToolEmbeddingStore.DefaultSizeLimit });
 }

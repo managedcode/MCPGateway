@@ -146,11 +146,10 @@ internal sealed class TestMcpServerHost(
     {
         cancellationTokenSource.Cancel();
 
-        try
-        {
-            await serverTask;
-        }
-        catch (OperationCanceledException) { }
+        await McpTestServerShutdown.AwaitServerStopAsync(
+            serverTask,
+            cancellationTokenSource.Token
+        );
 
         await Client.DisposeAsync();
         await server.DisposeAsync();

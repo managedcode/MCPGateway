@@ -24,6 +24,8 @@ Search modes:
 - `Embeddings`: vector ranking first, Markdown-LD graph fallback when vector query generation fails or returns an unusable vector
 - `Auto`: vector-first policy mode that keeps semantic ranking as the primary result set and uses Markdown-LD graph expansion only after vector ranking succeeds
 
+Search-size and descriptor-size limits are public configuration, not hidden runtime constants. The default result size stays small for LLM-facing discovery, while `MaxSearchResults` is only the caller-requested hard cap and `MaxDescriptorLength` only bounds generated descriptor text used by search and graph indexing.
+
 ## Diagram
 
 ```mermaid
@@ -122,6 +124,7 @@ Mitigations:
 - `Auto` MUST run vector ranking first when query vectors are available and usable.
 - `Auto` MUST preserve vector primary ordering and MUST use graph search only as bounded supplementation or fallback.
 - Search-quality improvements MUST prefer mathematical or graph-ranking changes over hardcoded phrase exceptions.
+- Public search and descriptor-size limits MUST be named configuration defaults with validation instead of inline magic numbers or silent runtime clamping.
 
 ## Rollout And Rollback
 

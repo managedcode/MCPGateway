@@ -30,7 +30,10 @@ public sealed class McpGatewayDescriptorDocumentTests
             """
         );
 
-        var document = McpGatewayRuntime.BuildDescriptorDocument(descriptor, 4096);
+        var document = McpGatewayRuntime.BuildDescriptorDocument(
+            descriptor,
+            McpGatewayOptions.DefaultMaxDescriptorLength
+        );
 
         await Assert
             .That(document)
@@ -54,7 +57,10 @@ public sealed class McpGatewayDescriptorDocumentTests
             InputSchemaJson: "{ not-valid-json"
         );
 
-        var document = McpGatewayRuntime.BuildDescriptorDocument(descriptor, 4096);
+        var document = McpGatewayRuntime.BuildDescriptorDocument(
+            descriptor,
+            McpGatewayOptions.DefaultMaxDescriptorLength
+        );
 
         await Assert.That(document).Contains("Input schema: { not-valid-json");
     }

@@ -37,6 +37,9 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
     public IMcpGatewayRegistry Registry =>
         _serviceProvider.GetRequiredService<IMcpGatewayRegistry>();
 
+    public T GetRequiredService<T>()
+        where T : notnull => _serviceProvider.GetRequiredService<T>();
+
     public static async Task<GatewayMcpServerHost> StartAsync(
         Action<McpGatewayOptions> configureGateway,
         Action<IServiceCollection>? configureServices = null,
@@ -104,11 +107,10 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
     {
         _cancellationTokenSource.Cancel();
 
-        try
-        {
-            await _serverTask;
-        }
-        catch (OperationCanceledException) { }
+        await McpTestServerShutdown.AwaitServerStopAsync(
+            _serverTask,
+            _cancellationTokenSource.Token
+        );
 
         await Client.DisposeAsync();
         await Server.DisposeAsync();

@@ -99,10 +99,13 @@ Default behavior:
 - `MarkdownLdGraphSearchMode = Hybrid`
 - `SearchQueryNormalization = TranslateToEnglishWhenAvailable`
 - `DefaultSearchLimit = 5`
-- `MaxSearchResults = 15`
+- `MaxSearchResults = 50`
+- `MaxDescriptorLength = 16384`
 - the index is built lazily on first list, search, or invoke
 
 `Hybrid` means the Markdown-LD graph path runs schema-aware SPARQL search first, then uses the gateway-built ranked graph candidate path as supporting evidence and fuzzy fallback for noisy queries. It is not a tokenizer-only search path.
+
+`DefaultSearchLimit` is the normal top-N result size when a caller does not ask for a count. `MaxSearchResults` is only a hard cap for caller-requested result sizes so LLM-facing tool discovery cannot accidentally flood context. `MaxDescriptorLength` bounds the generated descriptor text used by search and Markdown-LD graph indexing; hosts with very large tool schemas can raise it explicitly.
 
 ## Register Tools And Sources
 
@@ -328,6 +331,20 @@ services.AddMcpServer()
 - forwarded `notifications/tasks/status` for exported gateway tasks
 
 Exported MCP tool and prompt names are source-qualified gateway ids such as `docs:search_repository`, `ops:deployment_review_system_prompt`, or `local:release_review_bundle`, so multiple upstream servers and gateway-owned prompts can be combined without name collisions. Exported MCP resource URIs and URI templates are rewritten into gateway-owned opaque URIs so downstream `resources/read` calls route back to the correct upstream source even when multiple servers expose overlapping URI spaces. The same source-aware rewrite is also used for `completion/complete`, forwarded prompt list changes, and forwarded resource update notifications, so downstream clients always talk in terms of gateway-owned prompt names and resource URIs while the gateway proxies the corresponding upstream MCP operations. When an upstream MCP tool already advertises task support, the gateway preserves that contract on the exported tool and proxies the corresponding upstream task flow. Local gateway tools are exported as optional task-capable tools and are executed through the gateway-owned task store.
+
+The exported task store uses the official SDK `InMemoryMcpTaskStore` with MCPGateway-owned bounded defaults: task TTL 30 minutes, maximum task TTL 2 hours, cleanup every minute, maximum 10,000 tasks globally, and maximum 1,000 tasks per downstream session. Hosts can override those limits through `McpGatewayOptions.McpTaskStore`, or replace `McpServerOptions.TaskStore` with a durable production store when tasks must survive process restarts:
+
+```csharp
+services.AddMcpGateway(options =>
+{
+    options.McpTaskStore.TaskTimeToLive = TimeSpan.FromHours(1);
+    options.McpTaskStore.MaximumTaskTimeToLive = TimeSpan.FromHours(4);
+    options.McpTaskStore.MaximumTasks = 50_000;
+    options.McpTaskStore.MaximumTasksPerSession = 5_000;
+});
+```
+
+`WithMcpGatewayCatalog()` does not replace the official SDK HTTP session manager with a custom session store. When used with `ModelContextProtocol.AspNetCore` Streamable HTTP transport, the gateway composes the SDK `HttpServerTransportOptions.RunSessionHandler` lifecycle so gateway-owned per-session prompt notification, resource subscription, and active task binding state is removed when the SDK session ends. Hosts should still use the official transport options for session policy such as `IdleTimeout`, `MaxIdleSessionCount`, `EventStreamStore`, and `SessionMigrationHandler`.
 
 If the downstream MCP host cannot use the default singleton `IMcpGateway`, `IMcpGatewayPromptCatalog`, and `IMcpGatewayResourceCatalog` registrations directly, register a custom `IMcpGatewayServerBindingResolver`. The resolver can create or select a request-specific or session-specific gateway instance and return it through `McpGatewayServerBinding`, while `WithMcpGatewayCatalog()` continues to own the exported MCP handlers, prompt/resource notifications, subscriptions, and task flow:
 
@@ -779,7 +796,7 @@ services.AddMcpGatewayInMemorySearchCache();
 services.AddMcpGateway();
 ```
 
-If the host needs a different cache technology or policy, register its own `IMcpGatewaySearchCache`.
+`McpGatewayInMemorySearchCache` is an adapter over a host-owned `IMemoryCache`; it does not create or dispose a private cache. The DI helper provisions `IMemoryCache`, and direct construction must pass an explicit cache from the host or test container. Entries include short TTLs and cache sizes so host-owned `MemoryCacheOptions.SizeLimit` policies can bound memory. If the host needs a different cache technology or policy, register its own `IMcpGatewaySearchCache`.
 
 ### Tool Embedding Store
 
@@ -806,6 +823,8 @@ services.AddMcpGateway(options =>
     options.SearchStrategy = McpGatewaySearchStrategy.Auto;
 });
 ```
+
+`McpGatewayInMemoryToolEmbeddingStore` is a process-local implementation of the `IMcpGatewayToolEmbeddingStore` persistence boundary. It requires a host-owned `IMemoryCache`, either through `AddMcpGatewayInMemoryToolEmbeddingStore()` or an explicit constructor argument, so production hosts keep cache ownership, size policy, and disposal centralized.
 
 ## Routing, Meta-Tools, And Chat Integration
 

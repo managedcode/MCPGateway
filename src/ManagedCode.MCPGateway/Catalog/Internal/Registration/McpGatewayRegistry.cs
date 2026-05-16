@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
@@ -47,12 +48,10 @@ internal sealed class McpGatewayRegistry(
             _operationGate.Exit();
         }
 
-        foreach (var registration in previousRegistrations)
-        {
-            await registration.DisposeAsync();
-        }
-
+        var cleanupExceptions = new List<Exception>();
+        await DisposeRegistrationsAsync(previousRegistrations, cleanupExceptions);
         promptChangeHub.NotifyChanged();
+        ThrowIfCleanupFailed(cleanupExceptions);
     }
 
     public void AddTool(string sourceId, AITool tool, string? displayName = null) =>
@@ -242,9 +241,40 @@ internal sealed class McpGatewayRegistry(
         await waitForDrain;
 
         var registrations = _registrations.Drain();
+        var cleanupExceptions = new List<Exception>();
+        await DisposeRegistrationsAsync(registrations, cleanupExceptions);
+        ThrowIfCleanupFailed(cleanupExceptions);
+    }
+
+    private static async ValueTask DisposeRegistrationsAsync(
+        IReadOnlyList<McpGatewayToolSourceRegistration> registrations,
+        List<Exception> cleanupExceptions
+    )
+    {
         foreach (var registration in registrations)
         {
-            await registration.DisposeAsync();
+            try
+            {
+                await registration.DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                cleanupExceptions.Add(exception);
+            }
+        }
+    }
+
+    private static void ThrowIfCleanupFailed(List<Exception> cleanupExceptions)
+    {
+        switch (cleanupExceptions.Count)
+        {
+            case 0:
+                return;
+            case 1:
+                ExceptionDispatchInfo.Capture(cleanupExceptions[0]).Throw();
+                break;
+            default:
+                throw new AggregateException(cleanupExceptions);
         }
     }
 

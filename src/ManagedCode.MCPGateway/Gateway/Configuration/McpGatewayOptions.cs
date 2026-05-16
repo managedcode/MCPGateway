@@ -5,6 +5,21 @@ namespace ManagedCode.MCPGateway;
 
 public sealed class McpGatewayOptions
 {
+    /// <summary>Default number of search matches returned when the caller does not request a size.</summary>
+    public const int DefaultSearchLimitValue = 5;
+
+    /// <summary>Default hard cap for caller-requested search and graph-search result sizes.</summary>
+    public const int DefaultMaxSearchResults = 50;
+
+    /// <summary>Default maximum descriptor document length used for search/index source text.</summary>
+    public const int DefaultMaxDescriptorLength = 16 * 1024;
+
+    /// <summary>Smallest valid search result limit.</summary>
+    public const int MinimumSearchResultLimit = 1;
+
+    /// <summary>Smallest valid descriptor document length.</summary>
+    public const int MinimumDescriptorLength = 256;
+
     public static TimeSpan DefaultMarkdownLdFederatedSparqlQueryTimeout { get; } =
         TimeSpan.FromSeconds(30);
 
@@ -32,14 +47,16 @@ public sealed class McpGatewayOptions
     public McpGatewaySearchQueryNormalization SearchQueryNormalization { get; set; } =
         McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable;
 
-    public int DefaultSearchLimit { get; set; } = 5;
+    public int DefaultSearchLimit { get; set; } = DefaultSearchLimitValue;
 
-    public int MaxSearchResults { get; set; } = 15;
+    public int MaxSearchResults { get; set; } = DefaultMaxSearchResults;
 
-    public int MaxDescriptorLength { get; set; } = 4096;
+    public int MaxDescriptorLength { get; set; } = DefaultMaxDescriptorLength;
 
     public TimeSpan? MarkdownLdFederatedSparqlQueryTimeout { get; set; } =
         DefaultMarkdownLdFederatedSparqlQueryTimeout;
+
+    public McpGatewayMcpTaskStoreOptions McpTaskStore { get; set; } = new();
 
     internal IReadOnlyList<McpGatewayToolSourceRegistration> SourceRegistrations =>
         _sourceRegistrations.Snapshot();

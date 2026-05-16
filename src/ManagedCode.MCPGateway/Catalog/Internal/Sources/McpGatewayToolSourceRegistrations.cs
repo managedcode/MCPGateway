@@ -801,7 +801,7 @@ internal abstract class McpGatewayClientToolSourceRegistration(
             return;
         }
 
-        if (_disposeClient && Volatile.Read(ref _client) is { } client)
+        if (_disposeClient && Interlocked.Exchange(ref _client, null) is { } client)
         {
             await client.DisposeAsync();
         }
@@ -873,11 +873,13 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         ClientOperation clientOperation
     )
     {
+        McpClient? createdClient = null;
         try
         {
-            clientSource.SetResult(
-                await CreateClientAsync(loggerFactory, clientOperation.CancellationToken)
-            );
+            createdClient = await CreateClientAsync(loggerFactory, clientOperation.CancellationToken);
+            var cachedClient = await CacheCreatedClientAsync(createdClient);
+            createdClient = null;
+            clientSource.SetResult(cachedClient);
         }
         catch (OperationCanceledException)
             when (clientOperation.CancellationToken.IsCancellationRequested)
@@ -886,7 +888,24 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         }
         catch (Exception ex)
         {
-            clientSource.SetException(ex);
+            var exception = ex;
+            if (createdClient is not null && _disposeClient)
+            {
+                try
+                {
+                    await createdClient.DisposeAsync();
+                }
+                catch (Exception cleanupException)
+                {
+                    exception = new AggregateException(ex, cleanupException);
+                }
+            }
+
+            clientSource.SetException(exception);
+        }
+        finally
+        {
+            _ = Interlocked.CompareExchange(ref _clientOperation, null, clientOperation);
         }
     }
 
@@ -908,8 +927,7 @@ internal abstract class McpGatewayClientToolSourceRegistration(
                 throw new ObjectDisposedException(GetType().Name);
             }
 
-            var cachedClient = Volatile.Read(ref _client);
-            return cachedClient ?? Interlocked.CompareExchange(ref _client, client, null) ?? client;
+            return client;
         }
         catch when (clientTask.IsFaulted || clientTask.IsCanceled)
         {
@@ -932,7 +950,31 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         }
         catch (OperationCanceledException)
             when (clientOperation.CancellationToken.IsCancellationRequested)
-        { }
+        {
+            return;
+        }
+    }
+
+    private async ValueTask<McpClient> CacheCreatedClientAsync(McpClient client)
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        var cachedClient = Volatile.Read(ref _client);
+        if (cachedClient is null)
+        {
+            cachedClient = Interlocked.CompareExchange(ref _client, client, null);
+            if (cachedClient is null)
+            {
+                return client;
+            }
+        }
+
+        if (!ReferenceEquals(cachedClient, client) && _disposeClient)
+        {
+            await client.DisposeAsync();
+        }
+
+        return cachedClient;
     }
 
     private sealed record ClientOperation(

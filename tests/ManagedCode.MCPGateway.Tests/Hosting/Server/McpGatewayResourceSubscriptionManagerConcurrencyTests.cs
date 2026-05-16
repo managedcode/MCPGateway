@@ -75,6 +75,7 @@ public sealed class McpGatewayResourceSubscriptionManagerConcurrencyTests
         await Assert.That(source.SubscriptionCount).IsEqualTo(2);
         await Assert.That(source.DisposedSubscriptionCount).IsEqualTo(2);
         await Assert.That(bindingDisposeCount).IsEqualTo(1);
+        await Assert.That(manager.SubscriptionStateCount).IsEqualTo(0);
     }
 
     private sealed class BlockingResourceSource(string sourceId) : IMcpGatewayServerSource

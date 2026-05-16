@@ -51,7 +51,56 @@ public sealed partial class McpGatewaySearchTests
         await Assert
             .That(options.SearchQueryNormalization)
             .IsEqualTo(McpGatewaySearchQueryNormalization.TranslateToEnglishWhenAvailable);
-        await Assert.That(options.DefaultSearchLimit).IsEqualTo(5);
+        await Assert.That(options.DefaultSearchLimit).IsEqualTo(McpGatewayOptions.DefaultSearchLimitValue);
+        await Assert.That(options.MaxSearchResults).IsEqualTo(McpGatewayOptions.DefaultMaxSearchResults);
+        await Assert.That(options.MaxDescriptorLength).IsEqualTo(McpGatewayOptions.DefaultMaxDescriptorLength);
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_RejectsInvalidSearchLimitConfiguration()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.DefaultSearchLimit = 10;
+            options.MaxSearchResults = 5;
+        });
+
+        Exception? exception = null;
+        try
+        {
+            var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+            _ = await gateway.SearchAsync("github");
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<ArgumentOutOfRangeException>();
+        await Assert.That(exception!.Message).Contains(nameof(McpGatewayOptions.MaxSearchResults));
+    }
+
+    [TUnit.Core.Test]
+    public async Task SearchAsync_RejectsInvalidDescriptorLengthConfiguration()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            options.MaxDescriptorLength = McpGatewayOptions.MinimumDescriptorLength - 1;
+        });
+
+        Exception? exception = null;
+        try
+        {
+            var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+            _ = await gateway.SearchAsync("github");
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<ArgumentOutOfRangeException>();
+        await Assert.That(exception!.Message).Contains(nameof(McpGatewayOptions.MaxDescriptorLength));
     }
 
     [TUnit.Core.Test]
@@ -563,6 +612,36 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
+    public async Task DisposeAsync_CancelsRunningIndexBuild()
+    {
+        var registration = new BlockingToolSourceRegistration();
+        var services = new ServiceCollection();
+        services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
+        services.AddSingleton<IMcpGatewayCatalogSource>(new StaticCatalogSource(registration));
+        services.AddMcpGateway();
+
+        await using var serviceProvider = services.BuildServiceProvider();
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var buildTask = gateway.BuildIndexAsync();
+        await registration.LoadStarted.Task.WaitAsync(TimeSpan.FromSeconds(15));
+        await gateway.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(15));
+        await registration.LoadCancelled.Task.WaitAsync(TimeSpan.FromSeconds(15));
+
+        OperationCanceledException? cancellationException = null;
+        try
+        {
+            await buildTask.WaitAsync(TimeSpan.FromSeconds(15));
+        }
+        catch (OperationCanceledException ex)
+        {
+            cancellationException = ex;
+        }
+
+        await Assert.That(cancellationException).IsNotNull();
+    }
+
+    [TUnit.Core.Test]
     public async Task ListToolsAsync_ExtractsRequiredArgumentsFromSerializedMcpSchema()
     {
         await using var serverHost = await TestMcpServerHost.StartAsync();
@@ -604,5 +683,46 @@ public sealed partial class McpGatewaySearchTests
         await Assert
             .That(tools.Any(static tool => tool.ToolId == "local:weather_search_forecast"))
             .IsTrue();
+    }
+
+    private sealed class StaticCatalogSource(McpGatewayToolSourceRegistration registration)
+        : IMcpGatewayCatalogSource
+    {
+        public McpGatewayCatalogSourceSnapshot CreateSnapshot() => new(0, [registration]);
+    }
+
+    private sealed class BlockingToolSourceRegistration()
+        : McpGatewayToolSourceRegistration("blocking", displayName: null)
+    {
+        public TaskCompletionSource<object?> LoadCancelled { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+        public TaskCompletionSource<object?> LoadStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+        public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Local;
+
+        public override async ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken
+        )
+        {
+            _ = loggerFactory;
+            LoadStarted.TrySetResult(null);
+
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                LoadCancelled.TrySetResult(null);
+                throw;
+            }
+
+            return [];
+        }
     }
 }

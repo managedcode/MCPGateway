@@ -1,7 +1,9 @@
 #pragma warning disable MCPEXP001
 
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -140,6 +142,60 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
         await Assert.That(resource).IsNull();
         await Assert.That(completion).IsNull();
         await Assert.That(resourceSubscription).IsNull();
+    }
+
+    [Test]
+    public async Task CancelledClientCreation_CachesCreatedClientSoDisposeReleasesIt()
+    {
+        await using var serverHost = await TestMcpServerHost.StartAsync();
+        var factoryStarted = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var releaseFactory = new TaskCompletionSource<McpClient>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var factoryReturned = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var registration = new McpGatewayProvidedClientToolSourceRegistration(
+            "delayed",
+            async _ =>
+            {
+                factoryStarted.TrySetResult(null);
+                var client = await releaseFactory.Task;
+                factoryReturned.TrySetResult(null);
+                return client;
+            },
+            disposeClient: true,
+            displayName: null
+        );
+        using var cancellationSource = new CancellationTokenSource();
+
+        var loadTask = registration.LoadToolsAsync(
+            NullLoggerFactory.Instance,
+            cancellationSource.Token
+        );
+        await factoryStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cancellationSource.Cancel();
+
+        Exception? loadException = null;
+        try
+        {
+            _ = await loadTask.AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception exception)
+        {
+            loadException = exception;
+        }
+
+        releaseFactory.TrySetResult(serverHost.Client);
+        await factoryReturned.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await WaitForCachedClientAsync(registration);
+
+        await registration.DisposeAsync();
+
+        await Assert.That(loadException).IsTypeOf<OperationCanceledException>();
+        await Assert.That(GetCachedClient(registration)).IsNull();
     }
 
     [Test]
@@ -324,6 +380,31 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
         await Assert.That(cancelled!.Status).IsEqualTo(McpTaskStatus.Cancelled);
         await Assert.That(statusSubscription).IsNotNull();
     }
+
+    private static async Task WaitForCachedClientAsync(
+        McpGatewayProvidedClientToolSourceRegistration registration
+    )
+    {
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            if (GetCachedClient(registration) is not null)
+            {
+                return;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(10));
+        }
+
+        await Assert.That(GetCachedClient(registration)).IsNotNull();
+    }
+
+    private static object? GetCachedClient(
+        McpGatewayProvidedClientToolSourceRegistration registration
+    ) =>
+        typeof(McpGatewayClientToolSourceRegistration)
+            .GetField("_client", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.GetValue(registration);
 }
 
 #pragma warning restore MCPEXP001

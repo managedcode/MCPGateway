@@ -605,9 +605,21 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         _markdownLdGraphDocumentFactory = resolvedOptions.MarkdownLdGraphDocumentFactory;
         _searchQueryNormalization = resolvedOptions.SearchQueryNormalization;
         _markdownLdGraphPath = resolvedOptions.MarkdownLdGraphPath;
-        _defaultSearchLimit = Math.Max(1, resolvedOptions.DefaultSearchLimit);
-        _maxSearchResults = Math.Max(1, resolvedOptions.MaxSearchResults);
-        _maxDescriptorLength = Math.Max(256, resolvedOptions.MaxDescriptorLength);
+        _defaultSearchLimit = ValidateMinimum(
+            resolvedOptions.DefaultSearchLimit,
+            nameof(McpGatewayOptions.DefaultSearchLimit),
+            McpGatewayOptions.MinimumSearchResultLimit
+        );
+        _maxSearchResults = ValidateMinimum(
+            resolvedOptions.MaxSearchResults,
+            nameof(McpGatewayOptions.MaxSearchResults),
+            _defaultSearchLimit
+        );
+        _maxDescriptorLength = ValidateMinimum(
+            resolvedOptions.MaxDescriptorLength,
+            nameof(McpGatewayOptions.MaxDescriptorLength),
+            McpGatewayOptions.MinimumDescriptorLength
+        );
         _markdownLdFederatedSparqlQueryTimeout = ValidateOptionalTimeout(
             resolvedOptions.MarkdownLdFederatedSparqlQueryTimeout,
             nameof(McpGatewayOptions.MarkdownLdFederatedSparqlQueryTimeout)
@@ -620,21 +632,57 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         _searchRuntimeCache = serviceProvider.GetRequiredService<IMcpGatewaySearchCache>();
     }
 
+    private static int ValidateMinimum(int value, string optionName, int minimumValue)
+    {
+        if (value < minimumValue)
+        {
+            throw new ArgumentOutOfRangeException(
+                optionName,
+                value,
+                $"Option '{optionName}' must be greater than or equal to {minimumValue}."
+            );
+        }
+
+        return value;
+    }
+
     public IReadOnlyList<AITool> CreateMetaTools(
         string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
         string routeToolName = McpGatewayToolSet.DefaultRouteToolName,
         string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
     ) => new McpGatewayToolSet(this).CreateTools(searchToolName, routeToolName, invokeToolName);
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         var previousState = Interlocked.Exchange(ref _state, RuntimeState.Disposed);
         if (previousState.IsDisposed)
         {
-            return ValueTask.CompletedTask;
+            return;
         }
 
-        return ValueTask.CompletedTask;
+        var buildOperation = Volatile.Read(ref _buildOperation);
+        if (buildOperation is null)
+        {
+            return;
+        }
+
+        await buildOperation.CancelAsync();
+        try
+        {
+            await buildOperation.Task;
+        }
+        catch (OperationCanceledException)
+            when (buildOperation.CancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception)
+        {
+            _logger.LogDebug(
+                exception,
+                "Ignoring failed MCP gateway index build while disposing the runtime."
+            );
+        }
     }
 
     private static IMcpGatewayCatalogSource ResolveCatalogSource(IServiceProvider serviceProvider)

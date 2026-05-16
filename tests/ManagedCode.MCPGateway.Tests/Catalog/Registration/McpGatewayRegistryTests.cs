@@ -1,3 +1,5 @@
+using System.Reflection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -82,6 +84,32 @@ public sealed class McpGatewayRegistryTests
     }
 
     [Test]
+    public async Task ReconfigureAsync_DisposesAllPreviousRegistrationsWhenOneDisposeFails()
+    {
+        var registry = new McpGatewayRegistry(
+            Options.Create(new McpGatewayOptions()),
+            new McpGatewayPromptChangeHub()
+        );
+        var failingRegistration = new TrackingRegistration("failing", throwOnDispose: true);
+        var secondRegistration = new TrackingRegistration("second");
+        ReplaceRegistrations(registry, failingRegistration, secondRegistration);
+
+        Exception? exception = null;
+        try
+        {
+            await registry.ReconfigureAsync(new McpGatewayOptions());
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(failingRegistration.DisposeCount).IsEqualTo(1);
+        await Assert.That(secondRegistration.DisposeCount).IsEqualTo(1);
+    }
+
+    [Test]
     public async Task DisposeAsync_IsIdempotentAndRejectsFurtherMutations()
     {
         var registry = new McpGatewayRegistry(
@@ -117,6 +145,32 @@ public sealed class McpGatewayRegistryTests
         }
 
         await Assert.That(exception).IsNotNull();
+    }
+
+    [Test]
+    public async Task DisposeAsync_DisposesAllRegistrationsWhenOneDisposeFails()
+    {
+        var registry = new McpGatewayRegistry(
+            Options.Create(new McpGatewayOptions()),
+            new McpGatewayPromptChangeHub()
+        );
+        var failingRegistration = new TrackingRegistration("failing", throwOnDispose: true);
+        var secondRegistration = new TrackingRegistration("second");
+        ReplaceRegistrations(registry, failingRegistration, secondRegistration);
+
+        Exception? exception = null;
+        try
+        {
+            await registry.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(failingRegistration.DisposeCount).IsEqualTo(1);
+        await Assert.That(secondRegistration.DisposeCount).IsEqualTo(1);
     }
 
     [Test]
@@ -217,5 +271,39 @@ public sealed class McpGatewayRegistryTests
                 ],
             }
         );
+    }
+
+    private static void ReplaceRegistrations(
+        McpGatewayRegistry registry,
+        params McpGatewayToolSourceRegistration[] registrations
+    )
+    {
+        typeof(McpGatewayRegistry)
+            .GetField("_registrations", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(registry, new McpGatewayRegistrationCollection(registrations));
+    }
+
+    private sealed class TrackingRegistration(string sourceId, bool throwOnDispose = false)
+        : McpGatewayToolSourceRegistration(sourceId, displayName: null)
+    {
+        public int DisposeCount { get; private set; }
+
+        public override McpGatewaySourceRegistrationKind Kind =>
+            McpGatewaySourceRegistrationKind.Local;
+
+        public override ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
+            ILoggerFactory loggerFactory,
+            CancellationToken cancellationToken
+        ) => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedTool>>([]);
+
+        public override async ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            await base.DisposeAsync();
+            if (throwOnDispose)
+            {
+                throw new InvalidOperationException($"Dispose failed for '{SourceId}'.");
+            }
+        }
     }
 }

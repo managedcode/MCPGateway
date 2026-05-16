@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -47,23 +48,7 @@ public sealed class McpGatewayFactory(
         );
 
         return new McpGatewayFactoryResult(
-            static async (runtimeGateway, runtimeRegistry, runtimeCatalogRuntime) =>
-            {
-                await runtimeGateway.DisposeAsync();
-
-                if (
-                    !ReferenceEquals(runtimeCatalogRuntime, runtimeRegistry)
-                    && runtimeCatalogRuntime is IAsyncDisposable asyncCatalogRuntime
-                )
-                {
-                    await asyncCatalogRuntime.DisposeAsync();
-                }
-
-                if (runtimeRegistry is IAsyncDisposable asyncRegistry)
-                {
-                    await asyncRegistry.DisposeAsync();
-                }
-            },
+            ReleaseAsync,
             gateway,
             promptCatalog,
             resourceCatalog,
@@ -71,6 +56,60 @@ public sealed class McpGatewayFactory(
             catalogRuntime,
             new McpGatewayToolSet(gateway)
         );
+    }
+
+    private static async ValueTask ReleaseAsync(
+        IMcpGateway runtimeGateway,
+        IMcpGatewayRegistry runtimeRegistry,
+        IMcpGatewayCatalogRuntime runtimeCatalogRuntime
+    )
+    {
+        var cleanupExceptions = new List<Exception>();
+        await DisposeAsync(runtimeGateway, cleanupExceptions);
+
+        if (
+            !ReferenceEquals(runtimeCatalogRuntime, runtimeRegistry)
+            && runtimeCatalogRuntime is IAsyncDisposable asyncCatalogRuntime
+        )
+        {
+            await DisposeAsync(asyncCatalogRuntime, cleanupExceptions);
+        }
+
+        if (runtimeRegistry is IAsyncDisposable asyncRegistry)
+        {
+            await DisposeAsync(asyncRegistry, cleanupExceptions);
+        }
+
+        ThrowIfCleanupFailed(cleanupExceptions);
+    }
+
+    private static async ValueTask DisposeAsync(
+        IAsyncDisposable disposable,
+        List<Exception> cleanupExceptions
+    )
+    {
+        try
+        {
+            await disposable.DisposeAsync();
+        }
+        catch (Exception exception)
+        {
+            cleanupExceptions.Add(exception);
+        }
+    }
+
+    private static void ThrowIfCleanupFailed(List<Exception> cleanupExceptions)
+    {
+        switch (cleanupExceptions.Count)
+        {
+            case 0:
+                return;
+            case 1:
+                ExceptionDispatchInfo.Capture(cleanupExceptions[0]).Throw();
+                break;
+            default:
+                throw new AggregateException(cleanupExceptions);
+        }
     }
 
     private sealed class McpGatewayFactoryServiceProvider(

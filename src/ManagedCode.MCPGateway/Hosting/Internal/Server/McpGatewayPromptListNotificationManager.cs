@@ -17,6 +17,8 @@ internal sealed class McpGatewayPromptListNotificationManager(
     private readonly ConcurrentDictionary<string, SessionState> _sessions = new(StringComparer.Ordinal);
     private int _disposed;
 
+    internal int SessionStateCount => _sessions.Count;
+
     public async Task RegisterDownstreamServerAsync(
         IServiceProvider? requestServices,
         ModelContextProtocol.Server.McpServer downstreamServer,
@@ -25,6 +27,7 @@ internal sealed class McpGatewayPromptListNotificationManager(
     {
         ArgumentNullException.ThrowIfNull(downstreamServer);
         cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
 
         var sessionId = McpGatewayMcpServerIdentity.GetKey(downstreamServer);
 
@@ -57,7 +60,49 @@ internal sealed class McpGatewayPromptListNotificationManager(
             return;
         }
 
-        await RefreshUpstreamSubscriptionsAsync(createdState, cancellationToken);
+        try
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                if (
+                    _sessions.TryRemove(
+                        new KeyValuePair<string, SessionState>(sessionId, createdState)
+                    )
+                )
+                {
+                    await DisposeSessionAsync(createdState);
+                }
+
+                ThrowIfDisposed();
+            }
+
+            await RefreshUpstreamSubscriptionsAsync(createdState, cancellationToken);
+        }
+        catch
+        {
+            if (
+                _sessions.TryRemove(
+                    new KeyValuePair<string, SessionState>(sessionId, createdState)
+                )
+            )
+            {
+                await DisposeSessionAsync(createdState);
+            }
+
+            throw;
+        }
+    }
+
+    internal async ValueTask RemoveSessionAsync(string sessionId)
+    {
+        ArgumentNullException.ThrowIfNull(sessionId);
+
+        if (!_sessions.TryRemove(sessionId, out var sessionState))
+        {
+            return;
+        }
+
+        await DisposeSessionAsync(sessionState);
     }
 
     public async ValueTask DisposeAsync()
@@ -154,6 +199,11 @@ internal sealed class McpGatewayPromptListNotificationManager(
     private bool IsCurrentSession(SessionState sessionState) =>
         _sessions.TryGetValue(sessionState.SessionId, out var activeSession)
         && ReferenceEquals(activeSession, sessionState);
+
+    private void ThrowIfDisposed()
+    {
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+    }
 
     private Task ForwardUpstreamPromptListChangedAsync(
         string sessionId,

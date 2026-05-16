@@ -1,5 +1,11 @@
+#pragma warning disable MCPEXP002
+
 using System.Net;
 using System.Text;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
@@ -86,6 +92,39 @@ public sealed class McpGatewayMcpServerHttpTransportIntegrationTests
         await Assert.That(wrongTokenResponse.StatusCode).IsEqualTo(HttpStatusCode.Forbidden);
     }
 
+    [Test]
+    public async Task WithMcpGatewayCatalog_ComposesExistingHttpSessionHandler()
+    {
+        var userHandlerCalled = false;
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMcpGateway(static _ => { });
+        services
+            .AddMcpServer()
+            .WithHttpTransport(options =>
+            {
+                options.RunSessionHandler = (_, _, _) =>
+                {
+                    userHandlerCalled = true;
+                    return Task.CompletedTask;
+                };
+            })
+            .WithMcpGatewayCatalog();
+        await using var serviceProvider = services.BuildServiceProvider();
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        var transportOptions = serviceProvider
+            .GetRequiredService<IOptions<HttpServerTransportOptions>>()
+            .Value;
+
+        await transportOptions.RunSessionHandler!(
+            new DefaultHttpContext { RequestServices = serviceProvider },
+            gatewayServer.Server,
+            CancellationToken.None
+        );
+
+        await Assert.That(userHandlerCalled).IsTrue();
+    }
+
     private static async Task<GatewayExerciseResult> ExerciseGatewayAsync(
         MultiGatewayHttpHost.HostedGatewayRoute route,
         McpClient client
@@ -127,3 +166,5 @@ public sealed class McpGatewayMcpServerHttpTransportIntegrationTests
         IReadOnlyList<string> Outputs
     );
 }
+
+#pragma warning restore MCPEXP002

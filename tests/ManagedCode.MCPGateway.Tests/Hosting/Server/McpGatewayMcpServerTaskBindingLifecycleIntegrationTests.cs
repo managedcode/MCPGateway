@@ -92,6 +92,49 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
         await Assert.That(trackedTask?.Status).IsEqualTo(McpTaskStatus.Cancelled);
     }
 
+    [Test]
+    public async Task RemoveSessionAsync_CancelsActiveLocalTaskAndReleasesBinding()
+    {
+        var disposeCount = 0;
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
+            static _ => { },
+            services =>
+                services.AddSingleton<IMcpGatewayServerBindingResolver>(serviceProvider =>
+                    new TrackingTaskBindingResolver(
+                        serviceProvider.GetRequiredService<IMcpGatewayFactory>(),
+                        options =>
+                            options.AddTool(
+                                "isolated",
+                                TestFunctionFactory.CreateFunction(
+                                    (string value, CancellationToken cancellationToken) =>
+                                        RunLocalCancellableTaskToolAsync(value, cancellationToken),
+                                    LocalCancellableTaskToolName,
+                                    "Runs a cancellable local task."
+                                )
+                            ),
+                        () => Interlocked.Increment(ref disposeCount)
+                    )
+                )
+        );
+
+        _ = await gatewayServer.Client.CallToolAsTaskAsync(
+            $"isolated:{LocalCancellableTaskToolName}",
+            new Dictionary<string, object?> { ["value"] = "gamma" }
+        );
+        var initialDisposeCount = Volatile.Read(ref disposeCount);
+        var taskStore = gatewayServer.GetRequiredService<McpGatewayMcpServerTaskStore>();
+
+        await taskStore
+            .RemoveSessionAsync(gatewayServer.Server.SessionId ?? string.Empty)
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(5));
+
+        await WaitForDisposeCountAsync(
+            () => Volatile.Read(ref disposeCount),
+            initialDisposeCount + 1
+        );
+    }
+
     private static async Task<McpTask> WaitForTaskAsync(
         ModelContextProtocol.Client.McpClient client,
         string taskId,

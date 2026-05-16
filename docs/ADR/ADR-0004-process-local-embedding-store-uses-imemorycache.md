@@ -13,9 +13,9 @@ Horizontal scale, durability, and cross-replica cache coherence remain separate 
 
 ## Decision
 
-The built-in `McpGatewayInMemoryToolEmbeddingStore` will use `IMemoryCache` for process-local embedding reuse, and the package will expose a dedicated `AddMcpGatewayInMemoryToolEmbeddingStore()` registration path that wires the store to the host's shared cache services.
+The built-in `McpGatewayInMemoryToolEmbeddingStore` will use `IMemoryCache` for process-local embedding reuse, and the package will expose a dedicated `AddMcpGatewayInMemoryToolEmbeddingStore()` registration path that wires the store to host-owned cache services. Direct store construction must pass an explicit `IMemoryCache`; the store must not create or dispose a private cache. Cache entries set sizes so host-owned `MemoryCacheOptions.SizeLimit` policies can bound memory.
 
-The gateway runtime will expose `IMcpGatewaySearchCache` as the runtime cache boundary. `AddMcpGateway(...)` registers a no-op default so the core package path does not force `IMemoryCache` into every host. Hosts that want process-local search-path reuse can opt into `AddMcpGatewayInMemorySearchCache()`, which wires `McpGatewayInMemorySearchCache` to the host's shared `IMemoryCache` registration.
+The gateway runtime will expose `IMcpGatewaySearchCache` as the runtime cache boundary. `AddMcpGateway(...)` registers a no-op default so the core package path does not force `IMemoryCache` into every host. Hosts that want process-local search-path reuse can opt into `AddMcpGatewayInMemorySearchCache()`, which wires `McpGatewayInMemorySearchCache` to host-owned `IMemoryCache`. Direct search cache construction must pass an explicit `IMemoryCache`; entries carry both TTL and size metadata.
 
 Durable or distributed embedding reuse will remain the responsibility of host-provided `IMcpGatewayToolEmbeddingStore` implementations.
 
@@ -85,6 +85,7 @@ Positive:
 
 - the built-in store relies on a standard .NET caching primitive
 - hosts can register the process-local store with one DI call and reuse the shared `IMemoryCache`
+- direct cache/store construction requires an explicit caller-owned cache, so ownership and disposal remain visible
 - the runtime can reuse expensive search-path artifacts without wrapping `IChatClient` or `IEmbeddingGenerator`
 - hosts can choose no-op, `IMemoryCache`, or custom runtime search-cache behavior explicitly
 - process-local cache behavior stays explicitly separate from durable/distributed storage concerns
@@ -94,7 +95,7 @@ Trade-offs:
 
 - the package takes a new runtime dependency on `Microsoft.Extensions.Caching.Memory`
 - the built-in store is still process-local only and does not solve multi-instance cache sharing
-- direct construction without DI now owns a private `MemoryCache` instance and must be disposed like any other cache owner
+- hosts that need hard process-local size limits must configure the supplied `IMemoryCache` policy or provide a dedicated cache instance through DI
 
 Mitigations:
 
@@ -109,6 +110,8 @@ Mitigations:
 - `AddMcpGatewayInMemorySearchCache()` MUST remain opt-in and MUST provision `IMemoryCache`.
 - `McpGatewayInMemoryToolEmbeddingStore` MUST remain optional and MUST NOT become a mandatory dependency for gateway usage.
 - `AddMcpGatewayInMemoryToolEmbeddingStore()` MUST register the built-in store through the host `IServiceCollection` and MUST provision `IMemoryCache`.
+- `McpGatewayInMemorySearchCache` and `McpGatewayInMemoryToolEmbeddingStore` MUST require caller-provided `IMemoryCache` and MUST NOT create hidden private `MemoryCache` instances.
+- Built-in `IMemoryCache` entries MUST set entry sizes so host-owned cache size policies work when configured.
 - Hosts that need cross-instance persistence or replication MUST continue to provide their own `IMcpGatewayToolEmbeddingStore`.
 - The built-in store MUST clone vectors on read/write boundaries so callers cannot mutate cached embedding buffers in place.
 
