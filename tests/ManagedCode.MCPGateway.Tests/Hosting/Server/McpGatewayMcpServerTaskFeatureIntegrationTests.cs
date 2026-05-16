@@ -175,6 +175,41 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
     }
 
     [Test]
+    public async Task GetTaskResultAsync_PropagatesUpstreamResultFailures()
+    {
+        var source = new FailingTaskResultSource("failing-result-source");
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
+            static _ => { },
+            services =>
+                services.AddSingleton<IMcpGatewayServerBindingResolver>(serviceProvider =>
+                    new SingleSourceTaskBindingResolver(
+                        serviceProvider.GetRequiredService<IMcpGatewayFactory>(),
+                        source,
+                        InstantCompletedTaskToolName
+                    )
+                )
+        );
+
+        var task = await gatewayServer.Client.CallToolAsTaskAsync(
+            $"{source.SourceId}:{InstantCompletedTaskToolName}",
+            new Dictionary<string, object?> { ["value"] = "failure" }
+        );
+
+        Exception? exception = null;
+        try
+        {
+            _ = await gatewayServer.Client.GetTaskResultAsync(task.TaskId);
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsNotNull();
+        await Assert.That(exception!.Message).Contains("upstream result failure");
+    }
+
+    [Test]
     public async Task CallToolAsTaskAsync_CancelsGatewayManagedLocalTask()
     {
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>

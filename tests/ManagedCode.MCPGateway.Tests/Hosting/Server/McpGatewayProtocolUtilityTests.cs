@@ -13,6 +13,10 @@ public sealed class McpGatewayProtocolUtilityTests
     {
         var schemeUri = McpGatewayResourceUriCodec.ToGatewayUri("source-a", "docs://overview");
         var opaqueUri = McpGatewayResourceUriCodec.ToGatewayUri("source-b", "/tmp/file.txt");
+        var opaqueTemplate = McpGatewayResourceUriCodec.ToGatewayUriTemplate(
+            "source-c",
+            "/files/{path}"
+        );
         var decodedScheme = McpGatewayResourceUriCodec.TryDecodeGatewayUri(
             schemeUri,
             out var schemeSourceId,
@@ -22,6 +26,11 @@ public sealed class McpGatewayProtocolUtilityTests
             opaqueUri,
             out var opaqueSourceId,
             out var opaqueResourceUri
+        );
+        var decodedOpaqueTemplate = McpGatewayResourceUriCodec.TryDecodeGatewayUri(
+            opaqueTemplate,
+            out var opaqueTemplateSourceId,
+            out var opaqueTemplateUri
         );
         var invalidDecode = McpGatewayResourceUriCodec.TryDecodeGatewayUri(
             "not-a-gateway-uri",
@@ -35,6 +44,10 @@ public sealed class McpGatewayProtocolUtilityTests
         await Assert.That(decodedOpaque).IsTrue();
         await Assert.That(opaqueSourceId).IsEqualTo("source-b");
         await Assert.That(opaqueResourceUri).IsEqualTo("/tmp/file.txt");
+        await Assert.That(opaqueTemplate).Contains("{path}");
+        await Assert.That(decodedOpaqueTemplate).IsTrue();
+        await Assert.That(opaqueTemplateSourceId).IsEqualTo("source-c");
+        await Assert.That(opaqueTemplateUri).IsEqualTo("/files/{path}");
         await Assert.That(invalidDecode).IsFalse();
     }
 
@@ -99,7 +112,7 @@ public sealed class McpGatewayProtocolUtilityTests
             "Lookup",
             "Looks up a value.",
             ["value"],
-            "not-json"
+            """{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}"""
         )
         {
             Categories = ["operations"],
@@ -162,6 +175,38 @@ public sealed class McpGatewayProtocolUtilityTests
         await Assert.That(resource.Name).IsEqualTo("source-a:overview");
         await Assert.That(resource.Uri).StartsWith("mcpgw-");
         await Assert.That(template.UriTemplate).StartsWith("mcpgw-");
+    }
+
+    [Test]
+    public async Task ProtocolMapper_RejectsInvalidToolInputSchema()
+    {
+        var invalidJsonDescriptor = CreateToolDescriptor("not-json");
+        var nonObjectDescriptor = CreateToolDescriptor("""["not-a-schema-object"]""");
+
+        Exception? invalidJsonException = null;
+        try
+        {
+            _ = McpGatewayMcpServerProtocolMapper.ToProtocolTool(invalidJsonDescriptor);
+        }
+        catch (Exception ex)
+        {
+            invalidJsonException = ex;
+        }
+
+        Exception? nonObjectException = null;
+        try
+        {
+            _ = McpGatewayMcpServerProtocolMapper.ToProtocolTool(nonObjectDescriptor);
+        }
+        catch (Exception ex)
+        {
+            nonObjectException = ex;
+        }
+
+        await Assert.That(invalidJsonException).IsTypeOf<InvalidOperationException>();
+        await Assert.That(invalidJsonException!.Message).Contains("invalid input schema JSON");
+        await Assert.That(nonObjectException).IsTypeOf<InvalidOperationException>();
+        await Assert.That(nonObjectException!.Message).Contains("must be a JSON object");
     }
 
     [Test]
@@ -249,6 +294,25 @@ public sealed class McpGatewayProtocolUtilityTests
     }
 
     [Test]
+    public async Task ProtocolMapper_RejectsInvalidPromptMessageContentWithoutTextFallback()
+    {
+        Exception? exception = null;
+        try
+        {
+            _ = McpGatewayMcpServerProtocolMapper.ToProtocolPromptMessage(
+                new McpGatewayPromptMessage("user", new JsonObject { ["unexpected"] = "value" })
+            );
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(exception!.Message).Contains("valid MCP content block");
+    }
+
+    [Test]
     public async Task ProtocolMapper_MapsToolAndPromptResults()
     {
         var successResult = McpGatewayMcpServerProtocolMapper.ToProtocolToolResult(
@@ -285,6 +349,18 @@ public sealed class McpGatewayProtocolUtilityTests
         await Assert.That(promptError.Messages.Count).IsEqualTo(1);
         await Assert.That(emptyCompletion.Completion.Values.Count).IsEqualTo(0);
     }
+
+    private static McpGatewayToolDescriptor CreateToolDescriptor(string inputSchemaJson) =>
+        new(
+            "local:lookup",
+            "local",
+            McpGatewaySourceKind.Local,
+            "lookup",
+            "Lookup",
+            "Looks up a value.",
+            ["value"],
+            inputSchemaJson
+        );
 }
 
 #pragma warning restore MCPEXP001

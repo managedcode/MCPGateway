@@ -9,6 +9,14 @@ namespace ManagedCode.MCPGateway;
 
 internal static class McpGatewayMcpServerProtocolMapper
 {
+    private const string ToolMessagePrefix = "Tool '";
+    private const string InvalidToolInputSchemaMessageSuffix =
+        "' has invalid input schema JSON.";
+    private const string NonObjectToolInputSchemaMessageSuffix =
+        "' input schema must be a JSON object.";
+    private const string InvalidPromptMessageContentMessage =
+        "Prompt message content is not a valid MCP content block.";
+
     public static Tool ToProtocolTool(
         McpGatewayToolDescriptor descriptor,
         ToolTaskSupport? taskSupport = null
@@ -18,7 +26,7 @@ internal static class McpGatewayMcpServerProtocolMapper
             Name = descriptor.ToolId,
             Title = descriptor.DisplayName,
             Description = descriptor.Description,
-            InputSchema = ParseSchemaOrDefault(descriptor.InputSchemaJson),
+            InputSchema = ParseToolInputSchema(descriptor),
             Annotations = new ToolAnnotations
             {
                 Title = descriptor.DisplayName,
@@ -91,7 +99,7 @@ internal static class McpGatewayMcpServerProtocolMapper
         McpGatewayResourceTemplateDescriptor descriptor
     )
     {
-        var gatewayUriTemplate = McpGatewayResourceUriCodec.ToGatewayUri(
+        var gatewayUriTemplate = McpGatewayResourceUriCodec.ToGatewayUriTemplate(
             descriptor.SourceId,
             descriptor.UriTemplate
         );
@@ -229,9 +237,13 @@ internal static class McpGatewayMcpServerProtocolMapper
                     };
                 }
             }
+            catch (JsonException exception) when (string.IsNullOrWhiteSpace(message.Text))
+            {
+                throw new InvalidOperationException(InvalidPromptMessageContentMessage, exception);
+            }
             catch (JsonException)
             {
-                // Fall back to text-only export below.
+                // Text fallback is allowed only when the prompt message explicitly provides text.
             }
         }
 
@@ -285,23 +297,42 @@ internal static class McpGatewayMcpServerProtocolMapper
         throw new McpException($"Unsupported resource content type '{content.GetType().Name}'.");
     }
 
-    private static JsonElement ParseSchemaOrDefault(string? schemaJson)
+    private static JsonElement ParseToolInputSchema(McpGatewayToolDescriptor descriptor)
     {
-        if (!string.IsNullOrWhiteSpace(schemaJson))
+        if (string.IsNullOrWhiteSpace(descriptor.InputSchemaJson))
         {
-            try
-            {
-                using var schemaDocument = JsonDocument.Parse(schemaJson);
-                return schemaDocument.RootElement.Clone();
-            }
-            catch (JsonException) { }
+            return CreateDefaultObjectSchema();
         }
 
-        return JsonSerializer.SerializeToElement(
+        try
+        {
+            using var schemaDocument = JsonDocument.Parse(descriptor.InputSchemaJson);
+            if (schemaDocument.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                throw new InvalidOperationException(
+                    CreateToolMessage(descriptor.ToolId, NonObjectToolInputSchemaMessageSuffix)
+                );
+            }
+
+            return schemaDocument.RootElement.Clone();
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException(
+                CreateToolMessage(descriptor.ToolId, InvalidToolInputSchemaMessageSuffix),
+                exception
+            );
+        }
+    }
+
+    private static string CreateToolMessage(string toolId, string suffix) =>
+        string.Concat(ToolMessagePrefix, toolId, suffix);
+
+    private static JsonElement CreateDefaultObjectSchema() =>
+        JsonSerializer.SerializeToElement(
             new { type = "object", properties = new { } },
             McpGatewayJsonSerializer.Options
         );
-    }
 
     private static JsonObject CreateToolMeta(McpGatewayToolDescriptor descriptor)
     {

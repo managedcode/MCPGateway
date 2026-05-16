@@ -30,12 +30,19 @@ internal sealed class McpGatewayResourceSubscriptionManager(
         await state.Gate.WaitAsync(cancellationToken);
 
         IAsyncDisposable? previousSubscription = null;
+        IAsyncDisposable? failedSubscription = null;
         var shouldPinBinding = false;
+        var previousAttempt = state.ActiveAttempt;
+        var attempt = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        var releasePinnedBindingAfterEarlyFailure = false;
 
         try
         {
             state.DownstreamServer = downstreamServer;
             shouldPinBinding = !state.HasPinnedBinding;
+            state.ActiveAttempt = attempt;
 
             await using var bindingLease = shouldPinBinding
                 ? await bindingManager.PinAsync(
@@ -67,6 +74,7 @@ internal sealed class McpGatewayResourceSubscriptionManager(
                             downstreamServer,
                             resolvedRequest.ExposedUri,
                             notification,
+                            attempt,
                             token
                         ),
                     loggerFactory,
@@ -82,9 +90,23 @@ internal sealed class McpGatewayResourceSubscriptionManager(
             {
                 state.HasPinnedBinding = true;
             }
+
+            if (attempt.Task.IsCompletedSuccessfully)
+            {
+                failedSubscription = state.Subscription;
+                releasePinnedBindingAfterEarlyFailure = state.HasPinnedBinding;
+                state.Subscription = null;
+                state.HasPinnedBinding = false;
+                state.ActiveAttempt = null;
+            }
         }
         catch
         {
+            if (ReferenceEquals(state.ActiveAttempt, attempt))
+            {
+                state.ActiveAttempt = previousAttempt;
+            }
+
             if (shouldPinBinding && !state.HasPinnedBinding)
             {
                 await bindingManager.ReleaseAsync(downstreamServer);
@@ -100,6 +122,16 @@ internal sealed class McpGatewayResourceSubscriptionManager(
         if (previousSubscription is not null)
         {
             await previousSubscription.DisposeAsync();
+        }
+
+        if (failedSubscription is not null)
+        {
+            await failedSubscription.DisposeAsync();
+        }
+
+        if (releasePinnedBindingAfterEarlyFailure)
+        {
+            await bindingManager.ReleaseAsync(downstreamServer);
         }
     }
 
@@ -129,6 +161,7 @@ internal sealed class McpGatewayResourceSubscriptionManager(
             releasePinnedBinding = state.HasPinnedBinding;
             state.Subscription = null;
             state.HasPinnedBinding = false;
+            state.ActiveAttempt = null;
         }
         finally
         {
@@ -151,27 +184,36 @@ internal sealed class McpGatewayResourceSubscriptionManager(
         var subscriptions = _subscriptions.ToArray();
         _subscriptions.Clear();
 
-        foreach (var (_, subscription) in subscriptions)
+        foreach (var (_, state) in subscriptions)
         {
-            await subscription.Gate.WaitAsync(CancellationToken.None);
+            await state.Gate.WaitAsync(CancellationToken.None);
+
+            IAsyncDisposable? subscription = null;
+            bool releasePinnedBinding;
+            var downstreamServer = state.DownstreamServer;
+
             try
             {
-                if (subscription.Subscription is not null)
-                {
-                    await subscription.Subscription.DisposeAsync();
-                    subscription.Subscription = null;
-                }
-
-                if (subscription.HasPinnedBinding)
-                {
-                    subscription.HasPinnedBinding = false;
-                    await bindingManager.ReleaseAsync(subscription.DownstreamServer);
-                }
+                subscription = state.Subscription;
+                releasePinnedBinding = state.HasPinnedBinding;
+                state.Subscription = null;
+                state.HasPinnedBinding = false;
+                state.ActiveAttempt = null;
             }
             finally
             {
-                subscription.Gate.Release();
-                subscription.Gate.Dispose();
+                state.Gate.Release();
+                state.Gate.Dispose();
+            }
+
+            if (subscription is not null)
+            {
+                await subscription.DisposeAsync();
+            }
+
+            if (releasePinnedBinding)
+            {
+                await bindingManager.ReleaseAsync(downstreamServer);
             }
         }
     }
@@ -181,6 +223,7 @@ internal sealed class McpGatewayResourceSubscriptionManager(
         ModelContextProtocol.Server.McpServer downstreamServer,
         string exposedUri,
         ResourceUpdatedNotificationParams notification,
+        TaskCompletionSource<bool> attempt,
         CancellationToken cancellationToken
     )
     {
@@ -206,28 +249,65 @@ internal sealed class McpGatewayResourceSubscriptionManager(
                 key.ExposedUri
             );
 
-            if (_subscriptions.TryGetValue(key, out var state))
-            {
-                await state.Gate.WaitAsync(CancellationToken.None);
-                try
-                {
-                    if (state.Subscription is not null)
-                    {
-                        await state.Subscription.DisposeAsync();
-                        state.Subscription = null;
-                    }
+            attempt.TrySetResult(true);
+            _ = RemoveFailedSubscriptionAsync(key, attempt);
+        }
+    }
 
-                    if (state.HasPinnedBinding)
-                    {
-                        state.HasPinnedBinding = false;
-                        await bindingManager.ReleaseAsync(state.DownstreamServer);
-                    }
-                }
-                finally
-                {
-                    state.Gate.Release();
-                }
+    private async Task RemoveFailedSubscriptionAsync(
+        SubscriptionKey key,
+        TaskCompletionSource<bool> attempt
+    )
+    {
+        try
+        {
+            if (!_subscriptions.TryGetValue(key, out var state))
+            {
+                return;
             }
+
+            await state.Gate.WaitAsync(CancellationToken.None);
+            IAsyncDisposable? subscription = null;
+            var releasePinnedBinding = false;
+            ModelContextProtocol.Server.McpServer downstreamServer;
+
+            try
+            {
+                if (!ReferenceEquals(state.ActiveAttempt, attempt))
+                {
+                    return;
+                }
+
+                subscription = state.Subscription;
+                releasePinnedBinding = state.HasPinnedBinding;
+                downstreamServer = state.DownstreamServer;
+                state.Subscription = null;
+                state.HasPinnedBinding = false;
+                state.ActiveAttempt = null;
+            }
+            finally
+            {
+                state.Gate.Release();
+            }
+
+            if (subscription is not null)
+            {
+                await subscription.DisposeAsync();
+            }
+
+            if (releasePinnedBinding)
+            {
+                await bindingManager.ReleaseAsync(downstreamServer);
+            }
+        }
+        catch (Exception exception)
+        {
+            logger.LogDebug(
+                exception,
+                "Failed to clean up MCP resource subscription '{SessionId}:{Uri}' after notification forwarding failed.",
+                key.SessionId,
+                key.ExposedUri
+            );
         }
     }
 
@@ -249,5 +329,7 @@ internal sealed class McpGatewayResourceSubscriptionManager(
         public IAsyncDisposable? Subscription { get; set; }
 
         public bool HasPinnedBinding { get; set; }
+
+        public TaskCompletionSource<bool>? ActiveAttempt { get; set; }
     }
 }

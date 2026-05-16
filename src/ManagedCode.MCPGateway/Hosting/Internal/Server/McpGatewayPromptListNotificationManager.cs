@@ -126,13 +126,32 @@ internal sealed class McpGatewayPromptListNotificationManager(
                 continue;
             }
 
+            if (!IsCurrentSession(sessionState))
+            {
+                await subscription.DisposeAsync();
+                continue;
+            }
+
             var createdSubscription = new UpstreamSubscription(source, subscription);
             if (!sessionState.UpstreamSubscriptions.TryAdd(source.SourceId, createdSubscription))
             {
                 await subscription.DisposeAsync();
+                continue;
+            }
+
+            if (
+                !IsCurrentSession(sessionState)
+                && sessionState.UpstreamSubscriptions.TryRemove(source.SourceId, out var removed)
+            )
+            {
+                await removed.Subscription.DisposeAsync();
             }
         }
     }
+
+    private bool IsCurrentSession(SessionState sessionState) =>
+        _sessions.TryGetValue(sessionState.SessionId, out var activeSession)
+        && ReferenceEquals(activeSession, sessionState);
 
     private Task ForwardUpstreamPromptListChangedAsync(
         string sessionId,

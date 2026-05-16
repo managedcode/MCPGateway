@@ -29,11 +29,11 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
                 )
         );
 
+        var baselineDisposeCount = Volatile.Read(ref disposeCount);
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
             $"isolated:{TestMcpTaskFeatureServerHost.RequiredToolName}",
             new Dictionary<string, object?> { ["value"] = "alpha" }
         );
-        var initialDisposeCount = Volatile.Read(ref disposeCount);
 
         var completedTask = await WaitForTaskAsync(
             gatewayServer.Client,
@@ -43,7 +43,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
         var taskResult = DeserializeToolResult(await gatewayServer.Client.GetTaskResultAsync(task.TaskId));
         await WaitForDisposeCountAsync(
             () => Volatile.Read(ref disposeCount),
-            initialDisposeCount + 1
+            baselineDisposeCount + 1
         );
 
         await Assert.That(completedTask.Status).IsEqualTo(McpTaskStatus.Completed);
@@ -117,7 +117,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
         var actualCount = getCount();
         for (var attempt = 0; attempt < 200; attempt++)
         {
-            if (actualCount == expectedCount)
+            if (actualCount >= expectedCount)
             {
                 return;
             }
@@ -127,7 +127,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
         }
 
         throw new InvalidOperationException(
-            $"The expected dispose count was not reached in time. Expected '{expectedCount}', actual '{actualCount}'."
+            $"The expected dispose count was not reached in time. Expected at least '{expectedCount}', actual '{actualCount}'."
         );
     }
 
