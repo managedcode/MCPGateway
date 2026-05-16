@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
@@ -33,7 +34,7 @@ internal sealed class McpGatewayResourceSubscriptionManager(
         IAsyncDisposable? failedSubscription = null;
         var shouldPinBinding = false;
         var previousAttempt = state.ActiveAttempt;
-        var attempt = new TaskCompletionSource<bool>(
+        var attempt = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously
         );
         var releasePinnedBindingAfterEarlyFailure = false;
@@ -119,20 +120,20 @@ internal sealed class McpGatewayResourceSubscriptionManager(
             state.Gate.Release();
         }
 
-        if (previousSubscription is not null)
-        {
-            await previousSubscription.DisposeAsync();
-        }
-
-        if (failedSubscription is not null)
-        {
-            await failedSubscription.DisposeAsync();
-        }
-
-        if (releasePinnedBindingAfterEarlyFailure)
-        {
-            await bindingManager.ReleaseAsync(downstreamServer);
-        }
+        var cleanupExceptions = new List<Exception>();
+        await DisposeSubscriptionAndReleaseBindingAsync(
+            failedSubscription,
+            releasePinnedBindingAfterEarlyFailure,
+            downstreamServer,
+            cleanupExceptions
+        );
+        await DisposeSubscriptionAndReleaseBindingAsync(
+            previousSubscription,
+            releasePinnedBinding: false,
+            downstreamServer,
+            cleanupExceptions
+        );
+        ThrowIfCleanupFailed(cleanupExceptions);
     }
 
     public async Task UnsubscribeAsync(
@@ -168,21 +169,21 @@ internal sealed class McpGatewayResourceSubscriptionManager(
             state.Gate.Release();
         }
 
-        if (subscription is not null)
-        {
-            await subscription.DisposeAsync();
-        }
-
-        if (releasePinnedBinding)
-        {
-            await bindingManager.ReleaseAsync(state.DownstreamServer);
-        }
+        var cleanupExceptions = new List<Exception>();
+        await DisposeSubscriptionAndReleaseBindingAsync(
+            subscription,
+            releasePinnedBinding,
+            state.DownstreamServer,
+            cleanupExceptions
+        );
+        ThrowIfCleanupFailed(cleanupExceptions);
     }
 
     public async ValueTask DisposeAsync()
     {
         var subscriptions = _subscriptions.ToArray();
         _subscriptions.Clear();
+        var cleanupExceptions = new List<Exception>();
 
         foreach (var (_, state) in subscriptions)
         {
@@ -206,16 +207,15 @@ internal sealed class McpGatewayResourceSubscriptionManager(
                 state.Gate.Dispose();
             }
 
-            if (subscription is not null)
-            {
-                await subscription.DisposeAsync();
-            }
-
-            if (releasePinnedBinding)
-            {
-                await bindingManager.ReleaseAsync(downstreamServer);
-            }
+            await DisposeSubscriptionAndReleaseBindingAsync(
+                subscription,
+                releasePinnedBinding,
+                downstreamServer,
+                cleanupExceptions
+            );
         }
+
+        ThrowIfCleanupFailed(cleanupExceptions);
     }
 
     private async ValueTask ForwardUpdateAsync(
@@ -223,7 +223,7 @@ internal sealed class McpGatewayResourceSubscriptionManager(
         ModelContextProtocol.Server.McpServer downstreamServer,
         string exposedUri,
         ResourceUpdatedNotificationParams notification,
-        TaskCompletionSource<bool> attempt,
+        TaskCompletionSource attempt,
         CancellationToken cancellationToken
     )
     {
@@ -249,14 +249,14 @@ internal sealed class McpGatewayResourceSubscriptionManager(
                 key.ExposedUri
             );
 
-            attempt.TrySetResult(true);
+            attempt.TrySetResult();
             _ = RemoveFailedSubscriptionAsync(key, attempt);
         }
     }
 
     private async Task RemoveFailedSubscriptionAsync(
         SubscriptionKey key,
-        TaskCompletionSource<bool> attempt
+        TaskCompletionSource attempt
     )
     {
         try
@@ -290,15 +290,14 @@ internal sealed class McpGatewayResourceSubscriptionManager(
                 state.Gate.Release();
             }
 
-            if (subscription is not null)
-            {
-                await subscription.DisposeAsync();
-            }
-
-            if (releasePinnedBinding)
-            {
-                await bindingManager.ReleaseAsync(downstreamServer);
-            }
+            var cleanupExceptions = new List<Exception>();
+            await DisposeSubscriptionAndReleaseBindingAsync(
+                subscription,
+                releasePinnedBinding,
+                downstreamServer,
+                cleanupExceptions
+            );
+            ThrowIfCleanupFailed(cleanupExceptions);
         }
         catch (Exception exception)
         {
@@ -308,6 +307,52 @@ internal sealed class McpGatewayResourceSubscriptionManager(
                 key.SessionId,
                 key.ExposedUri
             );
+        }
+    }
+
+    private async Task DisposeSubscriptionAndReleaseBindingAsync(
+        IAsyncDisposable? subscription,
+        bool releasePinnedBinding,
+        ModelContextProtocol.Server.McpServer downstreamServer,
+        List<Exception> cleanupExceptions
+    )
+    {
+        if (subscription is not null)
+        {
+            try
+            {
+                await subscription.DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                cleanupExceptions.Add(exception);
+            }
+        }
+
+        if (releasePinnedBinding)
+        {
+            try
+            {
+                await bindingManager.ReleaseAsync(downstreamServer);
+            }
+            catch (Exception exception)
+            {
+                cleanupExceptions.Add(exception);
+            }
+        }
+    }
+
+    private static void ThrowIfCleanupFailed(List<Exception> cleanupExceptions)
+    {
+        switch (cleanupExceptions.Count)
+        {
+            case 0:
+                return;
+            case 1:
+                ExceptionDispatchInfo.Capture(cleanupExceptions[0]).Throw();
+                break;
+            default:
+                throw new AggregateException(cleanupExceptions);
         }
     }
 
@@ -330,6 +375,6 @@ internal sealed class McpGatewayResourceSubscriptionManager(
 
         public bool HasPinnedBinding { get; set; }
 
-        public TaskCompletionSource<bool>? ActiveAttempt { get; set; }
+        public TaskCompletionSource? ActiveAttempt { get; set; }
     }
 }

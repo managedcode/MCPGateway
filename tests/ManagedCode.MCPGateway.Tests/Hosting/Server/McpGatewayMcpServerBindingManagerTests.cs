@@ -55,6 +55,34 @@ public sealed class McpGatewayMcpServerBindingManagerTests
         await Assert.That(ReferenceEquals(thirdLease.Binding, secondBinding)).IsTrue();
     }
 
+    [Test]
+    public async Task ReleaseAsync_PropagatesResolvedBindingDisposeFailure()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+
+        var binding = new TrackingBinding(
+            "throwing",
+            new InvalidOperationException("binding dispose failure")
+        );
+        var resolver = new SequencedBindingResolver();
+        resolver.Enqueue().SetResult(binding);
+        var manager = new McpGatewayMcpServerBindingManager(resolver);
+
+        await using var lease = await manager.PinAsync(
+            requestServices: null,
+            serviceProvider,
+            gatewayServer.Server,
+            CancellationToken.None
+        );
+
+        var exception = await CaptureAsync(manager.ReleaseAsync(gatewayServer.Server).AsTask());
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(exception!.Message).Contains("binding dispose failure");
+        await Assert.That(binding.DisposeCount).IsEqualTo(1);
+    }
+
     private static async Task<Exception?> CaptureAsync(Task action)
     {
         try
@@ -98,7 +126,8 @@ public sealed class McpGatewayMcpServerBindingManagerTests
         }
     }
 
-    private sealed class TrackingBinding(string name) : IMcpGatewayServerBinding
+    private sealed class TrackingBinding(string name, Exception? disposeException = null)
+        : IMcpGatewayServerBinding
     {
         public int DisposeCount { get; private set; }
 
@@ -119,7 +148,9 @@ public sealed class McpGatewayMcpServerBindingManagerTests
         public ValueTask DisposeAsync()
         {
             DisposeCount++;
-            return ValueTask.CompletedTask;
+            return disposeException is null
+                ? ValueTask.CompletedTask
+                : ValueTask.FromException(disposeException);
         }
 
         private sealed class NoOpDisposable : IDisposable

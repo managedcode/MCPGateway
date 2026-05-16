@@ -118,7 +118,7 @@ flowchart LR
   - keyed optional search normalizer client from DI
   - optional embedding generator and embedding store from DI when vector strategy is selected
   - search and graph-source options from `McpGatewayOptions`
-  - schema-aware graph search mode and federated endpoint allowlist from `McpGatewayOptions`
+  - schema-aware graph search mode, federated endpoint allowlist, and federated SPARQL query timeout from `McpGatewayOptions`
   - file-system Markdown-LD graph source when `MarkdownLdGraphSource.FileSystem` is selected
   - host-supplied Markdown-LD graph documents when `UseMarkdownLdGraphDocuments(...)` is selected
 - Writes:

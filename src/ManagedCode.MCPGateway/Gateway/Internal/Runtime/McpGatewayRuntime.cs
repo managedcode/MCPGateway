@@ -345,7 +345,6 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const int GraphPluralNormalizationMinimumLength = 3;
     private const int GraphDefaultTermCollectionCapacity = 8;
     private const int GraphMaxCapabilityTerms = 4;
-    private const int FederatedSparqlQueryTimeoutMilliseconds = 15000;
     private const double SearchScoreMinimum = 0d;
     private const double SearchScoreMaximum = 1d;
     private const double GraphSchemaNameTextWeight = 1.2d;
@@ -573,6 +572,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
+    private readonly TimeSpan? _markdownLdFederatedSparqlQueryTimeout;
     private readonly IReadOnlyList<Uri> _markdownLdFederatedServiceEndpoints;
     private readonly Uri _graphLocalFederationEndpoint;
     private readonly IMcpGatewaySearchCache _searchRuntimeCache;
@@ -608,6 +608,10 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         _defaultSearchLimit = Math.Max(1, resolvedOptions.DefaultSearchLimit);
         _maxSearchResults = Math.Max(1, resolvedOptions.MaxSearchResults);
         _maxDescriptorLength = Math.Max(256, resolvedOptions.MaxDescriptorLength);
+        _markdownLdFederatedSparqlQueryTimeout = ValidateOptionalTimeout(
+            resolvedOptions.MarkdownLdFederatedSparqlQueryTimeout,
+            nameof(McpGatewayOptions.MarkdownLdFederatedSparqlQueryTimeout)
+        );
         _markdownLdFederatedServiceEndpoints = resolvedOptions.MarkdownLdFederatedServiceEndpoints;
         _graphLocalFederationEndpoint = new Uri(
             $"{GraphLocalFederationEndpointUriText}/{Guid.NewGuid():N}",
@@ -652,6 +656,34 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         }
 
         throw new InvalidOperationException(CatalogSourceMissingMessage);
+    }
+
+    private static TimeSpan? ValidateOptionalTimeout(TimeSpan? value, string paramName)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        if (value.Value <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                paramName,
+                value,
+                "Timeout must be greater than zero."
+            );
+        }
+
+        if (value.Value.TotalMilliseconds > int.MaxValue)
+        {
+            throw new ArgumentOutOfRangeException(
+                paramName,
+                value,
+                "Timeout must fit into Int32 milliseconds for the Markdown-LD federated SPARQL executor."
+            );
+        }
+
+        return value;
     }
 
     private void ThrowIfDisposed()

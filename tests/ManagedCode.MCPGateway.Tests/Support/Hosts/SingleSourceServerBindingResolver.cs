@@ -10,6 +10,7 @@ internal sealed class SingleSourceServerBindingResolver(
     IMcpGatewayServerSource source,
     IMcpGatewayResourceCatalog resourceCatalog,
     IMcpGatewayPromptCatalog? promptCatalog = null,
+    Func<Action, IDisposable>? subscribeToPromptListChanges = null,
     Action? onDisposed = null
 ) : IMcpGatewayServerBindingResolver
 {
@@ -26,7 +27,13 @@ internal sealed class SingleSourceServerBindingResolver(
         cancellationToken.ThrowIfCancellationRequested();
 
         return ValueTask.FromResult<IMcpGatewayServerBinding>(
-            new Binding(source, resourceCatalog, promptCatalog, onDisposed)
+            new Binding(
+                source,
+                resourceCatalog,
+                promptCatalog,
+                subscribeToPromptListChanges,
+                onDisposed
+            )
         );
     }
 
@@ -34,6 +41,7 @@ internal sealed class SingleSourceServerBindingResolver(
         IMcpGatewayServerSource source,
         IMcpGatewayResourceCatalog resourceCatalog,
         IMcpGatewayPromptCatalog? promptCatalog,
+        Func<Action, IDisposable>? subscribeToPromptListChanges,
         Action? onDisposed
     ) : IMcpGatewayServerBinding
     {
@@ -48,8 +56,8 @@ internal sealed class SingleSourceServerBindingResolver(
 
         public IDisposable SubscribeToPromptListChanges(Action onChanged)
         {
-            _ = onChanged;
-            return NoopDisposable.Instance;
+            ArgumentNullException.ThrowIfNull(onChanged);
+            return subscribeToPromptListChanges?.Invoke(onChanged) ?? NoopDisposable.Instance;
         }
 
         public ValueTask<IReadOnlyList<IMcpGatewayServerSource>> ListSourcesAsync(

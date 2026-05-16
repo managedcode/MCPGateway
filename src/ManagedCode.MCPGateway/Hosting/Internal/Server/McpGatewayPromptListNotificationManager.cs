@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.ExceptionServices;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
@@ -52,8 +53,7 @@ internal sealed class McpGatewayPromptListNotificationManager(
 
         if (!_sessions.TryAdd(sessionId, createdState))
         {
-            createdState.PromptChangeSubscription.Dispose();
-            await bindingManager.ReleaseAsync(downstreamServer);
+            await DisposeSessionAsync(createdState);
             return;
         }
 
@@ -69,12 +69,14 @@ internal sealed class McpGatewayPromptListNotificationManager(
 
         var states = _sessions.ToArray();
         _sessions.Clear();
+        var cleanupExceptions = new List<Exception>();
 
         foreach (var (_, state) in states)
         {
-            await DisposeSessionAsync(state);
+            await DisposeSessionAsync(state, cleanupExceptions);
         }
 
+        ThrowIfCleanupFailed(cleanupExceptions);
     }
 
     private async Task RefreshUpstreamSubscriptionsAsync(
@@ -197,22 +199,76 @@ internal sealed class McpGatewayPromptListNotificationManager(
 
             if (_sessions.TryRemove(sessionId, out var removedState))
             {
-                await DisposeSessionAsync(removedState);
+                var cleanupExceptions = new List<Exception>();
+                await DisposeSessionAsync(removedState, cleanupExceptions);
+                if (cleanupExceptions.Count > 0)
+                {
+                    logger.LogDebug(
+                        new AggregateException(cleanupExceptions),
+                        "Failed to clean up MCP prompt list notification session '{SessionId}' after notification forwarding failed.",
+                        sessionId
+                    );
+                }
             }
         }
     }
 
     private async Task DisposeSessionAsync(SessionState sessionState)
     {
-        sessionState.PromptChangeSubscription.Dispose();
+        var cleanupExceptions = new List<Exception>();
+        await DisposeSessionAsync(sessionState, cleanupExceptions);
+        ThrowIfCleanupFailed(cleanupExceptions);
+    }
+
+    private async Task DisposeSessionAsync(
+        SessionState sessionState,
+        List<Exception> cleanupExceptions
+    )
+    {
+        try
+        {
+            sessionState.PromptChangeSubscription.Dispose();
+        }
+        catch (Exception exception)
+        {
+            cleanupExceptions.Add(exception);
+        }
 
         foreach (var (_, subscription) in sessionState.UpstreamSubscriptions)
         {
-            await subscription.Subscription.DisposeAsync();
+            try
+            {
+                await subscription.Subscription.DisposeAsync();
+            }
+            catch (Exception exception)
+            {
+                cleanupExceptions.Add(exception);
+            }
         }
 
         sessionState.UpstreamSubscriptions.Clear();
-        await bindingManager.ReleaseAsync(sessionState.DownstreamServer);
+        try
+        {
+            await bindingManager.ReleaseAsync(sessionState.DownstreamServer);
+        }
+        catch (Exception exception)
+        {
+            cleanupExceptions.Add(exception);
+        }
+    }
+
+    private static void ThrowIfCleanupFailed(List<Exception> cleanupExceptions)
+    {
+        switch (cleanupExceptions.Count)
+        {
+            case 0:
+                return;
+            case 1:
+                ExceptionDispatchInfo.Capture(cleanupExceptions[0]).Throw();
+                break;
+            default:
+                throw new AggregateException(cleanupExceptions);
+        }
     }
 
     private sealed class SessionState(

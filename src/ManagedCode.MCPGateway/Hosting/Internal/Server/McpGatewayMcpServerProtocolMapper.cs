@@ -16,6 +16,8 @@ internal static class McpGatewayMcpServerProtocolMapper
         "' input schema must be a JSON object.";
     private const string InvalidPromptMessageContentMessage =
         "Prompt message content is not a valid MCP content block.";
+    private const string InvalidPromptMessageRolePrefix = "Prompt message role '";
+    private const string InvalidPromptMessageRoleSuffix = "' is not supported.";
 
     public static Tool ToProtocolTool(
         McpGatewayToolDescriptor descriptor,
@@ -226,13 +228,7 @@ internal static class McpGatewayMcpServerProtocolMapper
                 {
                     return new PromptMessage
                     {
-                        Role = Enum.TryParse<Role>(
-                            message.Role,
-                            ignoreCase: true,
-                            out var parsedRole
-                        )
-                            ? parsedRole
-                            : Role.User,
+                        Role = ParsePromptRole(message.Role),
                         Content = content,
                     };
                 }
@@ -254,9 +250,7 @@ internal static class McpGatewayMcpServerProtocolMapper
 
         return new PromptMessage
         {
-            Role = Enum.TryParse<Role>(message.Role, ignoreCase: true, out var fallbackRole)
-                ? fallbackRole
-                : Role.User,
+            Role = ParsePromptRole(message.Role),
             Content = new TextContentBlock { Text = message.Text },
         };
     }
@@ -327,6 +321,21 @@ internal static class McpGatewayMcpServerProtocolMapper
 
     private static string CreateToolMessage(string toolId, string suffix) =>
         string.Concat(ToolMessagePrefix, toolId, suffix);
+
+    private static Role ParsePromptRole(string role)
+    {
+        if (
+            Enum.TryParse<Role>(role, ignoreCase: true, out var parsedRole)
+            && Enum.IsDefined(parsedRole)
+        )
+        {
+            return parsedRole;
+        }
+
+        throw new InvalidOperationException(
+            string.Concat(InvalidPromptMessageRolePrefix, role, InvalidPromptMessageRoleSuffix)
+        );
+    }
 
     private static JsonElement CreateDefaultObjectSchema() =>
         JsonSerializer.SerializeToElement(

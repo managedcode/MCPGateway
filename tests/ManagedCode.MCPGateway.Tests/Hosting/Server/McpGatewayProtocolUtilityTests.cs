@@ -313,6 +313,25 @@ public sealed class McpGatewayProtocolUtilityTests
     }
 
     [Test]
+    public async Task ProtocolMapper_RejectsInvalidPromptMessageRole()
+    {
+        Exception? exception = null;
+        try
+        {
+            _ = McpGatewayMcpServerProtocolMapper.ToProtocolPromptMessage(
+                new McpGatewayPromptMessage("invalid-role", null, "hello")
+            );
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(exception!.Message).Contains("role 'invalid-role'");
+    }
+
+    [Test]
     public async Task ProtocolMapper_MapsToolAndPromptResults()
     {
         var successResult = McpGatewayMcpServerProtocolMapper.ToProtocolToolResult(

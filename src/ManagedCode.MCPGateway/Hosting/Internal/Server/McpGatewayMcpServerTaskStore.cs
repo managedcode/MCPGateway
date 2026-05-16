@@ -925,8 +925,10 @@ internal sealed class McpGatewayMcpServerTaskStore(
         CancellationToken cancellationToken
     )
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var currentTask = await _innerStore.GetTaskAsync(taskId, sessionId, cancellationToken);
             switch (currentTask?.Status)
             {
@@ -946,9 +948,6 @@ internal sealed class McpGatewayMcpServerTaskStore(
                     break;
             }
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        return default;
     }
 
     private static string CreateTaskMessage(string taskId, string suffix) =>
@@ -960,8 +959,10 @@ internal sealed class McpGatewayMcpServerTaskStore(
         CancellationToken cancellationToken
     )
     {
-        while (!cancellationToken.IsCancellationRequested)
+        while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var result = await TryGetProxyTaskResultAsync(binding, cancellationToken);
             if (result is { } proxiedResult)
             {
@@ -975,9 +976,6 @@ internal sealed class McpGatewayMcpServerTaskStore(
 
             await Task.Delay(TaskResultPollDelay, cancellationToken);
         }
-
-        cancellationToken.ThrowIfCancellationRequested();
-        return null;
     }
 
     private async Task<JsonElement?> TryGetProxyTaskResultAsync(

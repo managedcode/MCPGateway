@@ -226,13 +226,25 @@ internal sealed partial class McpGatewayRuntime
                 ]
                 : [];
 
+        if (_markdownLdFederatedSparqlQueryTimeout is { } queryTimeout)
+        {
+            return new FederatedSparqlExecutionOptions
+            {
+                AllowedServiceEndpoints = serviceEndpoints,
+                LocalServiceBindings = localBindings,
+                QueryExecutionTimeoutMilliseconds = ConvertTimeoutToMilliseconds(queryTimeout),
+            };
+        }
+
         return new FederatedSparqlExecutionOptions
         {
             AllowedServiceEndpoints = serviceEndpoints,
             LocalServiceBindings = localBindings,
-            QueryExecutionTimeoutMilliseconds = FederatedSparqlQueryTimeoutMilliseconds,
         };
     }
+
+    private static int ConvertTimeoutToMilliseconds(TimeSpan timeout) =>
+        checked((int)Math.Ceiling(timeout.TotalMilliseconds));
 
     private static McpGatewayGraphSearchResult MapGraphSearchResult(
         ToolGraphSearchIndex graphIndex,

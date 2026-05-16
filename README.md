@@ -141,7 +141,7 @@ services.AddMcpGateway(options =>
 
 `AddHttpServer(...)` uses the official MCP C# SDK Streamable HTTP transport for modern remote MCP endpoints and keeps the source registered as an HTTP MCP source in gateway descriptors and downstream export metadata.
 Use the overload with `HttpTransportMode` only when a legacy endpoint requires `AutoDetect` or `Sse`.
-Use `McpGatewayHttpServerOptions` when a host needs the SDK HTTP transport knobs such as additional headers, connection timeout, known session id, session ownership, OAuth options, or SSE reconnection settings.
+Use `McpGatewayHttpServerOptions` when a host needs the SDK HTTP transport knobs such as additional headers, connection timeout, known session id, session ownership, OAuth options, or SSE reconnection settings. The package does not set a transport timeout by default; hosts can pass one explicitly or own deadline policy through cancellation tokens and hosting infrastructure.
 
 You can also register:
 
@@ -633,6 +633,8 @@ services.AddMcpGateway(options =>
 {
     options.AddMarkdownLdFederatedServiceEndpoint(
         new Uri("https://knowledge.example.com/sparql"));
+
+    options.MarkdownLdFederatedSparqlQueryTimeout = TimeSpan.FromSeconds(30);
 });
 ```
 
@@ -649,6 +651,7 @@ var federatedResult = await graphSearch.SearchGraphAsync(
 ```
 
 The gateway never discovers remote SPARQL endpoints on its own. It uses the configured allowlist, can bind the local gateway graph as a federated service, and reports diagnostics when a requested endpoint is invalid or blocked.
+Federated SPARQL execution defaults to `McpGatewayOptions.DefaultMarkdownLdFederatedSparqlQueryTimeout`, which is 30 seconds. Set `MarkdownLdFederatedSparqlQueryTimeout` to a larger `TimeSpan` for slower trusted endpoints, or set it to `null` when the host owns the deadline entirely through cancellation tokens or infrastructure policy.
 
 ## Graph Sources
 

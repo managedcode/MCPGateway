@@ -1,6 +1,7 @@
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -45,6 +46,46 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
         _ = await listPromptsTask.WaitAsync(TimeSpan.FromSeconds(5));
 
         await WaitUntilAsync(() => source.DisposedSubscriptionCount == 1);
+    }
+
+    [Test]
+    public async Task DisposeAsync_ReleasesPromptBindingWhenLocalSubscriptionDisposeFails()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var bindingDisposeCount = 0;
+        var resolver = new SingleSourceServerBindingResolver(
+            new EmptySource("source-a"),
+            new StaticMcpGatewayResourceCatalog([]),
+            subscribeToPromptListChanges: static _ => new ThrowingDisposable(),
+            onDisposed: () => Interlocked.Increment(ref bindingDisposeCount)
+        );
+        var manager = new McpGatewayPromptListNotificationManager(
+            new McpGatewayMcpServerBindingManager(resolver),
+            serviceProvider,
+            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
+            NullLoggerFactory.Instance
+        );
+
+        await manager.RegisterDownstreamServerAsync(
+            requestServices: null,
+            gatewayServer.Server,
+            CancellationToken.None
+        );
+
+        Exception? exception = null;
+        try
+        {
+            await manager.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(exception!.Message).Contains("prompt subscription dispose failure");
+        await Assert.That(bindingDisposeCount).IsEqualTo(1);
     }
 
     private static StaticMcpGatewayResourceCatalog CreateResourceCatalog() =>
@@ -145,6 +186,16 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
             }
 
             return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class EmptySource(string sourceId) : TestMcpGatewayServerSource(sourceId);
+
+    private sealed class ThrowingDisposable : IDisposable
+    {
+        public void Dispose()
+        {
+            throw new InvalidOperationException("prompt subscription dispose failure");
         }
     }
 }

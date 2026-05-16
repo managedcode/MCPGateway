@@ -5,6 +5,9 @@ namespace ManagedCode.MCPGateway;
 
 public sealed class McpGatewayOptions
 {
+    public static TimeSpan DefaultMarkdownLdFederatedSparqlQueryTimeout { get; } =
+        TimeSpan.FromSeconds(30);
+
     private readonly McpGatewayRegistrationCollection _sourceRegistrations = new();
     private readonly List<Uri> _markdownLdFederatedServiceEndpoints = [];
 
@@ -34,6 +37,9 @@ public sealed class McpGatewayOptions
     public int MaxSearchResults { get; set; } = 15;
 
     public int MaxDescriptorLength { get; set; } = 4096;
+
+    public TimeSpan? MarkdownLdFederatedSparqlQueryTimeout { get; set; } =
+        DefaultMarkdownLdFederatedSparqlQueryTimeout;
 
     internal IReadOnlyList<McpGatewayToolSourceRegistration> SourceRegistrations =>
         _sourceRegistrations.Snapshot();

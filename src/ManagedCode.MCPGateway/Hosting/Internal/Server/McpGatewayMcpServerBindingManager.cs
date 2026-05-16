@@ -196,15 +196,18 @@ internal sealed class McpGatewayMcpServerBindingManager(
 
         public async ValueTask DisposeAsync()
         {
+            IMcpGatewayServerBinding binding;
             try
             {
-                var binding = await BindingTask;
-                await binding.DisposeAsync();
+                binding = await BindingTask;
             }
             catch
             {
                 // Resolution failures have nothing to dispose and should not fail cleanup.
+                return;
             }
+
+            await binding.DisposeAsync();
         }
     }
 }

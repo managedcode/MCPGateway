@@ -1,6 +1,5 @@
 using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Protocol;
@@ -95,32 +94,73 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
         await Assert.That(registration.DisposedSubscriptionCount).IsEqualTo(1);
     }
 
+    [Test]
+    public async Task UnsubscribeAsync_ReleasesPinnedBindingWhenSubscriptionDisposeFails()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+        var source = new ThrowingDisposeResourceSource("source-a");
+        var bindingDisposeCount = 0;
+        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
+        var manager = CreateManager(
+            serviceProvider,
+            source,
+            () => Interlocked.Increment(ref bindingDisposeCount)
+        );
+
+        await manager.SubscribeAsync(
+            requestServices: null,
+            gatewayServer.Server,
+            "docs://overview",
+            CancellationToken.None
+        );
+
+        Exception? exception = null;
+        try
+        {
+            await manager.UnsubscribeAsync(
+                gatewayServer.Server,
+                "docs://overview",
+                CancellationToken.None
+            );
+        }
+        catch (Exception ex)
+        {
+            exception = ex;
+        }
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(exception!.Message).Contains("subscription dispose failure");
+        await Assert.That(bindingDisposeCount).IsEqualTo(1);
+    }
+
     private static McpGatewayResourceSubscriptionManager CreateManager(
         ServiceProvider serviceProvider,
         TrackingResourceRegistration registration
+    ) => CreateManager(serviceProvider, new McpGatewayRegistrationBoundServerSource(registration));
+
+    private static McpGatewayResourceSubscriptionManager CreateManager(
+        ServiceProvider serviceProvider,
+        IMcpGatewayServerSource source,
+        Action? onBindingDisposed = null
     )
     {
-        var resolver = new StaticBindingResolver(
-            new McpGatewayServerBinding(
-                new NoOpGateway(),
-                new NoOpPromptCatalog(),
-                new StaticResourceCatalog(
-                    [
-                        new McpGatewayResourceDescriptor(
-                            "source-a",
-                            McpGatewaySourceKind.Local,
-                            "overview",
-                            "overview",
-                            "docs://overview",
-                            "Reads overview.",
-                            "text/plain",
-                            null
-                        ),
-                    ],
-                    []
-                ),
-                new StaticRegistry([registration])
-            )
+        var resolver = new SingleSourceServerBindingResolver(
+            source,
+            new StaticMcpGatewayResourceCatalog(
+                [
+                    new McpGatewayResourceDescriptor(
+                        "source-a",
+                        McpGatewaySourceKind.Local,
+                        "overview",
+                        "overview",
+                        "docs://overview",
+                        "Reads overview.",
+                        "text/plain",
+                        null
+                    ),
+                ]
+            ),
+            onDisposed: onBindingDisposed
         );
 
         return new McpGatewayResourceSubscriptionManager(
@@ -184,188 +224,30 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
         }
     }
 
-    private sealed class StaticBindingResolver(IMcpGatewayServerBinding binding)
-        : IMcpGatewayServerBindingResolver
+    private sealed class ThrowingDisposeResourceSource(string sourceId)
+        : TestMcpGatewayServerSource(sourceId)
     {
-        public ValueTask<IMcpGatewayServerBinding> ResolveAsync(
-            IServiceProvider? requestServices,
-            IServiceProvider serverServices,
-            ModelContextProtocol.Server.McpServer server,
+        public override Task<IAsyncDisposable?> SubscribeToResourceAsync(
+            string resourceUri,
+            Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
+            Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
             CancellationToken cancellationToken = default
-        ) => ValueTask.FromResult(binding);
-    }
+        )
+        {
+            _ = resourceUri;
+            _ = onUpdated;
+            _ = loggerFactory;
+            cancellationToken.ThrowIfCancellationRequested();
 
-    private sealed class NoOpGateway : IMcpGateway
-    {
-        public Task<McpGatewayIndexBuildResult> BuildIndexAsync(
-            CancellationToken cancellationToken = default
-        ) => throw new NotSupportedException();
+            return Task.FromResult<IAsyncDisposable?>(new ThrowingAsyncDisposable());
+        }
 
-        public Task<IReadOnlyList<McpGatewayToolDescriptor>> ListToolsAsync(
-            CancellationToken cancellationToken = default
-        ) => Task.FromResult<IReadOnlyList<McpGatewayToolDescriptor>>([]);
-
-        public Task<McpGatewaySearchResult> SearchAsync(
-            string? query,
-            int? maxResults = null,
-            CancellationToken cancellationToken = default
-        ) => throw new NotSupportedException();
-
-        public Task<McpGatewaySearchResult> SearchAsync(
-            McpGatewaySearchRequest request,
-            CancellationToken cancellationToken = default
-        ) => throw new NotSupportedException();
-
-        public Task<McpGatewayToolRouteResult> RouteToolsAsync(
-            McpGatewayToolRouteRequest request,
-            CancellationToken cancellationToken = default
-        ) => throw new NotSupportedException();
-
-        public Task<McpGatewayInvokeResult> InvokeAsync(
-            McpGatewayInvokeRequest request,
-            CancellationToken cancellationToken = default
-        ) => throw new NotSupportedException();
-
-        public IReadOnlyList<AITool> CreateMetaTools(
-            string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
-            string routeToolName = McpGatewayToolSet.DefaultRouteToolName,
-            string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
-        ) => [];
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-    }
-
-    private sealed class NoOpPromptCatalog : IMcpGatewayPromptCatalog
-    {
-        public Task<IReadOnlyList<McpGatewayPromptDescriptor>> ListPromptsAsync(
-            CancellationToken cancellationToken = default
-        ) => Task.FromResult<IReadOnlyList<McpGatewayPromptDescriptor>>([]);
-
-        public Task<McpGatewayPromptResult?> GetPromptAsync(
-            McpGatewayPromptRequest request,
-            CancellationToken cancellationToken = default
-        ) => throw new NotSupportedException();
-    }
-
-    private sealed class StaticResourceCatalog(
-        IReadOnlyList<McpGatewayResourceDescriptor> resources,
-        IReadOnlyList<McpGatewayResourceTemplateDescriptor> templates
-    ) : IMcpGatewayResourceCatalog
-    {
-        public Task<IReadOnlyList<McpGatewayResourceDescriptor>> ListResourcesAsync(
-            CancellationToken cancellationToken = default
-        ) => Task.FromResult(resources);
-
-        public Task<IReadOnlyList<McpGatewayResourceTemplateDescriptor>> ListResourceTemplatesAsync(
-            CancellationToken cancellationToken = default
-        ) => Task.FromResult(templates);
-
-        public Task<McpGatewayResourceResult?> ReadResourceAsync(
-            McpGatewayResourceRequest request,
-            CancellationToken cancellationToken = default
-        ) => throw new NotSupportedException();
-    }
-
-    private sealed class StaticRegistry(IReadOnlyList<McpGatewayToolSourceRegistration> registrations)
-        : IMcpGatewayRegistry, IMcpGatewayCatalogSource
-    {
-        public McpGatewayCatalogSourceSnapshot CreateSnapshot() => new(1, registrations);
-
-        public void AddTool(string sourceId, AITool tool, string? displayName = null) =>
-            throw new NotSupportedException();
-
-        public void AddTool(
-            string sourceId,
-            AITool tool,
-            McpGatewayToolSearchHints searchHints,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddTool(AITool tool, string sourceId = "local", string? displayName = null) =>
-            throw new NotSupportedException();
-
-        public void AddTool(
-            AITool tool,
-            McpGatewayToolSearchHints searchHints,
-            string sourceId = "local",
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddTools(
-            string sourceId,
-            IEnumerable<AITool> tools,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddTools(
-            IEnumerable<AITool> tools,
-            string sourceId = "local",
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddPrompt(
-            string sourceId,
-            McpGatewayPrompt prompt,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddPrompt(
-            McpGatewayPrompt prompt,
-            string sourceId = "local",
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddPrompts(
-            string sourceId,
-            IEnumerable<McpGatewayPrompt> prompts,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddPrompts(
-            IEnumerable<McpGatewayPrompt> prompts,
-            string sourceId = "local",
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddHttpServer(
-            string sourceId,
-            Uri endpoint,
-            IReadOnlyDictionary<string, string>? headers = null,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddHttpServer(
-            string sourceId,
-            Uri endpoint,
-            ModelContextProtocol.Client.HttpTransportMode transportMode,
-            IReadOnlyDictionary<string, string>? headers = null,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
-            throw new NotSupportedException();
-
-        public void AddStdioServer(
-            string sourceId,
-            string command,
-            IReadOnlyList<string>? arguments = null,
-            string? workingDirectory = null,
-            IReadOnlyDictionary<string, string?>? environmentVariables = null,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddMcpClient(
-            string sourceId,
-            ModelContextProtocol.Client.McpClient client,
-            bool disposeClient = false,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
-        public void AddMcpClientFactory(
-            string sourceId,
-            Func<CancellationToken, ValueTask<ModelContextProtocol.Client.McpClient>> clientFactory,
-            bool disposeClient = true,
-            string? displayName = null
-        ) => throw new NotSupportedException();
+        private sealed class ThrowingAsyncDisposable : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync() =>
+                ValueTask.FromException(
+                    new InvalidOperationException("subscription dispose failure")
+                );
+        }
     }
 }

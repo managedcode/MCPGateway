@@ -142,7 +142,7 @@ Negative / risks:
 - graph search now depends on more upstream `ManagedCode.MarkdownLd.Kb` behavior
 - schema-profile drift can reduce result quality if generated graph predicates change
 - large-catalog schema search still materializes a per-query candidate graph until upstream schema search exposes a candidate filter such as `CandidateNodeIds`
-- federated queries add endpoint and timeout configuration that operators must understand
+- federated queries add endpoint and configurable timeout policy that operators must understand
 
 Mitigations:
 
@@ -161,7 +161,7 @@ Mitigations:
 
 - `Search/Abstractions/IMcpGatewayGraphSearch.cs` adds the graph search/export boundary.
 - `McpGateway` and `McpGatewayRuntime` implement `IMcpGatewayGraphSearch`.
-- `McpGatewayOptions` adds graph search mode and federated endpoint configuration.
+- `McpGatewayOptions` adds graph search mode, federated endpoint configuration, and a configurable federated SPARQL query timeout.
 - `Search/Internal/Graph/*` owns schema profile creation, schema/profile description, schema/federated operations, graph export, and hybrid graph ranking.
 - `McpGatewayToolSet` adds graph schema/profile, index-build, search, federation, and export meta-tools while keeping basic meta-tools usable with a plain `IMcpGateway`.
 
@@ -169,7 +169,7 @@ Mitigations:
 
 - `ManagedCode.MarkdownLd.Kb` is upgraded to `0.2.5`.
 - `MarkdownLdGraphSearchMode` defaults to `Hybrid`.
-- Federated endpoints are configured through `AddMarkdownLdFederatedServiceEndpoint(...)`.
+- Federated endpoints are configured through `AddMarkdownLdFederatedServiceEndpoint(...)`; federated query timeout defaults to `McpGatewayOptions.DefaultMarkdownLdFederatedSparqlQueryTimeout` and can be overridden or disabled through `MarkdownLdFederatedSparqlQueryTimeout`.
 
 ### Documentation
 
