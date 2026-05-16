@@ -139,6 +139,10 @@ services.AddMcpGateway(options =>
 });
 ```
 
+`AddHttpServer(...)` uses the official MCP C# SDK Streamable HTTP transport for modern remote MCP endpoints and keeps the source registered as an HTTP MCP source in gateway descriptors and downstream export metadata.
+Use the overload with `HttpTransportMode` only when a legacy endpoint requires `AutoDetect` or `Sse`.
+Use `McpGatewayHttpServerOptions` when a host needs the SDK HTTP transport knobs such as additional headers, connection timeout, known session id, session ownership, OAuth options, or SSE reconnection settings.
+
 You can also register:
 
 - existing `McpClient` instances through `AddMcpClient(...)`

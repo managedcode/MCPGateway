@@ -112,6 +112,7 @@ internal sealed class McpGatewayMcpServerTaskStore(
 
                 bindingTransferred = true;
                 _bindings[TaskKey.Create(sessionId, downstreamTask.TaskId)] = binding;
+                await CatchUpProxyTaskStatusAsync(binding, cancellationToken);
                 return new CallToolResult { Task = CloneTask(upstreamTask, downstreamTask.TaskId) };
             }
 
@@ -530,17 +531,25 @@ internal sealed class McpGatewayMcpServerTaskStore(
             case McpTaskStatus.Completed:
             case McpTaskStatus.Failed:
                 binding.RememberStoredResultStatus(mappedTask.Status);
-                await NotifyTaskStatusAsync(binding.DownstreamServer, mappedTask);
+                if (binding.TryMarkTerminalStatusForwarded())
+                {
+                    await NotifyTaskStatusAsync(binding.DownstreamServer, mappedTask);
+                }
+
                 shouldScheduleFinalization = true;
                 break;
             case McpTaskStatus.Cancelled:
-                await UpdateTaskStatusAsync(
-                    binding.DownstreamTaskId,
-                    mappedTask.Status,
-                    mappedTask.StatusMessage ?? string.Empty,
-                    binding.SessionId,
-                    CancellationToken.None
-                );
+                if (binding.TryMarkTerminalStatusForwarded())
+                {
+                    await UpdateTaskStatusAsync(
+                        binding.DownstreamTaskId,
+                        mappedTask.Status,
+                        mappedTask.StatusMessage ?? string.Empty,
+                        binding.SessionId,
+                        CancellationToken.None
+                    );
+                }
+
                 shouldReleaseBinding = true;
                 break;
             default:
@@ -562,8 +571,106 @@ internal sealed class McpGatewayMcpServerTaskStore(
         {
             ScheduleProxyTaskFinalization(binding, mappedTask.Status, deferStart: true);
         }
+    }
 
-        cancellationToken.ThrowIfCancellationRequested();
+    private async ValueTask CatchUpProxyTaskStatusAsync(
+        TaskBinding binding,
+        CancellationToken cancellationToken
+    )
+    {
+        if (
+            binding.Kind != TaskBindingKind.UpstreamProxy
+            || binding.Source is null
+            || string.IsNullOrWhiteSpace(binding.UpstreamTaskId)
+            || !binding.TryEnterOperation()
+        )
+        {
+            return;
+        }
+
+        McpTask? upstreamTask = null;
+        var shouldReleaseBinding = false;
+        var shouldScheduleFinalization = false;
+
+        try
+        {
+            try
+            {
+                upstreamTask = await binding.Source.GetTaskAsync(
+                    binding.UpstreamTaskId,
+                    loggerFactory,
+                    cancellationToken
+                );
+            }
+            catch (InvalidOperationException)
+            {
+                return;
+            }
+            catch (McpProtocolException)
+            {
+                return;
+            }
+
+            if (upstreamTask is null)
+            {
+                return;
+            }
+
+            var mappedTask = CloneTask(upstreamTask, binding.DownstreamTaskId);
+            switch (mappedTask.Status)
+            {
+                case McpTaskStatus.Completed:
+                case McpTaskStatus.Failed:
+                    binding.RememberStoredResultStatus(mappedTask.Status);
+                    if (binding.TryMarkTerminalStatusForwarded())
+                    {
+                        await NotifyTaskStatusAsync(binding.DownstreamServer, mappedTask);
+                    }
+
+                    shouldScheduleFinalization = true;
+                    break;
+                case McpTaskStatus.Cancelled:
+                    if (binding.TryMarkTerminalStatusForwarded())
+                    {
+                        await UpdateTaskStatusAsync(
+                            binding.DownstreamTaskId,
+                            mappedTask.Status,
+                            mappedTask.StatusMessage ?? string.Empty,
+                            binding.SessionId,
+                            CancellationToken.None
+                        );
+                    }
+
+                    shouldReleaseBinding = true;
+                    break;
+                default:
+                    await UpdateTaskStatusAsync(
+                        binding.DownstreamTaskId,
+                        mappedTask.Status,
+                        mappedTask.StatusMessage ?? string.Empty,
+                        binding.SessionId,
+                        CancellationToken.None
+                    );
+                    break;
+            }
+        }
+        finally
+        {
+            binding.ExitOperation();
+
+            if (shouldReleaseBinding)
+            {
+                await ReleaseBindingAsync(binding);
+            }
+            else if (shouldScheduleFinalization)
+            {
+                ScheduleProxyTaskFinalization(
+                    binding,
+                    upstreamTask?.Status ?? McpTaskStatus.Completed,
+                    deferStart: true
+                );
+            }
+        }
     }
 
     private async Task<McpTask> StoreTaskResultCoreAsync(
@@ -1022,6 +1129,7 @@ internal sealed class McpGatewayMcpServerTaskStore(
 
         private int _activeOperations;
         private int _resultFinalizationState;
+        private int _terminalStatusForwarded;
         private int _storedResultStatus = -1;
 
         private readonly TaskCompletionSource<object?> _operationsCompleted = new(
@@ -1090,6 +1198,9 @@ internal sealed class McpGatewayMcpServerTaskStore(
             Interlocked.CompareExchange(ref _resultFinalizationState, 1, 0) == 0;
 
         public void ResetResultFinalization() => Interlocked.Exchange(ref _resultFinalizationState, 0);
+
+        public bool TryMarkTerminalStatusForwarded() =>
+            Interlocked.CompareExchange(ref _terminalStatusForwarded, 1, 0) == 0;
 
         public void RememberStoredResultStatus(McpTaskStatus status)
         {

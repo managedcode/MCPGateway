@@ -133,8 +133,37 @@ internal sealed class McpGatewayRegistry(
         IReadOnlyDictionary<string, string>? headers = null,
         string? displayName = null
     ) =>
+        AddHttpServer(
+            new McpGatewayHttpServerOptions
+            {
+                SourceId = sourceId,
+                Endpoint = endpoint,
+                AdditionalHeaders = headers,
+                DisplayName = displayName,
+            }
+        );
+
+    public void AddHttpServer(
+        string sourceId,
+        Uri endpoint,
+        HttpTransportMode transportMode,
+        IReadOnlyDictionary<string, string>? headers = null,
+        string? displayName = null
+    ) =>
+        AddHttpServer(
+            new McpGatewayHttpServerOptions
+            {
+                SourceId = sourceId,
+                Endpoint = endpoint,
+                TransportMode = transportMode,
+                AdditionalHeaders = headers,
+                DisplayName = displayName,
+            }
+        );
+
+    public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
         Mutate(registrations =>
-            registrations.AddHttpServer(sourceId, endpoint, headers, displayName),
+            registrations.AddHttpServer(httpServer),
             notifyPromptChanges: true
         );
 

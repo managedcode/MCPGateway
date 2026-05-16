@@ -292,13 +292,17 @@ internal sealed class McpGatewayLocalToolSourceRegistration(string sourceId, str
     }
 }
 
-internal sealed class McpGatewayHttpToolSourceRegistration(
-    string sourceId,
-    Uri endpoint,
-    IReadOnlyDictionary<string, string>? headers,
-    string? displayName
-) : McpGatewayClientToolSourceRegistration(sourceId, displayName, disposeClient: true)
+internal sealed class McpGatewayHttpToolSourceRegistration(McpGatewayHttpServerOptions options)
+    : McpGatewayClientToolSourceRegistration(
+        options.SourceId,
+        options.DisplayName,
+        disposeClient: true
+    )
 {
+    internal const HttpTransportMode DefaultTransportMode = HttpTransportMode.StreamableHttp;
+
+    private readonly McpGatewayHttpServerOptions options = options;
+
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Http;
 
     protected override async ValueTask<McpClient> CreateClientAsync(
@@ -306,31 +310,118 @@ internal sealed class McpGatewayHttpToolSourceRegistration(
         CancellationToken cancellationToken
     )
     {
-        var httpClient = new HttpClient();
-        if (headers is { Count: > 0 })
+        var transport = new HttpClientTransport(
+            CreateTransportOptions(options),
+            loggerFactory
+        );
+
+        try
         {
-            foreach (var (key, value) in headers)
+            return await McpClient.CreateAsync(
+                transport,
+                McpGatewayClientFactory.CreateClientOptions(),
+                loggerFactory,
+                cancellationToken
+            );
+        }
+        catch
+        {
+            await transport.DisposeAsync();
+            throw;
+        }
+    }
+
+    internal static HttpClientTransportOptions CreateTransportOptions(McpGatewayHttpServerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options.Endpoint);
+
+        var transportOptions = new HttpClientTransportOptions
+        {
+            Endpoint = options.Endpoint,
+            Name = options.SourceId,
+            TransportMode = ValidateTransportMode(options.TransportMode),
+            AdditionalHeaders = CreateAdditionalHeaders(options.AdditionalHeaders),
+            OAuth = options.OAuth,
+        };
+
+        if (options.ConnectionTimeout is { } connectionTimeout)
+        {
+            transportOptions.ConnectionTimeout = connectionTimeout;
+        }
+
+        if (options.KnownSessionId is { } knownSessionId)
+        {
+            transportOptions.KnownSessionId = knownSessionId;
+        }
+
+        if (options.OwnsSession is { } ownsSession)
+        {
+            transportOptions.OwnsSession = ownsSession;
+        }
+
+        if (options.MaxReconnectionAttempts is { } maxReconnectionAttempts)
+        {
+            transportOptions.MaxReconnectionAttempts = maxReconnectionAttempts;
+        }
+
+        if (options.DefaultReconnectionInterval is { } defaultReconnectionInterval)
+        {
+            transportOptions.DefaultReconnectionInterval = defaultReconnectionInterval;
+        }
+
+        return transportOptions;
+    }
+
+    internal static HttpClientTransportOptions CreateTransportOptions(
+        string sourceId,
+        Uri endpoint,
+        HttpTransportMode transportMode,
+        IReadOnlyDictionary<string, string>? headers
+    ) =>
+        CreateTransportOptions(
+            new McpGatewayHttpServerOptions
             {
-                if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value))
-                {
-                    httpClient.DefaultRequestHeaders.TryAddWithoutValidation(key, value);
-                }
+                SourceId = sourceId,
+                Endpoint = endpoint,
+                TransportMode = transportMode,
+                AdditionalHeaders = headers,
+            }
+        );
+
+    internal static HttpTransportMode ValidateTransportMode(HttpTransportMode transportMode)
+    {
+        if (!Enum.IsDefined(transportMode))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(transportMode),
+                transportMode,
+                "HTTP MCP transport mode is not supported."
+            );
+        }
+
+        return transportMode;
+    }
+
+    private static Dictionary<string, string>? CreateAdditionalHeaders(
+        IReadOnlyDictionary<string, string>? headers
+    )
+    {
+        if (headers is null || headers.Count == 0)
+        {
+            return null;
+        }
+
+        var additionalHeaders = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (key, value) in headers)
+        {
+            if (!string.IsNullOrWhiteSpace(key) && !string.IsNullOrWhiteSpace(value))
+            {
+                additionalHeaders[key.Trim()] = value;
             }
         }
 
-        var transport = new HttpClientTransport(
-            new HttpClientTransportOptions { Endpoint = endpoint, Name = SourceId },
-            httpClient,
-            loggerFactory,
-            ownsHttpClient: true
-        );
-
-        return await McpClient.CreateAsync(
-            transport,
-            McpGatewayClientFactory.CreateClientOptions(),
-            loggerFactory,
-            cancellationToken
-        );
+        return additionalHeaders.Count == 0 ? null : additionalHeaders;
     }
 }
 
@@ -561,6 +652,7 @@ internal abstract class McpGatewayClientToolSourceRegistration(
             return null;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         return client.RegisterNotificationHandler(
             NotificationMethods.PromptListChangedNotification,
             (notification, token) =>
@@ -676,6 +768,7 @@ internal abstract class McpGatewayClientToolSourceRegistration(
             return null;
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         var registration = client.RegisterNotificationHandler(
             NotificationMethods.TaskStatusNotification,
             (notification, token) =>
@@ -693,7 +786,6 @@ internal abstract class McpGatewayClientToolSourceRegistration(
             }
         );
 
-        cancellationToken.ThrowIfCancellationRequested();
         return registration;
     }
 

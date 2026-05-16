@@ -1,6 +1,8 @@
 #pragma warning disable MCPEXP001
 
 using System.Text.Json;
+using ManagedCode.MCPGateway.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
@@ -11,6 +13,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
     private const string LocalTaskToolName = "local_task_tool";
     private const string LocalCancellableTaskToolName = "local_cancellable_task_tool";
     private const string LocalFailingTaskToolName = "local_failing_task_tool";
+    private const string InstantCompletedTaskToolName = "instant_completed_task_tool";
 
     [Test]
     public async Task ListToolsAsync_ExportsTaskSupportForUpstreamAndLocalTools()
@@ -123,6 +126,50 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
 
         var payload = await completionNotification.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
+        await Assert.That(payload.TaskId).IsEqualTo(task.TaskId);
+        await Assert.That(payload.Status).IsEqualTo(McpTaskStatus.Completed);
+    }
+
+    [Test]
+    public async Task TaskStatusNotification_CatchesUpWhenUpstreamTaskCompletesBeforeSubscription()
+    {
+        var source = new CompletedBeforeSubscriptionTaskSource("race-source");
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
+            static _ => { },
+            services =>
+                services.AddSingleton<IMcpGatewayServerBindingResolver>(serviceProvider =>
+                    new SingleSourceTaskBindingResolver(
+                        serviceProvider.GetRequiredService<IMcpGatewayFactory>(),
+                        source,
+                        InstantCompletedTaskToolName
+                    )
+                )
+        );
+        var completionNotification = new TaskCompletionSource<McpTaskStatusNotificationParams>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+        await using var notificationRegistration = gatewayServer.Client.RegisterNotificationHandler(
+            NotificationMethods.TaskStatusNotification,
+            (notification, _) =>
+            {
+                var payload = notification.Params?.Deserialize<McpTaskStatusNotificationParams>();
+                if (payload?.Status == McpTaskStatus.Completed)
+                {
+                    completionNotification.TrySetResult(payload);
+                }
+
+                return ValueTask.CompletedTask;
+            }
+        );
+
+        var task = await gatewayServer.Client.CallToolAsTaskAsync(
+            $"{source.SourceId}:{InstantCompletedTaskToolName}",
+            new Dictionary<string, object?> { ["value"] = "race" }
+        );
+        var payload = await completionNotification.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(source.SubscribeCount).IsEqualTo(1);
         await Assert.That(payload.TaskId).IsEqualTo(task.TaskId);
         await Assert.That(payload.Status).IsEqualTo(McpTaskStatus.Completed);
     }

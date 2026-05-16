@@ -334,6 +334,17 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
             string? displayName = null
         ) => throw new NotSupportedException();
 
+        public void AddHttpServer(
+            string sourceId,
+            Uri endpoint,
+            ModelContextProtocol.Client.HttpTransportMode transportMode,
+            IReadOnlyDictionary<string, string>? headers = null,
+            string? displayName = null
+        ) => throw new NotSupportedException();
+
+        public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
+            throw new NotSupportedException();
+
         public void AddStdioServer(
             string sourceId,
             string command,

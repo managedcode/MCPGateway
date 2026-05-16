@@ -141,6 +141,7 @@ If no new rule is detected -> do not update the file.
 - Always keep package and project identity as `ManagedCode.MCPGateway`.
 - Treat the official `modelcontextprotocol/csharp-sdk` repository and shipped feature surface as the MCP baseline for this package, because `ManagedCode.MCPGateway` is built on top of that SDK rather than on a narrower custom protocol layer.
 - When the SDK already supports an MCP capability, prefer exposing and integrating that capability in `ManagedCode.MCPGateway` instead of assuming the missing surface is intentionally unsupported, unless the user explicitly excludes it.
+- HTTP MCP server registrations must preserve the `Http` source kind while using the official MCP C# SDK HTTP transport; default to Streamable HTTP for modern remote endpoints, expose SDK transport knobs through an options object for future host needs, and do not replace HTTP sources with custom-client workarounds, positional-overload sprawl, or hand-written JSON-RPC/SSE transport code.
 - When the user asks for parity with the official `modelcontextprotocol/csharp-sdk`, treat the entire SDK feature surface as in scope for `ManagedCode.MCPGateway`, including capabilities that the SDK currently marks experimental, unless the user explicitly narrows that scope.
 - Always use `Microsoft.Extensions.AI` and the official `ModelContextProtocol` .NET SDK as the integration foundation.
 - Never introduce Microsoft Agentic Framework into this repository unless the user explicitly re-opens that requirement.

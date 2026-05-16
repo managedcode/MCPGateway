@@ -9,6 +9,7 @@ internal sealed class McpGatewayRegistrationCollection(
 )
 {
     private const string CommandRequiredMessage = "A command is required.";
+    private const string EndpointRequiredMessage = "An endpoint is required.";
     private const string SourceIdRequiredMessage = "A source id is required.";
 
     private ConcurrentQueue<McpGatewayToolSourceRegistration> _registrations = new(
@@ -113,15 +114,57 @@ internal sealed class McpGatewayRegistrationCollection(
         Uri endpoint,
         IReadOnlyDictionary<string, string>? headers = null,
         string? displayName = null
-    )
+    ) =>
+        AddHttpServer(
+            new McpGatewayHttpServerOptions
+            {
+                SourceId = sourceId,
+                Endpoint = endpoint,
+                AdditionalHeaders = headers,
+                DisplayName = displayName,
+            }
+        );
+
+    public void AddHttpServer(
+        string sourceId,
+        Uri endpoint,
+        HttpTransportMode transportMode,
+        IReadOnlyDictionary<string, string>? headers = null,
+        string? displayName = null
+    ) =>
+        AddHttpServer(
+            new McpGatewayHttpServerOptions
+            {
+                SourceId = sourceId,
+                Endpoint = endpoint,
+                TransportMode = transportMode,
+                AdditionalHeaders = headers,
+                DisplayName = displayName,
+            }
+        );
+
+    public void AddHttpServer(McpGatewayHttpServerOptions httpServer)
     {
-        ArgumentNullException.ThrowIfNull(endpoint);
+        ArgumentNullException.ThrowIfNull(httpServer);
+        if (httpServer.Endpoint is null)
+        {
+            throw new ArgumentException(EndpointRequiredMessage, nameof(httpServer));
+        }
+
+        McpGatewayHttpToolSourceRegistration.ValidateTransportMode(httpServer.TransportMode);
+        ValidateOptionalPositive(httpServer.ConnectionTimeout, nameof(httpServer.ConnectionTimeout));
+        ValidateOptionalNonNegative(
+            httpServer.MaxReconnectionAttempts,
+            nameof(httpServer.MaxReconnectionAttempts)
+        );
+        ValidateOptionalPositive(
+            httpServer.DefaultReconnectionInterval,
+            nameof(httpServer.DefaultReconnectionInterval)
+        );
+
         _registrations.Enqueue(
             new McpGatewayHttpToolSourceRegistration(
-                ValidateSourceId(sourceId),
-                endpoint,
-                headers,
-                displayName
+                httpServer.CloneWithSourceId(ValidateSourceId(httpServer.SourceId))
             )
         );
     }
@@ -234,6 +277,22 @@ internal sealed class McpGatewayRegistrationCollection(
         }
 
         return sourceId.Trim();
+    }
+
+    private static void ValidateOptionalPositive(TimeSpan? value, string name)
+    {
+        if (value.HasValue && value.Value <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(name, value, "The value must be positive.");
+        }
+    }
+
+    private static void ValidateOptionalNonNegative(int? value, string name)
+    {
+        if (value.HasValue && value.Value < 0)
+        {
+            throw new ArgumentOutOfRangeException(name, value, "The value must be non-negative.");
+        }
     }
 
     private static ConcurrentDictionary<

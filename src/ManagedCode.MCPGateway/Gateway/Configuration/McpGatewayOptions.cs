@@ -125,8 +125,37 @@ public sealed class McpGatewayOptions
         IReadOnlyDictionary<string, string>? headers = null,
         string? displayName = null
     ) =>
+        AddHttpServer(
+            new McpGatewayHttpServerOptions
+            {
+                SourceId = sourceId,
+                Endpoint = endpoint,
+                AdditionalHeaders = headers,
+                DisplayName = displayName,
+            }
+        );
+
+    public McpGatewayOptions AddHttpServer(
+        string sourceId,
+        Uri endpoint,
+        HttpTransportMode transportMode,
+        IReadOnlyDictionary<string, string>? headers = null,
+        string? displayName = null
+    ) =>
+        AddHttpServer(
+            new McpGatewayHttpServerOptions
+            {
+                SourceId = sourceId,
+                Endpoint = endpoint,
+                TransportMode = transportMode,
+                AdditionalHeaders = headers,
+                DisplayName = displayName,
+            }
+        );
+
+    public McpGatewayOptions AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
         ConfigureRegistrations(registrations =>
-            registrations.AddHttpServer(sourceId, endpoint, headers, displayName)
+            registrations.AddHttpServer(httpServer)
         );
 
     public McpGatewayOptions AddStdioServer(

@@ -332,6 +332,17 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
             string? displayName = null
         ) => inner.AddHttpServer(sourceId, endpoint, headers, displayName);
 
+        public void AddHttpServer(
+            string sourceId,
+            Uri endpoint,
+            ModelContextProtocol.Client.HttpTransportMode transportMode,
+            IReadOnlyDictionary<string, string>? headers = null,
+            string? displayName = null
+        ) => inner.AddHttpServer(sourceId, endpoint, transportMode, headers, displayName);
+
+        public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
+            inner.AddHttpServer(httpServer);
+
         public void AddStdioServer(
             string sourceId,
             string command,

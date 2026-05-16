@@ -82,6 +82,27 @@ public sealed class McpGatewayOptionsConfigurationTests
     }
 
     [Test]
+    public async Task AddHttpServer_WithOptionsObject_AddsHttpSourceRegistration()
+    {
+        var options = new McpGatewayOptions().AddHttpServer(
+            new McpGatewayHttpServerOptions
+            {
+                SourceId = "http-source",
+                Endpoint = new Uri("https://example.com/mcp"),
+                DisplayName = "HTTP source",
+                ConnectionTimeout = TimeSpan.FromSeconds(10),
+                MaxReconnectionAttempts = 1,
+            }
+        );
+
+        var registration = options.SourceRegistrations.Single();
+
+        await Assert.That(registration.Kind).IsEqualTo(McpGatewaySourceRegistrationKind.Http);
+        await Assert.That(registration.SourceId).IsEqualTo("http-source");
+        await Assert.That(registration.DisplayName).IsEqualTo("HTTP source");
+    }
+
+    [Test]
     public async Task MarkdownLdGraphConfigurationMethods_SwapModesAndFactories()
     {
         var staticDocuments = new[]

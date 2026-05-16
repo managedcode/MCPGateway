@@ -90,7 +90,7 @@ flowchart LR
     Registry --> Catalog
     Catalog --> Sources["Catalog source registrations"]
     Sources --> Local["Local AITool instances"]
-    Sources --> MCP["HTTP, stdio, and provided MCP clients"]
+    Sources --> MCP["HTTP MCP (Streamable by default with SDK transport options), stdio, and provided MCP clients"]
     McpServerExport --> ExportedMcp["Downstream MCP server"]
     Runtime --> Embedder["Optional embedding generator"]
     Runtime --> Store["Optional embedding store"]
