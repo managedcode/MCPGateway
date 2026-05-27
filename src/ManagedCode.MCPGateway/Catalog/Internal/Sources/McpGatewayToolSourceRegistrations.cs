@@ -27,15 +27,6 @@ internal sealed record McpGatewayLoadedTool(
 internal sealed record McpGatewayLoadedPrompt(Prompt ProtocolPrompt)
 {
     public string Name => ProtocolPrompt.Name;
-
-    public string? Title => ProtocolPrompt.Title;
-
-    public string? Description => ProtocolPrompt.Description;
-
-    public IReadOnlyList<PromptArgument> Arguments =>
-        ProtocolPrompt.Arguments as IReadOnlyList<PromptArgument>
-        ?? ProtocolPrompt.Arguments?.ToArray()
-        ?? [];
 }
 
 internal sealed record McpGatewayLoadedResource(Resource Resource);
