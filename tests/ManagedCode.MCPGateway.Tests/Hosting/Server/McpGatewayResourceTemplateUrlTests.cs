@@ -14,12 +14,14 @@ public sealed class McpGatewayResourceTemplateUrlTests
                 new McpGatewayResourceDescriptor(
                     "source-a",
                     McpGatewaySourceKind.Local,
-                    "file_detail",
-                    "File detail",
-                    "/files/readme.md",
-                    "Reads a file resource.",
-                    "text/plain",
-                    null
+                    new Resource
+                    {
+                        Name = "file_detail",
+                        Title = "File detail",
+                        Uri = "/files/readme.md",
+                        Description = "Reads a file resource.",
+                        MimeType = "text/plain",
+                    }
                 ),
             ],
             []
@@ -62,11 +64,14 @@ public sealed class McpGatewayResourceTemplateUrlTests
                 new McpGatewayResourceTemplateDescriptor(
                     "source-a",
                     McpGatewaySourceKind.Local,
-                    "file_detail",
-                    "File detail",
-                    "/files/{path}",
-                    "Reads a file resource.",
-                    "text/plain"
+                    new ResourceTemplate
+                    {
+                        Name = "file_detail",
+                        Title = "File detail",
+                        UriTemplate = "/files/{path}",
+                        Description = "Reads a file resource.",
+                        MimeType = "text/plain",
+                    }
                 ),
             ]
         );

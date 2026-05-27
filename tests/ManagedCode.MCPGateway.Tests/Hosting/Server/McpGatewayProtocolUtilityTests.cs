@@ -168,29 +168,47 @@ public sealed class McpGatewayProtocolUtilityTests
             "local:release_review",
             "local",
             McpGatewaySourceKind.Local,
-            "release_review",
-            "Release review",
-            "Builds a release review prompt.",
-            [new McpGatewayPromptArgumentDescriptor("repository", "Repository", "Repository.", true)]
+            new Prompt
+            {
+                Name = "release_review",
+                Title = "Release review",
+                Description = "Builds a release review prompt.",
+                Arguments =
+                [
+                    new PromptArgument
+                    {
+                        Name = "repository",
+                        Title = "Repository",
+                        Description = "Repository.",
+                        Required = true,
+                    },
+                ],
+            }
         );
         var resourceDescriptor = new McpGatewayResourceDescriptor(
             "source-a",
             McpGatewaySourceKind.CustomMcpClient,
-            "overview",
-            "Overview",
-            "docs://overview",
-            "Repository overview.",
-            "text/markdown",
-            42
+            new Resource
+            {
+                Name = "overview",
+                Title = "Overview",
+                Uri = "docs://overview",
+                Description = "Repository overview.",
+                MimeType = "text/markdown",
+                Size = 42,
+            }
         );
         var templateDescriptor = new McpGatewayResourceTemplateDescriptor(
             "source-a",
             McpGatewaySourceKind.CustomMcpClient,
-            "issue_detail",
-            "Issue detail",
-            "docs://issues/{id}",
-            "Issue details.",
-            "application/json"
+            new ResourceTemplate
+            {
+                Name = "issue_detail",
+                Title = "Issue detail",
+                UriTemplate = "docs://issues/{id}",
+                Description = "Issue details.",
+                MimeType = "application/json",
+            }
         );
 
         var tool = McpGatewayMcpServerProtocolMapper.ToProtocolTool(
@@ -245,7 +263,7 @@ public sealed class McpGatewayProtocolUtilityTests
     }
 
     [Test]
-    public async Task ProtocolMapper_MapsArgumentsPromptMessagesAndResourceContents()
+    public async Task ProtocolMapper_MapsArgumentsAndResourceContents()
     {
         using var document = JsonDocument.Parse("""{"value":"alpha"}""");
         var arguments = McpGatewayMcpServerProtocolMapper.ConvertArguments(
@@ -262,22 +280,6 @@ public sealed class McpGatewayProtocolUtilityTests
                     ["environment"] = "prod-eu",
                 },
             }
-        );
-        var structuredMessage = McpGatewayMcpServerProtocolMapper.ToProtocolPromptMessage(
-            new McpGatewayPromptMessage(
-                "assistant",
-                JsonSerializer.SerializeToNode(
-                    new TextContentBlock { Text = "structured" },
-                    McpGatewayJsonSerializer.Options
-                )
-            )
-        );
-        var fallbackMessage = McpGatewayMcpServerProtocolMapper.ToProtocolPromptMessage(
-            new McpGatewayPromptMessage(
-                "user",
-                new JsonObject { ["unexpected"] = "value" },
-                "fallback"
-            )
         );
         var textContent = McpGatewayMcpServerProtocolMapper.ToProtocolResourceContent(
             new TextResourceContents
@@ -319,51 +321,9 @@ public sealed class McpGatewayProtocolUtilityTests
             .That(((JsonElement)arguments!["payload"]!).GetProperty("value").GetString())
             .IsEqualTo("alpha");
         await Assert.That(clonedContext?.Arguments?["environment"]).IsEqualTo("prod-eu");
-        await Assert.That(structuredMessage).IsNotNull();
-        await Assert.That(((TextContentBlock)structuredMessage!.Content).Text).IsEqualTo("structured");
-        await Assert.That(fallbackMessage).IsNotNull();
-        await Assert.That(((TextContentBlock)fallbackMessage!.Content).Text).IsEqualTo("fallback");
         await Assert.That(textContent.Uri).StartsWith("mcpgw-");
         await Assert.That(textContent.Meta).IsTypeOf<JsonObject>();
         await Assert.That(blobContent).IsTypeOf<BlobResourceContents>();
-    }
-
-    [Test]
-    public async Task ProtocolMapper_RejectsInvalidPromptMessageContentWithoutTextFallback()
-    {
-        Exception? exception = null;
-        try
-        {
-            _ = McpGatewayMcpServerProtocolMapper.ToProtocolPromptMessage(
-                new McpGatewayPromptMessage("user", new JsonObject { ["unexpected"] = "value" })
-            );
-        }
-        catch (Exception ex)
-        {
-            exception = ex;
-        }
-
-        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
-        await Assert.That(exception!.Message).Contains("valid MCP content block");
-    }
-
-    [Test]
-    public async Task ProtocolMapper_RejectsInvalidPromptMessageRole()
-    {
-        Exception? exception = null;
-        try
-        {
-            _ = McpGatewayMcpServerProtocolMapper.ToProtocolPromptMessage(
-                new McpGatewayPromptMessage("invalid-role", null, "hello")
-            );
-        }
-        catch (Exception ex)
-        {
-            exception = ex;
-        }
-
-        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
-        await Assert.That(exception!.Message).Contains("role 'invalid-role'");
     }
 
     [Test]
@@ -403,21 +363,6 @@ public sealed class McpGatewayProtocolUtilityTests
         await Assert.That(promptError.Messages.Count).IsEqualTo(1);
         await Assert.That(emptyCompletion.Completion.Values.Count).IsEqualTo(0);
     }
-
-    private static McpGatewayToolDescriptor CreateToolDescriptor(JsonElement inputSchema) =>
-        new(
-            "local:lookup",
-            "local",
-            McpGatewaySourceKind.Local,
-            new Tool
-            {
-                Name = "lookup",
-                Title = "Lookup",
-                Description = "Looks up a value.",
-                InputSchema = inputSchema,
-            },
-            ["value"]
-        );
 }
 
 #pragma warning restore MCPEXP001

@@ -56,9 +56,9 @@ public sealed class McpGatewayPromptCatalogTests
         await Assert.That(prompt).IsNotNull();
         await Assert.That(prompt!.PromptId).IsEqualTo("test-mcp:repository_triage_system_prompt");
         await Assert.That(prompt.Messages.Count).IsEqualTo(1);
-        await Assert.That(prompt.Messages[0].Role).IsEqualTo("User");
-        await Assert.That(prompt.Messages[0].Text).Contains("ManagedCode.MCPGateway");
-        await Assert.That(prompt.Messages[0].Text).Contains("uk");
+        await Assert.That(prompt.Messages[0].Role).IsEqualTo(Role.User);
+        await Assert.That(ReadText(prompt.Messages[0])).Contains("ManagedCode.MCPGateway");
+        await Assert.That(ReadText(prompt.Messages[0])).Contains("uk");
         await Assert.That(prompt.Messages[0].Content).IsNotNull();
     }
 
@@ -136,10 +136,11 @@ public sealed class McpGatewayPromptCatalogTests
         await Assert.That(prompt).IsNotNull();
         await Assert.That(prompt!.PromptId).IsEqualTo("local:release_review_bundle");
         await Assert.That(prompt.Messages.Count).IsEqualTo(4);
-        await Assert.That(prompt.Messages[0].Text).Contains("Combine repository and deployment guidance");
-        await Assert.That(prompt.Messages[1].Text).Contains("ManagedCode/MCPGateway");
-        await Assert.That(prompt.Messages[2].Text).Contains("prod-eu");
-        await Assert.That(prompt.Messages[3].Text).Contains("uk-UA");
+        await Assert.That(ReadText(prompt.Messages[0]))
+            .Contains("Combine repository and deployment guidance");
+        await Assert.That(ReadText(prompt.Messages[1])).Contains("ManagedCode/MCPGateway");
+        await Assert.That(ReadText(prompt.Messages[2])).Contains("prod-eu");
+        await Assert.That(ReadText(prompt.Messages[3])).Contains("uk-UA");
     }
 
     private static void ConfigureCompositePromptCatalog(
@@ -280,4 +281,7 @@ public sealed class McpGatewayPromptCatalogTests
             }
         );
     }
+
+    private static string? ReadText(PromptMessage message) =>
+        message.Content is TextContentBlock textContent ? textContent.Text : null;
 }

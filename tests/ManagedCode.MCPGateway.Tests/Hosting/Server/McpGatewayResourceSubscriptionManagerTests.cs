@@ -259,12 +259,14 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
                     new McpGatewayResourceDescriptor(
                         "source-a",
                         McpGatewaySourceKind.Local,
-                        "overview",
-                        "overview",
-                        "docs://overview",
-                        "Reads overview.",
-                        "text/plain",
-                        null
+                        new Resource
+                        {
+                            Name = "overview",
+                            Title = "overview",
+                            Uri = "docs://overview",
+                            Description = "Reads overview.",
+                            MimeType = "text/plain",
+                        }
                     ),
                 ]
             ),

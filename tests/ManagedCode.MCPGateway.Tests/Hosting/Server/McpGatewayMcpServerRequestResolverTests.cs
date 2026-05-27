@@ -230,10 +230,12 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
             promptId,
             sourceId,
             McpGatewaySourceKind.Local,
-            promptName,
-            promptName,
-            $"Builds {promptName}.",
-            []
+            new Prompt
+            {
+                Name = promptName,
+                Title = promptName,
+                Description = $"Builds {promptName}.",
+            }
         );
 
     private static McpGatewayResourceDescriptor CreateResourceDescriptor(
@@ -244,12 +246,14 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         new(
             sourceId,
             McpGatewaySourceKind.Local,
-            resourceName,
-            resourceName,
-            resourceUri,
-            $"Reads {resourceName}.",
-            "text/plain",
-            null
+            new Resource
+            {
+                Name = resourceName,
+                Title = resourceName,
+                Uri = resourceUri,
+                Description = $"Reads {resourceName}.",
+                MimeType = "text/plain",
+            }
         );
 
     private static McpGatewayResourceTemplateDescriptor CreateTemplateDescriptor(
@@ -260,11 +264,14 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         new(
             sourceId,
             McpGatewaySourceKind.Local,
-            resourceName,
-            resourceName,
-            uriTemplate,
-            $"Reads {resourceName}.",
-            "text/plain"
+            new ResourceTemplate
+            {
+                Name = resourceName,
+                Title = resourceName,
+                UriTemplate = uriTemplate,
+                Description = $"Reads {resourceName}.",
+                MimeType = "text/plain",
+            }
         );
 
     private static async Task<McpException?> CaptureAsync(Func<Task> action)

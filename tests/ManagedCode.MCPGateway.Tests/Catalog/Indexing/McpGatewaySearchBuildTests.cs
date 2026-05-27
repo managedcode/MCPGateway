@@ -1,5 +1,5 @@
-using System.Text.Json;
 using System.Reflection;
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;

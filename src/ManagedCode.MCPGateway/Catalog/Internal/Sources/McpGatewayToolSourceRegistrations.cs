@@ -24,12 +24,19 @@ internal sealed record McpGatewayLoadedTool(
     ToolTaskSupport? TaskSupport = null
 );
 
-internal sealed record McpGatewayLoadedPrompt(
-    string Name,
-    string? Title,
-    string? Description,
-    IReadOnlyList<PromptArgument> Arguments
-);
+internal sealed record McpGatewayLoadedPrompt(Prompt ProtocolPrompt)
+{
+    public string Name => ProtocolPrompt.Name;
+
+    public string? Title => ProtocolPrompt.Title;
+
+    public string? Description => ProtocolPrompt.Description;
+
+    public IReadOnlyList<PromptArgument> Arguments =>
+        ProtocolPrompt.Arguments as IReadOnlyList<PromptArgument>
+        ?? ProtocolPrompt.Arguments?.ToArray()
+        ?? [];
+}
 
 internal sealed record McpGatewayLoadedResource(Resource Resource);
 
@@ -199,18 +206,21 @@ internal sealed class McpGatewayLocalToolSourceRegistration(string sourceId, str
             _prompts
                 .Values.OrderBy(static prompt => prompt.Name, StringComparer.Ordinal)
                 .Select(static prompt => new McpGatewayLoadedPrompt(
-                    prompt.Name,
-                    prompt.DisplayName,
-                    prompt.Description,
-                    prompt
-                        .Arguments.Select(static argument => new PromptArgument
-                        {
-                            Name = argument.Name,
-                            Title = argument.DisplayName,
-                            Description = argument.Description,
-                            Required = argument.IsRequired,
-                        })
-                        .ToList()
+                    new Prompt
+                    {
+                        Name = prompt.Name,
+                        Title = prompt.DisplayName,
+                        Description = prompt.Description,
+                        Arguments = prompt
+                            .Arguments.Select(static argument => new PromptArgument
+                            {
+                                Name = argument.Name,
+                                Title = argument.DisplayName,
+                                Description = argument.Description,
+                                Required = argument.IsRequired,
+                            })
+                            .ToList(),
+                    }
                 ))
                 .ToList()
         );
@@ -525,12 +535,7 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         var prompts = await client.ListPromptsAsync(new RequestOptions(), cancellationToken);
         return prompts
             .Where(static prompt => !string.IsNullOrWhiteSpace(prompt.Name))
-            .Select(static prompt => new McpGatewayLoadedPrompt(
-                Name: prompt.Name.Trim(),
-                Title: prompt.Title,
-                Description: prompt.Description,
-                Arguments: prompt.ProtocolPrompt.Arguments?.ToList() ?? []
-            ))
+            .Select(static prompt => new McpGatewayLoadedPrompt(prompt.ProtocolPrompt))
             .ToList();
     }
 

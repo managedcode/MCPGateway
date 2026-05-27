@@ -1,3 +1,5 @@
+using ModelContextProtocol.Protocol;
+
 namespace ManagedCode.MCPGateway;
 
 public sealed record McpGatewayPromptResult(
@@ -5,6 +7,12 @@ public sealed record McpGatewayPromptResult(
     string SourceId,
     McpGatewaySourceKind SourceKind,
     string PromptName,
-    string Description,
-    IReadOnlyList<McpGatewayPromptMessage> Messages
-);
+    GetPromptResult ProtocolResult
+)
+{
+    public string Description => ProtocolResult.Description ?? string.Empty;
+
+    public IReadOnlyList<PromptMessage> Messages =>
+        ProtocolResult.Messages as IReadOnlyList<PromptMessage>
+        ?? ProtocolResult.Messages.ToArray();
+}

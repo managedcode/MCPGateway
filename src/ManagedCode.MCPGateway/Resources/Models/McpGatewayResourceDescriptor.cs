@@ -1,12 +1,22 @@
+using ModelContextProtocol.Protocol;
+
 namespace ManagedCode.MCPGateway;
 
 public sealed record McpGatewayResourceDescriptor(
     string SourceId,
     McpGatewaySourceKind SourceKind,
-    string ResourceName,
-    string? DisplayName,
-    string ResourceUri,
-    string Description,
-    string? MimeType,
-    long? Size
-);
+    Resource ProtocolResource
+)
+{
+    public string ResourceName => ProtocolResource.Name;
+
+    public string? DisplayName => ProtocolResource.Title;
+
+    public string ResourceUri => ProtocolResource.Uri;
+
+    public string Description => ProtocolResource.Description ?? string.Empty;
+
+    public string? MimeType => ProtocolResource.MimeType;
+
+    public long? Size => ProtocolResource.Size;
+}

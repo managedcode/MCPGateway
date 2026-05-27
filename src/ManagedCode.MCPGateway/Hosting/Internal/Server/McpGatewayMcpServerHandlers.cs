@@ -188,15 +188,7 @@ internal sealed class McpGatewayMcpServerHandlers(
             ? McpGatewayMcpServerProtocolMapper.CreateErrorPromptResult(
                 $"Prompt '{exportedPromptName}' was not found."
             )
-            : new GetPromptResult
-            {
-                Description = promptResult.Description,
-                Messages = promptResult
-                    .Messages.Select(McpGatewayMcpServerProtocolMapper.ToProtocolPromptMessage)
-                    .Where(static message => message is not null)
-                    .Cast<PromptMessage>()
-                    .ToList(),
-            };
+            : promptResult.ProtocolResult;
     }
 
     public async ValueTask<ListResourcesResult> ListResourcesAsync(

@@ -7,14 +7,21 @@ public sealed class McpGatewayModelRecordTests
     [Test]
     public async Task PromptResourceAndEmbeddingRecords_PreserveSuppliedValues()
     {
-        var message = new McpGatewayPromptMessage("user", null, "review");
+        var message = new PromptMessage
+        {
+            Role = Role.User,
+            Content = new TextContentBlock { Text = "review" },
+        };
         var prompt = new McpGatewayPromptResult(
             "local:release_review",
             "local",
             McpGatewaySourceKind.Local,
             "release_review",
-            "Builds a release review prompt.",
-            [message]
+            new GetPromptResult
+            {
+                Description = "Builds a release review prompt.",
+                Messages = [message],
+            }
         );
         var embedding = new McpGatewayToolEmbedding(
             "local:lookup",

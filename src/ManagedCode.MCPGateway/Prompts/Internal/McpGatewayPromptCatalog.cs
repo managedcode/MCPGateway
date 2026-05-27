@@ -140,33 +140,28 @@ internal sealed class McpGatewayPromptCatalog(
         McpGatewayLoadedPrompt prompt
     )
     {
-        var arguments = prompt
-            .Arguments.Where(static argument => !string.IsNullOrWhiteSpace(argument.Name))
-            .Select(static argument => new McpGatewayPromptArgumentDescriptor(
-                Name: argument.Name.Trim(),
-                DisplayName: string.IsNullOrWhiteSpace(argument.Title)
-                    ? null
-                    : argument.Title.Trim(),
-                Description: argument.Description ?? string.Empty,
-                IsRequired: argument.Required == true
-            ))
+        var protocolPrompt = McpGatewayProtocolPrimitive.Clone(prompt.ProtocolPrompt);
+        protocolPrompt.Name = protocolPrompt.Name.Trim();
+        protocolPrompt.Title = string.IsNullOrWhiteSpace(protocolPrompt.Title)
+            ? null
+            : protocolPrompt.Title.Trim();
+        protocolPrompt.Arguments = protocolPrompt
+            .Arguments?.Where(static argument => !string.IsNullOrWhiteSpace(argument.Name))
+            .Select(static argument => new PromptArgument
+            {
+                Name = argument.Name.Trim(),
+                Title = string.IsNullOrWhiteSpace(argument.Title) ? null : argument.Title.Trim(),
+                Description = argument.Description,
+                Required = argument.Required,
+            })
             .ToList();
 
         return new McpGatewayPromptDescriptor(
-            PromptId: $"{registration.SourceId}:{prompt.Name}",
+            PromptId: $"{registration.SourceId}:{protocolPrompt.Name}",
             SourceId: registration.SourceId,
             SourceKind: McpGatewaySourceKindMapper.Map(registration.Kind),
-            PromptName: prompt.Name,
-            DisplayName: string.IsNullOrWhiteSpace(prompt.Title) ? null : prompt.Title.Trim(),
-            Description: prompt.Description ?? string.Empty,
-            Arguments: arguments
-        )
-        {
-            RequiredArguments = arguments
-                .Where(static argument => argument.IsRequired)
-                .Select(static argument => argument.Name)
-                .ToList(),
-        };
+            ProtocolPrompt: protocolPrompt
+        );
     }
 
     private McpGatewayToolSourceRegistration? FindRegistration(string sourceId)
@@ -194,14 +189,7 @@ internal sealed class McpGatewayPromptCatalog(
             SourceId: sourceId,
             SourceKind: McpGatewaySourceKindMapper.Map(sourceKind),
             PromptName: promptName,
-            Description: promptResult.Description ?? string.Empty,
-            Messages: promptResult
-                .Messages.Select(static message => new McpGatewayPromptMessage(
-                    Role: message.Role.ToString(),
-                    Content: McpGatewayJsonSerializer.TrySerializeToNode(message.Content),
-                    Text: message.Content is TextContentBlock textContent ? textContent.Text : null
-                ))
-                .ToList()
+            ProtocolResult: promptResult
         );
     }
 }

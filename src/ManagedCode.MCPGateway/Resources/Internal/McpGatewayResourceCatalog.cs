@@ -106,23 +106,20 @@ internal sealed class McpGatewayResourceCatalog(
         McpGatewayLoadedResource resource
     )
     {
-        var protocolResource = resource.Resource;
+        var protocolResource = McpGatewayProtocolPrimitive.Clone(resource.Resource);
         var resourceUri = protocolResource.Uri?.Trim() ?? string.Empty;
-        var resourceName = string.IsNullOrWhiteSpace(protocolResource.Name)
+        protocolResource.Uri = resourceUri;
+        protocolResource.Name = string.IsNullOrWhiteSpace(protocolResource.Name)
             ? resourceUri
             : protocolResource.Name.Trim();
+        protocolResource.Title = string.IsNullOrWhiteSpace(protocolResource.Title)
+            ? null
+            : protocolResource.Title.Trim();
 
         return new McpGatewayResourceDescriptor(
             SourceId: registration.SourceId,
             SourceKind: McpGatewaySourceKindMapper.Map(registration.Kind),
-            ResourceName: resourceName,
-            DisplayName: string.IsNullOrWhiteSpace(protocolResource.Title)
-                ? null
-                : protocolResource.Title.Trim(),
-            ResourceUri: resourceUri,
-            Description: protocolResource.Description ?? string.Empty,
-            MimeType: protocolResource.MimeType,
-            Size: protocolResource.Size
+            ProtocolResource: protocolResource
         );
     }
 
@@ -131,22 +128,20 @@ internal sealed class McpGatewayResourceCatalog(
         McpGatewayLoadedResourceTemplate template
     )
     {
-        var protocolTemplate = template.ResourceTemplate;
+        var protocolTemplate = McpGatewayProtocolPrimitive.Clone(template.ResourceTemplate);
         var uriTemplate = protocolTemplate.UriTemplate?.Trim() ?? string.Empty;
-        var resourceName = string.IsNullOrWhiteSpace(protocolTemplate.Name)
+        protocolTemplate.UriTemplate = uriTemplate;
+        protocolTemplate.Name = string.IsNullOrWhiteSpace(protocolTemplate.Name)
             ? uriTemplate
             : protocolTemplate.Name.Trim();
+        protocolTemplate.Title = string.IsNullOrWhiteSpace(protocolTemplate.Title)
+            ? null
+            : protocolTemplate.Title.Trim();
 
         return new McpGatewayResourceTemplateDescriptor(
             SourceId: registration.SourceId,
             SourceKind: McpGatewaySourceKindMapper.Map(registration.Kind),
-            ResourceName: resourceName,
-            DisplayName: string.IsNullOrWhiteSpace(protocolTemplate.Title)
-                ? null
-                : protocolTemplate.Title.Trim(),
-            UriTemplate: uriTemplate,
-            Description: protocolTemplate.Description ?? string.Empty,
-            MimeType: protocolTemplate.MimeType
+            ProtocolResourceTemplate: protocolTemplate
         );
     }
 }

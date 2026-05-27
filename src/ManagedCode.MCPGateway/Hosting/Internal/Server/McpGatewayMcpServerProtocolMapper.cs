@@ -9,11 +9,6 @@ namespace ManagedCode.MCPGateway;
 
 internal static class McpGatewayMcpServerProtocolMapper
 {
-    private const string InvalidPromptMessageContentMessage =
-        "Prompt message content is not a valid MCP content block.";
-    private const string InvalidPromptMessageRolePrefix = "Prompt message role '";
-    private const string InvalidPromptMessageRoleSuffix = "' is not supported.";
-
     public static Tool ToProtocolTool(
         McpGatewayToolDescriptor descriptor,
         ToolTaskSupport? taskSupport = null
@@ -21,7 +16,7 @@ internal static class McpGatewayMcpServerProtocolMapper
     {
         var tool = McpGatewayProtocolTool.Clone(descriptor.ProtocolTool);
         tool.Name = descriptor.ToolId;
-        tool.Meta = CreateToolMeta(descriptor);
+        tool.Meta = MergeToolMeta(tool.Meta, descriptor);
         tool.Execution = taskSupport is null
             ? tool.Execution
             : new ToolExecution { TaskSupport = taskSupport.Value };
@@ -35,29 +30,13 @@ internal static class McpGatewayMcpServerProtocolMapper
         return tool;
     }
 
-    public static Prompt ToProtocolPrompt(McpGatewayPromptDescriptor descriptor) =>
-        new()
-        {
-            Name = descriptor.PromptId,
-            Title = descriptor.DisplayName,
-            Description = descriptor.Description,
-            Arguments = descriptor
-                .Arguments.Select(static argument => new PromptArgument
-                {
-                    Name = argument.Name,
-                    Title = argument.DisplayName,
-                    Description = argument.Description,
-                    Required = argument.IsRequired,
-                })
-                .ToList(),
-            Meta = new JsonObject
-            {
-                [McpGatewayMcpProtocolConstants.PromptIdMetaPropertyName] = descriptor.PromptId,
-                [McpGatewayMcpProtocolConstants.PromptNameMetaPropertyName] =
-                    descriptor.PromptName,
-                [McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = descriptor.SourceId,
-            },
-        };
+    public static Prompt ToProtocolPrompt(McpGatewayPromptDescriptor descriptor)
+    {
+        var prompt = McpGatewayProtocolPrimitive.Clone(descriptor.ProtocolPrompt);
+        prompt.Name = descriptor.PromptId;
+        prompt.Meta = MergePromptMeta(prompt.Meta, descriptor);
+        return prompt;
+    }
 
     public static Resource ToProtocolResource(McpGatewayResourceDescriptor descriptor)
     {
@@ -66,27 +45,20 @@ internal static class McpGatewayMcpServerProtocolMapper
             descriptor.ResourceUri
         );
 
-        return new Resource
-        {
-            Name = CreateExportedResourceName(
-                descriptor.SourceId,
-                descriptor.ResourceName,
-                descriptor.ResourceUri
-            ),
-            Title = descriptor.DisplayName,
-            Uri = gatewayUri,
-            Description = descriptor.Description,
-            MimeType = descriptor.MimeType,
-            Size = descriptor.Size,
-            Meta = new JsonObject
-            {
-                [McpGatewayMcpProtocolConstants.ResourceNameMetaPropertyName] =
-                    descriptor.ResourceName,
-                [McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = descriptor.SourceId,
-                [McpGatewayMcpProtocolConstants.OriginalUriMetaPropertyName] =
-                    descriptor.ResourceUri,
-            },
-        };
+        var resource = McpGatewayProtocolPrimitive.Clone(descriptor.ProtocolResource);
+        resource.Name = CreateExportedResourceName(
+            descriptor.SourceId,
+            descriptor.ResourceName,
+            descriptor.ResourceUri
+        );
+        resource.Uri = gatewayUri;
+        resource.Meta = MergeResourceMeta(
+            resource.Meta,
+            descriptor.SourceId,
+            descriptor.ResourceName,
+            descriptor.ResourceUri
+        );
+        return resource;
     }
 
     public static ResourceTemplate ToProtocolResourceTemplate(
@@ -98,26 +70,22 @@ internal static class McpGatewayMcpServerProtocolMapper
             descriptor.UriTemplate
         );
 
-        return new ResourceTemplate
-        {
-            Name = CreateExportedResourceName(
-                descriptor.SourceId,
-                descriptor.ResourceName,
-                descriptor.UriTemplate
-            ),
-            Title = descriptor.DisplayName,
-            UriTemplate = gatewayUriTemplate,
-            Description = descriptor.Description,
-            MimeType = descriptor.MimeType,
-            Meta = new JsonObject
-            {
-                [McpGatewayMcpProtocolConstants.ResourceNameMetaPropertyName] =
-                    descriptor.ResourceName,
-                [McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = descriptor.SourceId,
-                [McpGatewayMcpProtocolConstants.OriginalUriTemplateMetaPropertyName] =
-                    descriptor.UriTemplate,
-            },
-        };
+        var resourceTemplate = McpGatewayProtocolPrimitive.Clone(
+            descriptor.ProtocolResourceTemplate
+        );
+        resourceTemplate.Name = CreateExportedResourceName(
+            descriptor.SourceId,
+            descriptor.ResourceName,
+            descriptor.UriTemplate
+        );
+        resourceTemplate.UriTemplate = gatewayUriTemplate;
+        resourceTemplate.Meta = MergeResourceTemplateMeta(
+            resourceTemplate.Meta,
+            descriptor.SourceId,
+            descriptor.ResourceName,
+            descriptor.UriTemplate
+        );
+        return resourceTemplate;
     }
 
     public static IReadOnlyDictionary<string, object?>? ConvertArguments(
@@ -206,47 +174,6 @@ internal static class McpGatewayMcpServerProtocolMapper
             ],
         };
 
-    public static PromptMessage? ToProtocolPromptMessage(McpGatewayPromptMessage message)
-    {
-        if (message.Content is not null)
-        {
-            try
-            {
-                var content = JsonSerializer.Deserialize<ContentBlock>(
-                    message.Content.ToJsonString(),
-                    McpGatewayJsonSerializer.Options
-                );
-                if (content is not null)
-                {
-                    return new PromptMessage
-                    {
-                        Role = ParsePromptRole(message.Role),
-                        Content = content,
-                    };
-                }
-            }
-            catch (JsonException exception) when (string.IsNullOrWhiteSpace(message.Text))
-            {
-                throw new InvalidOperationException(InvalidPromptMessageContentMessage, exception);
-            }
-            catch (JsonException)
-            {
-                // Text fallback is allowed only when the prompt message explicitly provides text.
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(message.Text))
-        {
-            return null;
-        }
-
-        return new PromptMessage
-        {
-            Role = ParsePromptRole(message.Role),
-            Content = new TextContentBlock { Text = message.Text },
-        };
-    }
-
     public static ResourceContents ToProtocolResourceContent(
         ResourceContents content,
         McpGatewayResolvedResourceRequest request
@@ -283,27 +210,12 @@ internal static class McpGatewayMcpServerProtocolMapper
         throw new McpException($"Unsupported resource content type '{content.GetType().Name}'.");
     }
 
-    private static Role ParsePromptRole(string role)
+    private static JsonObject MergeToolMeta(
+        JsonObject? meta,
+        McpGatewayToolDescriptor descriptor
+    )
     {
-        if (
-            Enum.TryParse<Role>(role, ignoreCase: true, out var parsedRole)
-            && Enum.IsDefined(parsedRole)
-        )
-        {
-            return parsedRole;
-        }
-
-        throw new InvalidOperationException(
-            string.Concat(InvalidPromptMessageRolePrefix, role, InvalidPromptMessageRoleSuffix)
-        );
-    }
-
-    private static JsonObject CreateToolMeta(McpGatewayToolDescriptor descriptor)
-    {
-        var meta =
-            descriptor.Meta is null
-                ? new JsonObject()
-                : (JsonObject)descriptor.Meta.DeepClone();
+        meta ??= new JsonObject();
         meta[McpGatewayMcpProtocolConstants.ToolIdMetaPropertyName] = descriptor.ToolId;
         meta[McpGatewayMcpProtocolConstants.ToolNameMetaPropertyName] = descriptor.ToolName;
         meta[McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = descriptor.SourceId;
@@ -348,6 +260,47 @@ internal static class McpGatewayMcpServerProtocolMapper
             );
         }
 
+        return meta;
+    }
+
+    private static JsonObject MergePromptMeta(
+        JsonObject? meta,
+        McpGatewayPromptDescriptor descriptor
+    )
+    {
+        meta ??= new JsonObject();
+        meta[McpGatewayMcpProtocolConstants.PromptIdMetaPropertyName] = descriptor.PromptId;
+        meta[McpGatewayMcpProtocolConstants.PromptNameMetaPropertyName] = descriptor.PromptName;
+        meta[McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = descriptor.SourceId;
+        return meta;
+    }
+
+    private static JsonObject MergeResourceMeta(
+        JsonObject? meta,
+        string sourceId,
+        string resourceName,
+        string originalUri
+    )
+    {
+        meta ??= new JsonObject();
+        meta[McpGatewayMcpProtocolConstants.ResourceNameMetaPropertyName] = resourceName;
+        meta[McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = sourceId;
+        meta[McpGatewayMcpProtocolConstants.OriginalUriMetaPropertyName] = originalUri;
+        return meta;
+    }
+
+    private static JsonObject MergeResourceTemplateMeta(
+        JsonObject? meta,
+        string sourceId,
+        string resourceName,
+        string originalUriTemplate
+    )
+    {
+        meta ??= new JsonObject();
+        meta[McpGatewayMcpProtocolConstants.ResourceNameMetaPropertyName] = resourceName;
+        meta[McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = sourceId;
+        meta[McpGatewayMcpProtocolConstants.OriginalUriTemplateMetaPropertyName] =
+            originalUriTemplate;
         return meta;
     }
 
