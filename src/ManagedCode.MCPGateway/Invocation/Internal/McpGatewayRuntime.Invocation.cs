@@ -197,35 +197,25 @@ internal sealed partial class McpGatewayRuntime
             return true;
         }
 
-        if (string.IsNullOrWhiteSpace(descriptor.InputSchemaJson))
+        var schema = descriptor.InputSchema;
+        if (schema.ValueKind == JsonValueKind.Undefined)
         {
             return false;
         }
 
-        try
-        {
-            using var schemaDocument = JsonDocument.Parse(descriptor.InputSchemaJson);
-            if (
-                !schemaDocument.RootElement.TryGetProperty(
-                    InputSchemaPropertiesPropertyName,
-                    out var properties
-                )
-                || properties.ValueKind != JsonValueKind.Object
-            )
-            {
-                return false;
-            }
-
-            return properties
-                .EnumerateObject()
-                .Any(property =>
-                    string.Equals(property.Name, argumentName, StringComparison.OrdinalIgnoreCase)
-                );
-        }
-        catch (JsonException)
+        if (
+            !schema.TryGetProperty(InputSchemaPropertiesPropertyName, out var properties)
+            || properties.ValueKind != JsonValueKind.Object
+        )
         {
             return false;
         }
+
+        return properties
+            .EnumerateObject()
+            .Any(property =>
+                string.Equals(property.Name, argumentName, StringComparison.OrdinalIgnoreCase)
+            );
     }
 
     private static McpClientTool AttachInvocationMeta(

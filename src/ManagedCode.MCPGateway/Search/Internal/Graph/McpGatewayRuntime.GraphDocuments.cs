@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 
 namespace ManagedCode.MCPGateway;
 
@@ -72,7 +73,8 @@ internal sealed partial class McpGatewayRuntime
         builder.AppendLine(GraphMarkdownExecutionContractHeading);
         builder.AppendLine(graphDocument.Document);
 
-        if (descriptor.InputSchemaJson is null)
+        var inputSchema = descriptor.InputSchema;
+        if (inputSchema.ValueKind == JsonValueKind.Undefined)
         {
             return builder.ToString();
         }
@@ -80,7 +82,7 @@ internal sealed partial class McpGatewayRuntime
         builder.AppendLine();
         builder.AppendLine(GraphMarkdownInputSchemaHeading);
         builder.AppendLine(GraphMarkdownJsonFenceStart);
-        builder.AppendLine(descriptor.InputSchemaJson);
+        builder.AppendLine(inputSchema.GetRawText());
         builder.AppendLine(GraphMarkdownFenceEnd);
 
         return builder.ToString();

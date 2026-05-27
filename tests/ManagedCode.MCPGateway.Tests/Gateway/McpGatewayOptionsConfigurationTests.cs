@@ -1,6 +1,8 @@
 #pragma warning disable MCPEXP001
 
+using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
 
@@ -131,11 +133,17 @@ public sealed class McpGatewayOptionsConfigurationTests
                         "local:lookup",
                         "local",
                         McpGatewaySourceKind.Local,
-                        "lookup",
-                        "Lookup",
-                        "Looks up data.",
-                        ["value"],
-                        """{"type":"object"}"""
+                        new Tool
+                        {
+                            Name = "lookup",
+                            Title = "Lookup",
+                            Description = "Looks up data.",
+                            InputSchema = JsonSerializer.SerializeToElement(
+                                new { type = "object" },
+                                McpGatewayJsonSerializer.Options
+                            ),
+                        },
+                        ["value"]
                     ),
                 ],
                 CancellationToken.None

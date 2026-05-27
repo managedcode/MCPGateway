@@ -236,7 +236,7 @@ internal sealed partial class McpGatewayRuntime
             entry.Descriptor.DisplayName,
             entry.Descriptor.Description,
             entry.Descriptor.RequiredArguments,
-            entry.Descriptor.InputSchemaJson,
+            entry.Descriptor.InputSchema,
             Math.Clamp(score, SearchScoreMinimum, SearchScoreMaximum)
         )
         {

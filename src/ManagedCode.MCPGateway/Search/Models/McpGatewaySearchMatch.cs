@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace ManagedCode.MCPGateway;
 
 public sealed record McpGatewaySearchMatch(
@@ -8,7 +10,7 @@ public sealed record McpGatewaySearchMatch(
     string? DisplayName,
     string Description,
     IReadOnlyList<string> RequiredArguments,
-    string? InputSchemaJson,
+    JsonElement? InputSchema,
     double Score
 )
 {

@@ -1,5 +1,6 @@
 #pragma warning disable MCPEXP001
 
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -207,11 +208,17 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
             toolId,
             sourceId,
             McpGatewaySourceKind.Local,
-            toolName,
-            toolName,
-            $"Executes {toolName}.",
-            [],
-            """{"type":"object"}"""
+            new Tool
+            {
+                Name = toolName,
+                Title = toolName,
+                Description = $"Executes {toolName}.",
+                InputSchema = JsonSerializer.SerializeToElement(
+                    new { type = "object" },
+                    McpGatewayJsonSerializer.Options
+                ),
+            },
+            []
         );
 
     private static McpGatewayPromptDescriptor CreatePromptDescriptor(

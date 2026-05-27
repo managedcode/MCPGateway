@@ -19,7 +19,7 @@ public sealed class McpGatewayDiscoveredToolTests
                 DisplayName: "Lookup incident status",
                 Description: "Inspect incident state by identifier.",
                 RequiredArguments: ["incidentId"],
-                InputSchemaJson: null,
+                InputSchema: null,
                 Score: 0.95d
             )
             {
@@ -59,7 +59,7 @@ public sealed class McpGatewayDiscoveredToolTests
                 DisplayName: null,
                 Description: "Example tool.",
                 RequiredArguments: [],
-                InputSchemaJson: null,
+                InputSchema: null,
                 Score: 0.9d
             ),
         ]);

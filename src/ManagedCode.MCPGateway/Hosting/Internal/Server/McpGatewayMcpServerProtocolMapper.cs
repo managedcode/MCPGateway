@@ -9,19 +9,6 @@ namespace ManagedCode.MCPGateway;
 
 internal static class McpGatewayMcpServerProtocolMapper
 {
-    private const string ToolMessagePrefix = "Tool '";
-    private const string InvalidToolInputSchemaMessageSuffix =
-        "' has invalid input schema JSON.";
-    private const string NonObjectToolInputSchemaMessageSuffix =
-        "' input schema must be a JSON object.";
-    private const string InvalidToolOutputSchemaMessageSuffix =
-        "' has invalid output schema JSON.";
-    private const string NonObjectToolOutputSchemaMessageSuffix =
-        "' output schema must be a JSON object.";
-    private const string InvalidToolMetaMessageSuffix =
-        "' has invalid meta JSON.";
-    private const string NonObjectToolMetaMessageSuffix =
-        "' meta must be a JSON object.";
     private const string InvalidPromptMessageContentMessage =
         "Prompt message content is not a valid MCP content block.";
     private const string InvalidPromptMessageRolePrefix = "Prompt message role '";
@@ -30,27 +17,23 @@ internal static class McpGatewayMcpServerProtocolMapper
     public static Tool ToProtocolTool(
         McpGatewayToolDescriptor descriptor,
         ToolTaskSupport? taskSupport = null
-    ) =>
-        new()
+    )
+    {
+        var tool = McpGatewayProtocolTool.Clone(descriptor.ProtocolTool);
+        tool.Name = descriptor.ToolId;
+        tool.Meta = CreateToolMeta(descriptor);
+        tool.Execution = taskSupport is null
+            ? tool.Execution
+            : new ToolExecution { TaskSupport = taskSupport.Value };
+
+        if (!string.IsNullOrWhiteSpace(tool.Title))
         {
-            Name = descriptor.ToolId,
-            Title = descriptor.DisplayName,
-            Description = descriptor.Description,
-            InputSchema = ParseToolInputSchema(descriptor),
-            OutputSchema = ParseToolOutputSchema(descriptor),
-            Annotations = new ToolAnnotations
-            {
-                Title = descriptor.DisplayName,
-                ReadOnlyHint = descriptor.IsReadOnly,
-                IdempotentHint = descriptor.IsIdempotent,
-                DestructiveHint = descriptor.IsDestructive,
-                OpenWorldHint = descriptor.IsOpenWorld,
-            },
-            Execution = taskSupport is null
-                ? null
-                : new ToolExecution { TaskSupport = taskSupport.Value },
-            Meta = CreateToolMeta(descriptor),
-        };
+            tool.Annotations ??= new ToolAnnotations();
+            tool.Annotations.Title ??= tool.Title;
+        }
+
+        return tool;
+    }
 
     public static Prompt ToProtocolPrompt(McpGatewayPromptDescriptor descriptor) =>
         new()
@@ -300,59 +283,6 @@ internal static class McpGatewayMcpServerProtocolMapper
         throw new McpException($"Unsupported resource content type '{content.GetType().Name}'.");
     }
 
-    private static JsonElement ParseToolInputSchema(McpGatewayToolDescriptor descriptor)
-    {
-        return ParseToolSchema(
-            descriptor.ToolId,
-            descriptor.InputSchemaJson,
-            InvalidToolInputSchemaMessageSuffix,
-            NonObjectToolInputSchemaMessageSuffix) ?? CreateDefaultObjectSchema();
-    }
-
-    private static JsonElement? ParseToolOutputSchema(McpGatewayToolDescriptor descriptor)
-    {
-        return ParseToolSchema(
-            descriptor.ToolId,
-            descriptor.OutputSchemaJson,
-            InvalidToolOutputSchemaMessageSuffix,
-            NonObjectToolOutputSchemaMessageSuffix);
-    }
-
-    private static JsonElement? ParseToolSchema(
-        string toolId,
-        string? schemaJson,
-        string invalidJsonMessageSuffix,
-        string nonObjectMessageSuffix)
-    {
-        if (string.IsNullOrWhiteSpace(schemaJson))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var schemaDocument = JsonDocument.Parse(schemaJson);
-            if (schemaDocument.RootElement.ValueKind != JsonValueKind.Object)
-            {
-                throw new InvalidOperationException(
-                    CreateToolMessage(toolId, nonObjectMessageSuffix)
-                );
-            }
-
-            return schemaDocument.RootElement.Clone();
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidOperationException(
-                CreateToolMessage(toolId, invalidJsonMessageSuffix),
-                exception
-            );
-        }
-    }
-
-    private static string CreateToolMessage(string toolId, string suffix) =>
-        string.Concat(ToolMessagePrefix, toolId, suffix);
-
     private static Role ParsePromptRole(string role)
     {
         if (
@@ -368,15 +298,12 @@ internal static class McpGatewayMcpServerProtocolMapper
         );
     }
 
-    private static JsonElement CreateDefaultObjectSchema() =>
-        JsonSerializer.SerializeToElement(
-            new { type = "object", properties = new { } },
-            McpGatewayJsonSerializer.Options
-        );
-
     private static JsonObject CreateToolMeta(McpGatewayToolDescriptor descriptor)
     {
-        var meta = ParseToolMeta(descriptor);
+        var meta =
+            descriptor.Meta is null
+                ? new JsonObject()
+                : (JsonObject)descriptor.Meta.DeepClone();
         meta[McpGatewayMcpProtocolConstants.ToolIdMetaPropertyName] = descriptor.ToolId;
         meta[McpGatewayMcpProtocolConstants.ToolNameMetaPropertyName] = descriptor.ToolName;
         meta[McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = descriptor.SourceId;
@@ -422,31 +349,6 @@ internal static class McpGatewayMcpServerProtocolMapper
         }
 
         return meta;
-    }
-
-    private static JsonObject ParseToolMeta(McpGatewayToolDescriptor descriptor)
-    {
-        if (string.IsNullOrWhiteSpace(descriptor.MetaJson))
-        {
-            return new JsonObject();
-        }
-
-        try
-        {
-            var node = JsonNode.Parse(descriptor.MetaJson);
-            return node is JsonObject jsonObject
-                ? jsonObject
-                : throw new InvalidOperationException(
-                    CreateToolMessage(descriptor.ToolId, NonObjectToolMetaMessageSuffix)
-                );
-        }
-        catch (JsonException exception)
-        {
-            throw new InvalidOperationException(
-                CreateToolMessage(descriptor.ToolId, InvalidToolMetaMessageSuffix),
-                exception
-            );
-        }
     }
 
     private static void AddStringArray(

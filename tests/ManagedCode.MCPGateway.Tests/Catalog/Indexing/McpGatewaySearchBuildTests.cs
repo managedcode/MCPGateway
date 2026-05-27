@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Reflection;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
@@ -656,7 +657,7 @@ public sealed partial class McpGatewaySearchTests
             tool.ToolId == "test-mcp:github_repository_search"
         );
 
-        await Assert.That(string.IsNullOrWhiteSpace(descriptor.InputSchemaJson)).IsFalse();
+        await Assert.That(descriptor.InputSchema.ValueKind).IsEqualTo(JsonValueKind.Object);
         await Assert
             .That(
                 descriptor.RequiredArguments.Any(static argument =>

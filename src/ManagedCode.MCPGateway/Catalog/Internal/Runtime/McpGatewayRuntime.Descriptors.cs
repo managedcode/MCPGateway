@@ -1,7 +1,11 @@
+#pragma warning disable MCPEXP001
+
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace ManagedCode.MCPGateway;
 
@@ -21,20 +25,15 @@ internal sealed partial class McpGatewayRuntime
         var toolName = tool.Name.Trim();
         var sourceKind = McpGatewaySourceKindMapper.Map(registration.Kind);
 
-        var inputSchema = ResolveInputSchema(tool);
-        var outputSchema = ResolveOutputSchema(tool);
-        var metaJson = ResolveMetaJson(tool);
         var searchHints = ResolveSearchHints(tool, loadedTool.SearchHints);
+        var protocolTool = ResolveProtocolTool(tool, toolName, searchHints);
 
         return new McpGatewayToolDescriptor(
             ToolId: $"{registration.SourceId}:{toolName}",
             SourceId: registration.SourceId,
             SourceKind: sourceKind,
-            ToolName: toolName,
-            DisplayName: ResolveDisplayName(tool),
-            Description: tool.Description ?? string.Empty,
-            RequiredArguments: inputSchema.RequiredArguments,
-            InputSchemaJson: inputSchema.Json
+            ProtocolTool: protocolTool,
+            RequiredArguments: ExtractRequiredArguments(protocolTool.InputSchema)
         )
         {
             SearchAliases = searchHints.Aliases ?? [],
@@ -43,12 +42,6 @@ internal sealed partial class McpGatewayRuntime
             Tags = searchHints.Tags ?? [],
             DataSources = searchHints.DataSources ?? [],
             UsageExamples = searchHints.UsageExamples ?? [],
-            MetaJson = metaJson,
-            OutputSchemaJson = outputSchema.Json,
-            IsReadOnly = searchHints.ReadOnly,
-            IsIdempotent = searchHints.Idempotent,
-            IsDestructive = searchHints.Destructive,
-            IsOpenWorld = searchHints.OpenWorld,
             CostTier = searchHints.CostTier,
             LatencyTier = searchHints.LatencyTier,
             IsEnabledByDefault = searchHints.EnabledByDefault ?? true,
@@ -112,7 +105,7 @@ internal sealed partial class McpGatewayRuntime
             builder.AppendLine(string.Join(", ", descriptor.RequiredArguments));
         }
 
-        AppendInputSchema(builder, descriptor.InputSchemaJson);
+        AppendInputSchema(builder, descriptor.InputSchema);
         AppendUsageExamples(builder, descriptor.UsageExamples);
         var document = builder.ToString().Trim();
         var effectiveMaxLength = Math.Max(
@@ -158,30 +151,23 @@ internal sealed partial class McpGatewayRuntime
         AppendDescriptorValue(builder, label, value.Value ? bool.TrueString : bool.FalseString);
     }
 
-    private static void AppendInputSchema(StringBuilder builder, string? inputSchemaJson)
+    private static void AppendInputSchema(StringBuilder builder, JsonElement? inputSchema)
     {
-        if (string.IsNullOrWhiteSpace(inputSchemaJson))
+        if (inputSchema is not { } schema || schema.ValueKind == JsonValueKind.Undefined)
         {
             return;
         }
 
-        try
-        {
-            using var schemaDocument = JsonDocument.Parse(inputSchemaJson);
-            if (!TryGetSchemaProperties(schemaDocument.RootElement, out var properties))
-            {
-                return;
-            }
-
-            foreach (var property in properties.EnumerateObject())
-            {
-                AppendInputSchemaProperty(builder, property);
-            }
-        }
-        catch (JsonException)
+        if (!TryGetSchemaProperties(schema, out var properties))
         {
             builder.Append(InputSchemaLabel);
-            builder.AppendLine(inputSchemaJson);
+            builder.AppendLine(schema.GetRawText());
+            return;
+        }
+
+        foreach (var property in properties.EnumerateObject())
+        {
+            AppendInputSchemaProperty(builder, property);
         }
     }
 
@@ -358,74 +344,113 @@ internal sealed partial class McpGatewayRuntime
         return null;
     }
 
-    private static SerializedSchema ResolveInputSchema(AITool tool)
+    private static Tool ResolveProtocolTool(
+        AITool tool,
+        string toolName,
+        McpGatewayToolSearchHints searchHints
+    )
     {
-        if (tool is McpClientTool mcpTool)
-        {
-            return SerializeSchema(mcpTool.ProtocolTool?.InputSchema);
-        }
+        var protocolTool = tool is McpClientTool { ProtocolTool: { } upstreamTool }
+            ? McpGatewayProtocolTool.Clone(upstreamTool)
+            : CreateLocalProtocolTool(tool, toolName, searchHints);
 
+        ApplySearchHintAnnotations(protocolTool, searchHints);
+        return protocolTool;
+    }
+
+    private static Tool CreateLocalProtocolTool(
+        AITool tool,
+        string toolName,
+        McpGatewayToolSearchHints searchHints
+    )
+    {
         var function = tool as AIFunction ?? tool.GetService<AIFunction>();
         if (function is null)
         {
-            return SerializedSchema.Empty;
+            return new Tool
+            {
+                Name = toolName,
+                Title = ResolveDisplayName(tool),
+                Description = tool.Description,
+                InputSchema = McpGatewayProtocolTool.CreateDefaultObjectSchema(),
+            };
         }
 
-        return function.JsonSchema.ValueKind == JsonValueKind.Undefined
-            ? SerializedSchema.Empty
-            : SerializeSchema(function.JsonSchema);
+        var outputSchema = ResolveOutputSchema(function);
+        var serverTool = McpServerTool.Create(
+            function,
+            new McpServerToolCreateOptions
+            {
+                Name = toolName,
+                Title = ResolveDisplayName(tool),
+                Description = tool.Description,
+                SerializerOptions = McpGatewayJsonSerializer.Options,
+                UseStructuredContent = outputSchema.Schema is not null,
+                OutputSchema = outputSchema.Schema,
+                ReadOnly = searchHints.ReadOnly,
+                Idempotent = searchHints.Idempotent,
+                Destructive = searchHints.Destructive,
+                OpenWorld = searchHints.OpenWorld,
+            }
+        );
+
+        return McpGatewayProtocolTool.Clone(serverTool.ProtocolTool);
     }
 
-    private static SerializedSchema ResolveOutputSchema(AITool tool)
-    {
-        if (tool is McpClientTool mcpTool)
-        {
-            return SerializeSchema(mcpTool.ProtocolTool?.OutputSchema);
-        }
-
-        var function = tool as AIFunction ?? tool.GetService<AIFunction>();
-        if (function?.ReturnJsonSchema is not { } returnSchema ||
-            returnSchema.ValueKind == JsonValueKind.Undefined)
-        {
-            return SerializedSchema.Empty;
-        }
-
-        return SerializeSchema(returnSchema);
-    }
-
-    private static string? ResolveMetaJson(AITool tool)
-    {
-        return tool is McpClientTool mcpTool
-            ? SerializeObjectJson(mcpTool.ProtocolTool?.Meta)
-            : null;
-    }
-
-    private static string? SerializeObjectJson(object? value)
+    private static void ApplySearchHintAnnotations(
+        Tool protocolTool,
+        McpGatewayToolSearchHints searchHints
+    )
     {
         if (
-            McpGatewayJsonSerializer.TrySerializeToElement(value)
-            is not JsonElement element ||
-            element.ValueKind != JsonValueKind.Object
+            protocolTool.Title is null
+            && !string.IsNullOrWhiteSpace(protocolTool.Annotations?.Title)
         )
         {
-            return null;
+            protocolTool.Title = protocolTool.Annotations.Title;
         }
 
-        return element.GetRawText();
+        if (
+            searchHints.ReadOnly is null
+            && searchHints.Idempotent is null
+            && searchHints.Destructive is null
+            && searchHints.OpenWorld is null
+            && string.IsNullOrWhiteSpace(protocolTool.Title)
+        )
+        {
+            return;
+        }
+
+        var annotations =
+            McpGatewayProtocolTool.CloneAnnotations(protocolTool.Annotations)
+            ?? new ToolAnnotations();
+        annotations.Title ??= protocolTool.Title;
+        annotations.ReadOnlyHint = searchHints.ReadOnly ?? annotations.ReadOnlyHint;
+        annotations.IdempotentHint = searchHints.Idempotent ?? annotations.IdempotentHint;
+        annotations.DestructiveHint = searchHints.Destructive ?? annotations.DestructiveHint;
+        annotations.OpenWorldHint = searchHints.OpenWorld ?? annotations.OpenWorldHint;
+        protocolTool.Annotations = annotations;
     }
+
+    private static SerializedSchema ResolveOutputSchema(AIFunction function) =>
+        function.ReturnJsonSchema is not { } returnSchema
+        || returnSchema.ValueKind == JsonValueKind.Undefined
+            ? SerializedSchema.Empty
+            : SerializeSchema(returnSchema);
 
     private static SerializedSchema SerializeSchema(object? schema)
     {
         if (
             McpGatewayJsonSerializer.TrySerializeToElement(schema)
             is not JsonElement serializedSchema
+            || !McpGatewayProtocolSchema.IsToolObjectSchema(serializedSchema)
         )
         {
             return SerializedSchema.Empty;
         }
 
         return new SerializedSchema(
-            serializedSchema.GetRawText(),
+            serializedSchema.Clone(),
             ExtractRequiredArguments(serializedSchema)
         );
     }
@@ -461,8 +486,13 @@ internal sealed partial class McpGatewayRuntime
         return requiredArguments;
     }
 
-    private sealed record SerializedSchema(string? Json, IReadOnlyList<string> RequiredArguments)
+    private sealed record SerializedSchema(
+        JsonElement? Schema,
+        IReadOnlyList<string> RequiredArguments
+    )
     {
         public static SerializedSchema Empty { get; } = new(null, []);
     }
 }
+
+#pragma warning restore MCPEXP001

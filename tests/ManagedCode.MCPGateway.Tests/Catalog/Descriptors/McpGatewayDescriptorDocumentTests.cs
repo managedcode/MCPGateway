@@ -1,3 +1,6 @@
+using System.Text.Json;
+using ModelContextProtocol.Protocol;
+
 namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayDescriptorDocumentTests
@@ -9,25 +12,14 @@ public sealed class McpGatewayDescriptorDocumentTests
             ToolId: "local:release_workflow_lookup",
             SourceId: "local",
             SourceKind: McpGatewaySourceKind.Local,
-            ToolName: "release_workflow_lookup",
-            DisplayName: "Release workflow lookup",
-            Description: "Lookup release workflow status and approvals.",
-            RequiredArguments: ["status"],
-            InputSchemaJson: """
+            ProtocolTool: new Tool
             {
-              "type": "object",
-              "properties": {
-                "status": {
-                  "description": "Filter by workflow status",
-                  "type": "string",
-                  "enum": ["queued", "", 7, "running", null]
-                },
-                "page": {
-                  "type": "integer"
-                }
-              }
-            }
-            """
+                Name = "release_workflow_lookup",
+                Title = "Release workflow lookup",
+                Description = "Lookup release workflow status and approvals.",
+                InputSchema = CreateInputSchema(),
+            },
+            RequiredArguments: ["status"]
         );
 
         var document = McpGatewayRuntime.BuildDescriptorDocument(
@@ -44,17 +36,22 @@ public sealed class McpGatewayDescriptorDocumentTests
     }
 
     [TUnit.Core.Test]
-    public async Task BuildDescriptorDocument_FallsBackToRawSchemaWhenJsonIsMalformed()
+    public async Task BuildDescriptorDocument_AppendsRawSchemaWhenPropertiesAreAbsent()
     {
         var descriptor = new McpGatewayToolDescriptor(
             ToolId: "local:broken_schema_lookup",
             SourceId: "local",
             SourceKind: McpGatewaySourceKind.Local,
-            ToolName: "broken_schema_lookup",
-            DisplayName: null,
-            Description: "Lookup with malformed schema.",
-            RequiredArguments: [],
-            InputSchemaJson: "{ not-valid-json"
+            ProtocolTool: new Tool
+            {
+                Name = "broken_schema_lookup",
+                Description = "Lookup with malformed schema.",
+                InputSchema = JsonSerializer.SerializeToElement(
+                    new { type = "object" },
+                    McpGatewayJsonSerializer.Options
+                ),
+            },
+            RequiredArguments: []
         );
 
         var document = McpGatewayRuntime.BuildDescriptorDocument(
@@ -62,6 +59,25 @@ public sealed class McpGatewayDescriptorDocumentTests
             McpGatewayOptions.DefaultMaxDescriptorLength
         );
 
-        await Assert.That(document).Contains("Input schema: { not-valid-json");
+        await Assert.That(document).Contains("""Input schema: {"type":"object"}""");
     }
+
+    private static JsonElement CreateInputSchema() =>
+        JsonSerializer.SerializeToElement(
+            new Dictionary<string, object?>
+            {
+                ["type"] = "object",
+                ["properties"] = new Dictionary<string, object?>
+                {
+                    ["status"] = new Dictionary<string, object?>
+                    {
+                        ["description"] = "Filter by workflow status",
+                        ["type"] = "string",
+                        ["enum"] = new object?[] { "queued", "", 7, "running", null },
+                    },
+                    ["page"] = new Dictionary<string, object?> { ["type"] = "integer" },
+                },
+            },
+            McpGatewayJsonSerializer.Options
+        );
 }

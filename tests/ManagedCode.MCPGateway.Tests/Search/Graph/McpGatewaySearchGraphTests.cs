@@ -1,5 +1,6 @@
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
 
@@ -244,11 +245,13 @@ public sealed partial class McpGatewaySearchTests
             "local:story_item_search",
             "local",
             McpGatewaySourceKind.Local,
-            "story_item_search",
-            "Story search",
-            "Search story feed items by query text.",
-            ["query"],
-            null
+            new Tool
+            {
+                Name = "story_item_search",
+                Title = "Story search",
+                Description = "Search story feed items by query text.",
+            },
+            ["query"]
         );
         var documents = McpGatewayMarkdownLdGraphFile.CreateDocuments([descriptor]);
         var graphFile = CreateTemporaryGraphFilePath();

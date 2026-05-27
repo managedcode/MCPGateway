@@ -8,6 +8,10 @@ namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayProtocolUtilityTests
 {
+    private static readonly string[] ValueRequiredProperties = ["value"];
+    private static readonly string[] StatusRequiredProperties = ["status"];
+    private static readonly string[] NonObjectSchemaValues = ["not-a-schema-object"];
+
     [Test]
     public async Task ResourceUriCodec_RoundTripsSchemeAndOpaqueUris()
     {
@@ -108,11 +112,45 @@ public sealed class McpGatewayProtocolUtilityTests
             "local:lookup",
             "local",
             McpGatewaySourceKind.Local,
-            "lookup",
-            "Lookup",
-            "Looks up a value.",
-            ["value"],
-            """{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}"""
+            new Tool
+            {
+                Name = "lookup",
+                Title = "Lookup",
+                Description = "Looks up a value.",
+                InputSchema = JsonSerializer.SerializeToElement(
+                    new
+                    {
+                        type = "object",
+                        properties = new { value = new { type = "string" } },
+                        required = ValueRequiredProperties,
+                    },
+                    McpGatewayJsonSerializer.Options
+                ),
+                Annotations = new ToolAnnotations
+                {
+                    Title = "Lookup",
+                    ReadOnlyHint = true,
+                    IdempotentHint = true,
+                    OpenWorldHint = true,
+                },
+                Meta = new JsonObject
+                {
+                    ["securitySchemes"] = new JsonArray(
+                        new JsonObject { ["type"] = "oauth2", ["scopes"] = new JsonArray() }
+                    ),
+                    ["vendor"] = "upstream",
+                },
+                OutputSchema = JsonSerializer.SerializeToElement(
+                    new
+                    {
+                        type = "object",
+                        properties = new { status = new { type = "string" } },
+                        required = StatusRequiredProperties,
+                    },
+                    McpGatewayJsonSerializer.Options
+                ),
+            },
+            ["value"]
         )
         {
             Categories = ["operations"],
@@ -122,15 +160,9 @@ public sealed class McpGatewayProtocolUtilityTests
             [
                 new McpGatewayToolExample("incident 42", "{\"status\":\"open\"}", "Checks status."),
             ],
-            IsReadOnly = true,
-            IsIdempotent = true,
-            IsOpenWorld = true,
             CostTier = McpGatewayToolCostTier.Low,
             LatencyTier = McpGatewayToolLatencyTier.Low,
             IsEnabledByDefault = false,
-            MetaJson = """{"securitySchemes":[{"type":"oauth2","scopes":[]}],"vendor":"upstream"}""",
-            OutputSchemaJson =
-                """{"type":"object","properties":{"status":{"type":"string"}},"required":["status"]}""",
         };
         var promptDescriptor = new McpGatewayPromptDescriptor(
             "local:release_review",
@@ -194,35 +226,22 @@ public sealed class McpGatewayProtocolUtilityTests
     }
 
     [Test]
-    public async Task ProtocolMapper_RejectsInvalidToolInputSchema()
+    public async Task SdkTool_RejectsNonObjectInputSchemaBeforeGatewayMapping()
     {
-        var invalidJsonDescriptor = CreateToolDescriptor("not-json");
-        var nonObjectDescriptor = CreateToolDescriptor("""["not-a-schema-object"]""");
-
-        Exception? invalidJsonException = null;
-        try
-        {
-            _ = McpGatewayMcpServerProtocolMapper.ToProtocolTool(invalidJsonDescriptor);
-        }
-        catch (Exception ex)
-        {
-            invalidJsonException = ex;
-        }
+        var nonObjectSchema = JsonSerializer.SerializeToElement(NonObjectSchemaValues);
 
         Exception? nonObjectException = null;
         try
         {
-            _ = McpGatewayMcpServerProtocolMapper.ToProtocolTool(nonObjectDescriptor);
+            _ = new Tool { Name = "lookup", InputSchema = nonObjectSchema };
         }
         catch (Exception ex)
         {
             nonObjectException = ex;
         }
 
-        await Assert.That(invalidJsonException).IsTypeOf<InvalidOperationException>();
-        await Assert.That(invalidJsonException!.Message).Contains("invalid input schema JSON");
-        await Assert.That(nonObjectException).IsTypeOf<InvalidOperationException>();
-        await Assert.That(nonObjectException!.Message).Contains("must be a JSON object");
+        await Assert.That(nonObjectException).IsTypeOf<ArgumentException>();
+        await Assert.That(nonObjectException!.Message).Contains("not a valid MCP tool input");
     }
 
     [Test]
@@ -385,16 +404,19 @@ public sealed class McpGatewayProtocolUtilityTests
         await Assert.That(emptyCompletion.Completion.Values.Count).IsEqualTo(0);
     }
 
-    private static McpGatewayToolDescriptor CreateToolDescriptor(string inputSchemaJson) =>
+    private static McpGatewayToolDescriptor CreateToolDescriptor(JsonElement inputSchema) =>
         new(
             "local:lookup",
             "local",
             McpGatewaySourceKind.Local,
-            "lookup",
-            "Lookup",
-            "Looks up a value.",
-            ["value"],
-            inputSchemaJson
+            new Tool
+            {
+                Name = "lookup",
+                Title = "Lookup",
+                Description = "Looks up a value.",
+                InputSchema = inputSchema,
+            },
+            ["value"]
         );
 }
 
