@@ -14,6 +14,14 @@ internal static class McpGatewayMcpServerProtocolMapper
         "' has invalid input schema JSON.";
     private const string NonObjectToolInputSchemaMessageSuffix =
         "' input schema must be a JSON object.";
+    private const string InvalidToolOutputSchemaMessageSuffix =
+        "' has invalid output schema JSON.";
+    private const string NonObjectToolOutputSchemaMessageSuffix =
+        "' output schema must be a JSON object.";
+    private const string InvalidToolMetaMessageSuffix =
+        "' has invalid meta JSON.";
+    private const string NonObjectToolMetaMessageSuffix =
+        "' meta must be a JSON object.";
     private const string InvalidPromptMessageContentMessage =
         "Prompt message content is not a valid MCP content block.";
     private const string InvalidPromptMessageRolePrefix = "Prompt message role '";
@@ -29,6 +37,7 @@ internal static class McpGatewayMcpServerProtocolMapper
             Title = descriptor.DisplayName,
             Description = descriptor.Description,
             InputSchema = ParseToolInputSchema(descriptor),
+            OutputSchema = ParseToolOutputSchema(descriptor),
             Annotations = new ToolAnnotations
             {
                 Title = descriptor.DisplayName,
@@ -293,18 +302,40 @@ internal static class McpGatewayMcpServerProtocolMapper
 
     private static JsonElement ParseToolInputSchema(McpGatewayToolDescriptor descriptor)
     {
-        if (string.IsNullOrWhiteSpace(descriptor.InputSchemaJson))
+        return ParseToolSchema(
+            descriptor.ToolId,
+            descriptor.InputSchemaJson,
+            InvalidToolInputSchemaMessageSuffix,
+            NonObjectToolInputSchemaMessageSuffix) ?? CreateDefaultObjectSchema();
+    }
+
+    private static JsonElement? ParseToolOutputSchema(McpGatewayToolDescriptor descriptor)
+    {
+        return ParseToolSchema(
+            descriptor.ToolId,
+            descriptor.OutputSchemaJson,
+            InvalidToolOutputSchemaMessageSuffix,
+            NonObjectToolOutputSchemaMessageSuffix);
+    }
+
+    private static JsonElement? ParseToolSchema(
+        string toolId,
+        string? schemaJson,
+        string invalidJsonMessageSuffix,
+        string nonObjectMessageSuffix)
+    {
+        if (string.IsNullOrWhiteSpace(schemaJson))
         {
-            return CreateDefaultObjectSchema();
+            return null;
         }
 
         try
         {
-            using var schemaDocument = JsonDocument.Parse(descriptor.InputSchemaJson);
+            using var schemaDocument = JsonDocument.Parse(schemaJson);
             if (schemaDocument.RootElement.ValueKind != JsonValueKind.Object)
             {
                 throw new InvalidOperationException(
-                    CreateToolMessage(descriptor.ToolId, NonObjectToolInputSchemaMessageSuffix)
+                    CreateToolMessage(toolId, nonObjectMessageSuffix)
                 );
             }
 
@@ -313,7 +344,7 @@ internal static class McpGatewayMcpServerProtocolMapper
         catch (JsonException exception)
         {
             throw new InvalidOperationException(
-                CreateToolMessage(descriptor.ToolId, InvalidToolInputSchemaMessageSuffix),
+                CreateToolMessage(toolId, invalidJsonMessageSuffix),
                 exception
             );
         }
@@ -345,14 +376,12 @@ internal static class McpGatewayMcpServerProtocolMapper
 
     private static JsonObject CreateToolMeta(McpGatewayToolDescriptor descriptor)
     {
-        var meta = new JsonObject
-        {
-            [McpGatewayMcpProtocolConstants.ToolIdMetaPropertyName] = descriptor.ToolId,
-            [McpGatewayMcpProtocolConstants.ToolNameMetaPropertyName] = descriptor.ToolName,
-            [McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = descriptor.SourceId,
-            [McpGatewayMcpProtocolConstants.EnabledByDefaultMetaPropertyName] =
-                descriptor.IsEnabledByDefault,
-        };
+        var meta = ParseToolMeta(descriptor);
+        meta[McpGatewayMcpProtocolConstants.ToolIdMetaPropertyName] = descriptor.ToolId;
+        meta[McpGatewayMcpProtocolConstants.ToolNameMetaPropertyName] = descriptor.ToolName;
+        meta[McpGatewayMcpProtocolConstants.SourceIdMetaPropertyName] = descriptor.SourceId;
+        meta[McpGatewayMcpProtocolConstants.EnabledByDefaultMetaPropertyName] =
+            descriptor.IsEnabledByDefault;
 
         AddStringArray(
             meta,
@@ -393,6 +422,31 @@ internal static class McpGatewayMcpServerProtocolMapper
         }
 
         return meta;
+    }
+
+    private static JsonObject ParseToolMeta(McpGatewayToolDescriptor descriptor)
+    {
+        if (string.IsNullOrWhiteSpace(descriptor.MetaJson))
+        {
+            return new JsonObject();
+        }
+
+        try
+        {
+            var node = JsonNode.Parse(descriptor.MetaJson);
+            return node is JsonObject jsonObject
+                ? jsonObject
+                : throw new InvalidOperationException(
+                    CreateToolMessage(descriptor.ToolId, NonObjectToolMetaMessageSuffix)
+                );
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException(
+                CreateToolMessage(descriptor.ToolId, InvalidToolMetaMessageSuffix),
+                exception
+            );
+        }
     }
 
     private static void AddStringArray(

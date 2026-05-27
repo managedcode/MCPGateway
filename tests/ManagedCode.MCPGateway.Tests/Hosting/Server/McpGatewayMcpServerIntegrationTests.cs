@@ -24,6 +24,13 @@ public sealed class McpGatewayMcpServerIntegrationTests
         await Assert
             .That(tools.Any(static tool => tool.Name == "source-a:github_repository_search"))
             .IsTrue();
+        var structuredTool = tools.Single(static tool => tool.Name == "source-a:github_repository_search");
+        await Assert.That(structuredTool.ProtocolTool.OutputSchema?.GetProperty("type").GetString())
+            .IsEqualTo("object");
+        await Assert.That(structuredTool.ProtocolTool.Meta?["vendor"]!.GetValue<string>())
+            .IsEqualTo("upstream");
+        await Assert.That(structuredTool.ProtocolTool.Meta?["sourceId"]!.GetValue<string>())
+            .IsEqualTo("source-a");
         await Assert
             .That(tools.Any(static tool => tool.Name == "source-b:story_item_detail"))
             .IsTrue();

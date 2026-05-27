@@ -22,6 +22,8 @@ internal sealed partial class McpGatewayRuntime
         var sourceKind = McpGatewaySourceKindMapper.Map(registration.Kind);
 
         var inputSchema = ResolveInputSchema(tool);
+        var outputSchema = ResolveOutputSchema(tool);
+        var metaJson = ResolveMetaJson(tool);
         var searchHints = ResolveSearchHints(tool, loadedTool.SearchHints);
 
         return new McpGatewayToolDescriptor(
@@ -41,6 +43,8 @@ internal sealed partial class McpGatewayRuntime
             Tags = searchHints.Tags ?? [],
             DataSources = searchHints.DataSources ?? [],
             UsageExamples = searchHints.UsageExamples ?? [],
+            MetaJson = metaJson,
+            OutputSchemaJson = outputSchema.Json,
             IsReadOnly = searchHints.ReadOnly,
             IsIdempotent = searchHints.Idempotent,
             IsDestructive = searchHints.Destructive,
@@ -370,6 +374,44 @@ internal sealed partial class McpGatewayRuntime
         return function.JsonSchema.ValueKind == JsonValueKind.Undefined
             ? SerializedSchema.Empty
             : SerializeSchema(function.JsonSchema);
+    }
+
+    private static SerializedSchema ResolveOutputSchema(AITool tool)
+    {
+        if (tool is McpClientTool mcpTool)
+        {
+            return SerializeSchema(mcpTool.ProtocolTool?.OutputSchema);
+        }
+
+        var function = tool as AIFunction ?? tool.GetService<AIFunction>();
+        if (function?.ReturnJsonSchema is not { } returnSchema ||
+            returnSchema.ValueKind == JsonValueKind.Undefined)
+        {
+            return SerializedSchema.Empty;
+        }
+
+        return SerializeSchema(returnSchema);
+    }
+
+    private static string? ResolveMetaJson(AITool tool)
+    {
+        return tool is McpClientTool mcpTool
+            ? SerializeObjectJson(mcpTool.ProtocolTool?.Meta)
+            : null;
+    }
+
+    private static string? SerializeObjectJson(object? value)
+    {
+        if (
+            McpGatewayJsonSerializer.TrySerializeToElement(value)
+            is not JsonElement element ||
+            element.ValueKind != JsonValueKind.Object
+        )
+        {
+            return null;
+        }
+
+        return element.GetRawText();
     }
 
     private static SerializedSchema SerializeSchema(object? schema)

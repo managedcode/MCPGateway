@@ -167,6 +167,7 @@ internal sealed class TestMcpServerHost(
             ReadOnly = true,
             UseStructuredContent = true
         )]
+        [McpMeta("vendor", "upstream")]
         [Description("Search GitHub repositories by query text.")]
         public static TestMcpSearchResult SearchRepositories(
             [Description("Repository search query.")] string query

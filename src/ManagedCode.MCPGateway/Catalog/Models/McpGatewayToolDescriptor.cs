@@ -23,6 +23,10 @@ public sealed record McpGatewayToolDescriptor(
 
     public IReadOnlyList<McpGatewayToolExample> UsageExamples { get; init; } = [];
 
+    public string? MetaJson { get; init; }
+
+    public string? OutputSchemaJson { get; init; }
+
     public bool? IsReadOnly { get; init; }
 
     public bool? IsIdempotent { get; init; }

@@ -128,6 +128,9 @@ public sealed class McpGatewayProtocolUtilityTests
             CostTier = McpGatewayToolCostTier.Low,
             LatencyTier = McpGatewayToolLatencyTier.Low,
             IsEnabledByDefault = false,
+            MetaJson = """{"securitySchemes":[{"type":"oauth2","scopes":[]}],"vendor":"upstream"}""",
+            OutputSchemaJson =
+                """{"type":"object","properties":{"status":{"type":"string"}},"required":["status"]}""",
         };
         var promptDescriptor = new McpGatewayPromptDescriptor(
             "local:release_review",
@@ -169,6 +172,19 @@ public sealed class McpGatewayProtocolUtilityTests
         );
 
         await Assert.That(tool.InputSchema.GetProperty("type").GetString()).IsEqualTo("object");
+        await Assert.That(tool.OutputSchema?.GetProperty("type").GetString()).IsEqualTo("object");
+        await Assert
+            .That(
+                tool.OutputSchema
+                    ?.GetProperty("properties")
+                    .GetProperty("status")
+                    .GetProperty("type")
+                    .GetString()
+            )
+            .IsEqualTo("string");
+        await Assert.That(tool.Meta?["vendor"]!.GetValue<string>()).IsEqualTo("upstream");
+        await Assert.That(tool.Meta?["securitySchemes"]).IsTypeOf<JsonArray>();
+        await Assert.That(tool.Meta?["sourceId"]!.GetValue<string>()).IsEqualTo("local");
         await Assert.That(tool.Execution?.TaskSupport).IsEqualTo(ToolTaskSupport.Optional);
         await Assert.That(prompt.Name).IsEqualTo("local:release_review");
         await Assert.That(prompt.Arguments?.Count).IsEqualTo(1);
