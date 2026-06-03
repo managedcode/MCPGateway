@@ -32,6 +32,7 @@ public sealed class McpGatewayToolSet
         "Describe the schema-aware Markdown-LD graph profile used to compile SPARQL and validate the current tool graph.";
     public const string ToolIndexBuildToolDescription =
         "Build or rebuild the gateway tool index and return graph, vector, and diagnostic state.";
+    private const string GatewayToolSourceId = "gateway";
     private const string DiscoveredToolKindValue = "gateway_discovered_tool";
     private readonly IMcpGateway _gateway;
     private readonly McpGatewayGraphToolFactory _graphTools;
@@ -59,11 +60,16 @@ public sealed class McpGatewayToolSet
         string invokeToolName = DefaultInvokeToolName
     )
     {
+        var reservedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var searchName = CreateToolName(searchToolName, DefaultSearchToolName, reservedNames);
+        var routeName = CreateToolName(routeToolName, DefaultRouteToolName, reservedNames);
+        var invokeName = CreateToolName(invokeToolName, DefaultInvokeToolName, reservedNames);
+
         var searchTool = AIFunctionFactory.Create(
             SearchAsync,
             new AIFunctionFactoryOptions
             {
-                Name = searchToolName,
+                Name = searchName,
                 Description = SearchToolDescription,
             }
         );
@@ -72,7 +78,7 @@ public sealed class McpGatewayToolSet
             RouteAsync,
             new AIFunctionFactoryOptions
             {
-                Name = routeToolName,
+                Name = routeName,
                 Description = RouteToolDescription,
             }
         );
@@ -81,7 +87,7 @@ public sealed class McpGatewayToolSet
             InvokeAsync,
             new AIFunctionFactoryOptions
             {
-                Name = invokeToolName,
+                Name = invokeName,
                 Description = InvokeToolDescription,
             }
         );
@@ -119,6 +125,7 @@ public sealed class McpGatewayToolSet
         foreach (var tool in targetTools)
         {
             toolNames.Add(tool.Name);
+            toolNames.Add(NormalizeToolName(tool.Name, DefaultInvokeToolName));
         }
 
         foreach (var tool in CreateTools(searchToolName, routeToolName, invokeToolName))
@@ -173,6 +180,7 @@ public sealed class McpGatewayToolSet
                 if (!string.IsNullOrWhiteSpace(reservedToolName))
                 {
                     reservedNames.Add(reservedToolName);
+                    reservedNames.Add(NormalizeToolName(reservedToolName, DefaultInvokeToolName));
                 }
             }
         }
@@ -326,4 +334,29 @@ public sealed class McpGatewayToolSet
             }
         );
     }
+
+    internal static string CreateToolName(
+        string toolName,
+        string fallback,
+        ISet<string> reservedNames
+    )
+    {
+        ArgumentNullException.ThrowIfNull(reservedNames);
+
+        var normalizedName = NormalizeToolName(toolName, fallback);
+        if (reservedNames.Add(normalizedName))
+        {
+            return normalizedName;
+        }
+
+        return McpGatewayProtocolName.CreateToolId(
+            GatewayToolSourceId,
+            normalizedName,
+            reservedNames,
+            requireSourcePrefix: true
+        );
+    }
+
+    internal static string NormalizeToolName(string toolName, string fallback) =>
+        McpGatewayProtocolName.Normalize(toolName, fallback);
 }

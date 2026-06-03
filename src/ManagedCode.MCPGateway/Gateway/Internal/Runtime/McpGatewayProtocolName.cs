@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,10 +8,10 @@ namespace ManagedCode.MCPGateway;
 internal static class McpGatewayProtocolName
 {
     public const int MaxNameLength = 64;
+    internal const string DefaultToolName = "gateway_tool";
+    internal const string DefaultSourceName = "source";
+    internal const string DefaultResourceName = "resource";
     private const int HashLength = 8;
-    private const string DefaultToolName = "gateway_tool";
-    private const string DefaultSourceName = "source";
-    private const string DefaultResourceName = "resource";
     private const char Separator = '_';
     private static readonly char[] TrimCharacters = ['_', '-'];
 
@@ -71,14 +72,14 @@ internal static class McpGatewayProtocolName
             return normalizedName;
         }
 
-        return Truncate(string.Concat(normalizedSourceId, Separator, normalizedName));
+        return Shorten(string.Concat(normalizedSourceId, Separator, normalizedName));
     }
 
     public static string Normalize(string value, string fallback)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return Truncate(fallback);
+            return Shorten(fallback);
         }
 
         var builder = new StringBuilder(value.Length);
@@ -102,7 +103,7 @@ internal static class McpGatewayProtocolName
         }
 
         var normalized = builder.ToString().Trim(TrimCharacters);
-        return normalized.Length == 0 ? Truncate(fallback) : Truncate(normalized);
+        return normalized.Length == 0 ? Shorten(fallback) : Shorten(normalized);
     }
 
     private static bool HasSourcePrefix(string name, string sourceId) =>
@@ -118,15 +119,12 @@ internal static class McpGatewayProtocolName
 
     private static string AppendHash(string value, string sourceId, string toolName)
     {
-        var hashInput = string.Concat(sourceId, "\u001f", toolName);
-        var hash = Convert
-            .ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hashInput)))
-            .ToLowerInvariant()[..HashLength];
+        var hash = ComputeHash(sourceId, toolName);
 
         return AppendSuffix(value, string.Concat(Separator, hash));
     }
 
-    private static string AppendSuffix(string value, string suffix)
+    internal static string AppendSuffix(string value, string suffix)
     {
         if (value.Length + suffix.Length <= MaxNameLength)
         {
@@ -143,13 +141,37 @@ internal static class McpGatewayProtocolName
         return string.Concat(prefix, suffix);
     }
 
-    private static string Truncate(string value)
+    private static string Shorten(string value)
     {
         if (value.Length <= MaxNameLength)
         {
             return value;
         }
 
-        return value[..MaxNameLength].TrimEnd(TrimCharacters);
+        var suffix = string.Concat(Separator, ComputeHash(value));
+        return AppendSuffix(value, suffix);
+    }
+
+    private static string ComputeHash(string value) =>
+        Convert
+            .ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)))
+            .ToLowerInvariant()[..HashLength];
+
+    private static string ComputeHash(string firstValue, string secondValue)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        AppendHashPart(hash, firstValue);
+        AppendHashPart(hash, secondValue);
+
+        return Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant()[..HashLength];
+    }
+
+    private static void AppendHashPart(IncrementalHash hash, string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value);
+        Span<byte> lengthPrefix = stackalloc byte[sizeof(int)];
+        BinaryPrimitives.WriteInt32BigEndian(lengthPrefix, bytes.Length);
+        hash.AppendData(lengthPrefix);
+        hash.AppendData(bytes);
     }
 }

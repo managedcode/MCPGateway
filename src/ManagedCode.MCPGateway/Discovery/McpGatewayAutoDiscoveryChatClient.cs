@@ -274,6 +274,10 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
                 StringComparer.OrdinalIgnoreCase
             );
             McpGatewaySearchResult? latestSearchResult = null;
+            var searchToolName = McpGatewayToolSet.NormalizeToolName(
+                _options.SearchToolName,
+                McpGatewayToolSet.DefaultSearchToolName
+            );
 
             foreach (var message in messages)
             {
@@ -291,7 +295,7 @@ public sealed class McpGatewayAutoDiscoveryChatClient : IChatClient
                             )
                                 && string.Equals(
                                     functionName,
-                                    _options.SearchToolName,
+                                    searchToolName,
                                     StringComparison.OrdinalIgnoreCase
                                 ):
                             latestSearchResult = ReadSearchResult(functionResult.Result);

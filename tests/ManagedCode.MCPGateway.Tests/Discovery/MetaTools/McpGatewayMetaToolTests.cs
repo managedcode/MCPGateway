@@ -9,6 +9,50 @@ namespace ManagedCode.MCPGateway.Tests;
 public sealed class McpGatewayMetaToolTests
 {
     [TUnit.Core.Test]
+    public async Task CreateMetaTools_NormalizesCustomToolNames()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var toolNames = gateway
+            .CreateMetaTools("Gateway:Tools Search", "Gateway:Tools Search", "Gateway/Tool Invoke")
+            .Select(static tool => tool.Name)
+            .ToArray();
+
+        await Assert.That(toolNames.Length).IsEqualTo(3);
+        await Assert.That(toolNames.Distinct(StringComparer.Ordinal).Count()).IsEqualTo(3);
+        await Assert.That(toolNames.All(IsMcpSafeToolName)).IsTrue();
+        await Assert.That(toolNames[0]).IsEqualTo("gateway_tools_search");
+        await Assert.That(toolNames[2]).IsEqualTo("gateway_tool_invoke");
+    }
+
+    [TUnit.Core.Test]
+    public async Task CreateGraphTools_NormalizesCustomToolNames()
+    {
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
+        var toolSet = serviceProvider.GetRequiredService<McpGatewayToolSet>();
+
+        var toolNames = toolSet
+            .CreateGraphTools(
+                "Gateway:Graph Search",
+                "Gateway:Graph Search",
+                "Gateway/Graph Export",
+                "Gateway Graph Schema",
+                "Gateway Tool Index Build"
+            )
+            .Select(static tool => tool.Name)
+            .ToArray();
+
+        await Assert.That(toolNames.Length).IsEqualTo(5);
+        await Assert.That(toolNames.Distinct(StringComparer.Ordinal).Count()).IsEqualTo(5);
+        await Assert.That(toolNames.All(IsMcpSafeToolName)).IsTrue();
+        await Assert.That(toolNames).Contains("gateway_graph_schema");
+        await Assert.That(toolNames).Contains("gateway_tool_index_build");
+        await Assert.That(toolNames).Contains("gateway_graph_search");
+        await Assert.That(toolNames).Contains("gateway_graph_export");
+    }
+
+    [TUnit.Core.Test]
     public async Task CreateMetaTools_SearchToolSupportsContextAwareRequests()
     {
         var embeddingGenerator = new TestEmbeddingGenerator();
@@ -305,6 +349,14 @@ public sealed class McpGatewayMetaToolTests
     private static AIFunction GetFunction(IReadOnlyList<AITool> tools, string toolName) =>
         (tools.Single(tool => tool.Name == toolName) as AIFunction)
         ?? throw new InvalidOperationException($"Tool '{toolName}' is not an AIFunction.");
+
+    private static bool IsMcpSafeToolName(string toolName) =>
+        toolName.Length is > 0 and <= McpGatewayProtocolName.MaxNameLength
+        && toolName.All(static character =>
+            character is >= 'a' and <= 'z'
+            || character is >= '0' and <= '9'
+            || character is '_' or '-'
+        );
 
     private static string SearchGitHub([Description("Search query text.")] string query) =>
         $"github:{query}";

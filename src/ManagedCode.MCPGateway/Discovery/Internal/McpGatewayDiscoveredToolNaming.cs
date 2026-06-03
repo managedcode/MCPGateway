@@ -1,8 +1,9 @@
+using System.Globalization;
+
 namespace ManagedCode.MCPGateway;
 
 internal static class McpGatewayDiscoveredToolNaming
 {
-    private const string DefaultToolName = "gateway_tool";
     private const string NameSeparator = "_";
     private const string DescriptionPrefix = "Direct proxy for gateway tool ";
     private const string ToolIdLabel = " (";
@@ -65,7 +66,10 @@ internal static class McpGatewayDiscoveredToolNaming
         ArgumentNullException.ThrowIfNull(match);
         ArgumentNullException.ThrowIfNull(reservedNames);
 
-        var sanitizedToolName = McpGatewayProtocolName.Normalize(match.ToolName, DefaultToolName);
+        var sanitizedToolName = McpGatewayProtocolName.Normalize(
+            match.ToolName,
+            McpGatewayProtocolName.DefaultToolName
+        );
         if (reservedNames.Add(sanitizedToolName))
         {
             return sanitizedToolName;
@@ -74,7 +78,7 @@ internal static class McpGatewayDiscoveredToolNaming
         var compositeName = McpGatewayProtocolName.CreateSourceQualifiedName(
             match.SourceId,
             sanitizedToolName,
-            DefaultToolName
+            McpGatewayProtocolName.DefaultToolName
         );
         if (reservedNames.Add(compositeName))
         {
@@ -83,7 +87,10 @@ internal static class McpGatewayDiscoveredToolNaming
 
         for (var suffix = 2; ; suffix++)
         {
-            var uniqueName = $"{compositeName}{NameSeparator}{suffix}";
+            var uniqueName = McpGatewayProtocolName.AppendSuffix(
+                compositeName,
+                string.Concat(NameSeparator, suffix.ToString(CultureInfo.InvariantCulture))
+            );
             if (reservedNames.Add(uniqueName))
             {
                 return uniqueName;

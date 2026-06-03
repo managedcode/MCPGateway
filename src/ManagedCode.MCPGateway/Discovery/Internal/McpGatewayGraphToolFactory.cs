@@ -28,12 +28,38 @@ internal sealed class McpGatewayGraphToolFactory
     )
     {
         _ = RequireGraphSearch();
+        var reservedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var graphSchemaName = McpGatewayToolSet.CreateToolName(
+            graphSchemaToolName,
+            McpGatewayToolSet.DefaultGraphSchemaToolName,
+            reservedNames
+        );
+        var toolIndexBuildName = McpGatewayToolSet.CreateToolName(
+            toolIndexBuildToolName,
+            McpGatewayToolSet.DefaultToolIndexBuildToolName,
+            reservedNames
+        );
+        var graphSearchName = McpGatewayToolSet.CreateToolName(
+            graphSearchToolName,
+            McpGatewayToolSet.DefaultGraphSearchToolName,
+            reservedNames
+        );
+        var graphFederatedSearchName = McpGatewayToolSet.CreateToolName(
+            graphFederatedSearchToolName,
+            McpGatewayToolSet.DefaultGraphFederatedSearchToolName,
+            reservedNames
+        );
+        var graphExportName = McpGatewayToolSet.CreateToolName(
+            graphExportToolName,
+            McpGatewayToolSet.DefaultGraphExportToolName,
+            reservedNames
+        );
 
         var graphSchemaTool = AIFunctionFactory.Create(
             DescribeGraphSchemaAsync,
             new AIFunctionFactoryOptions
             {
-                Name = graphSchemaToolName,
+                Name = graphSchemaName,
                 Description = McpGatewayToolSet.GraphSchemaToolDescription,
             }
         );
@@ -42,7 +68,7 @@ internal sealed class McpGatewayGraphToolFactory
             BuildToolIndexAsync,
             new AIFunctionFactoryOptions
             {
-                Name = toolIndexBuildToolName,
+                Name = toolIndexBuildName,
                 Description = McpGatewayToolSet.ToolIndexBuildToolDescription,
             }
         );
@@ -51,7 +77,7 @@ internal sealed class McpGatewayGraphToolFactory
             SchemaGraphSearchAsync,
             new AIFunctionFactoryOptions
             {
-                Name = graphSearchToolName,
+                Name = graphSearchName,
                 Description = McpGatewayToolSet.GraphSearchToolDescription,
             }
         );
@@ -60,7 +86,7 @@ internal sealed class McpGatewayGraphToolFactory
             FederatedGraphSearchAsync,
             new AIFunctionFactoryOptions
             {
-                Name = graphFederatedSearchToolName,
+                Name = graphFederatedSearchName,
                 Description = McpGatewayToolSet.GraphFederatedSearchToolDescription,
             }
         );
@@ -69,7 +95,7 @@ internal sealed class McpGatewayGraphToolFactory
             ExportGraphAsync,
             new AIFunctionFactoryOptions
             {
-                Name = graphExportToolName,
+                Name = graphExportName,
                 Description = McpGatewayToolSet.GraphExportToolDescription,
             }
         );
@@ -100,6 +126,12 @@ internal sealed class McpGatewayGraphToolFactory
         foreach (var tool in targetTools)
         {
             toolNames.Add(tool.Name);
+            toolNames.Add(
+                McpGatewayToolSet.NormalizeToolName(
+                    tool.Name,
+                    McpGatewayToolSet.DefaultGraphSearchToolName
+                )
+            );
         }
 
         foreach (

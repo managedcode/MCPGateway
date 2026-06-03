@@ -213,7 +213,10 @@ internal sealed partial class McpGatewayRuntime
             }
 
             var toolName = loadedTool.Tool.Name.Trim();
-            var normalizedToolName = McpGatewayProtocolName.Normalize(toolName, "gateway_tool");
+            var normalizedToolName = McpGatewayProtocolName.Normalize(
+                toolName,
+                McpGatewayProtocolName.DefaultToolName
+            );
             var requiresSourcePrefix =
                 normalizedToolNameCounts.TryGetValue(normalizedToolName, out var count)
                 && count > 1;
@@ -269,7 +272,7 @@ internal sealed partial class McpGatewayRuntime
 
                 var normalizedToolName = McpGatewayProtocolName.Normalize(
                     loadedTool.Tool.Name,
-                    "gateway_tool"
+                    McpGatewayProtocolName.DefaultToolName
                 );
                 counts[normalizedToolName] = counts.GetValueOrDefault(normalizedToolName) + 1;
             }

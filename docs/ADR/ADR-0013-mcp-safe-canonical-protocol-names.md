@@ -18,6 +18,8 @@ Gateway-owned protocol names use one canonical lowercase MCP-safe identity.
 - Unique tools use the normalized upstream tool name, for example `notion-fetch`.
 - Colliding normalized tool names receive deterministic source-qualified safe ids, for example `docs_search_repository`.
 - Exact duplicate source/tool pairs receive a deterministic suffix instead of being skipped.
+- Hash suffixes are added only when length or collision handling requires them; normal short names such as `notion-fetch` remain unchanged.
+- Names that exceed the bounded host limit keep a readable normalized prefix and receive a deterministic hash suffix within 64 characters instead of being blindly truncated.
 - Prompt ids and exported resource names are lowercase MCP-safe source-qualified names.
 - Gateway-owned name resolution is case-insensitive for tools, prompts, task support maps, and embedding-store lookups.
 - Raw upstream `SourceId`, tool name, prompt name, resource name, and URI remain separate routing metadata and `_meta` values.
