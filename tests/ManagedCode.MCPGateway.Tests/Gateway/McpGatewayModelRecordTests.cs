@@ -13,7 +13,7 @@ public sealed class McpGatewayModelRecordTests
             Content = new TextContentBlock { Text = "review" },
         };
         var prompt = new McpGatewayPromptResult(
-            "local:release_review",
+            "local_release_review",
             "local",
             McpGatewaySourceKind.Local,
             "release_review",
@@ -24,7 +24,7 @@ public sealed class McpGatewayModelRecordTests
             }
         );
         var embedding = new McpGatewayToolEmbedding(
-            "local:lookup",
+            "lookup",
             "local",
             "lookup",
             "hash-1",
@@ -47,14 +47,14 @@ public sealed class McpGatewayModelRecordTests
             contents
         );
 
-        await Assert.That(prompt.PromptId).IsEqualTo("local:release_review");
+        await Assert.That(prompt.PromptId).IsEqualTo("local_release_review");
         await Assert.That(prompt.SourceId).IsEqualTo("local");
         await Assert.That(prompt.SourceKind).IsEqualTo(McpGatewaySourceKind.Local);
         await Assert.That(prompt.PromptName).IsEqualTo("release_review");
         await Assert.That(prompt.Description).IsEqualTo("Builds a release review prompt.");
         await Assert.That(prompt.Messages.Count).IsEqualTo(1);
         await Assert.That(prompt.Messages[0]).IsEqualTo(message);
-        await Assert.That(embedding.ToolId).IsEqualTo("local:lookup");
+        await Assert.That(embedding.ToolId).IsEqualTo("lookup");
         await Assert.That(embedding.SourceId).IsEqualTo("local");
         await Assert.That(embedding.ToolName).IsEqualTo("lookup");
         await Assert.That(embedding.DocumentHash).IsEqualTo("hash-1");

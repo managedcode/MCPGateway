@@ -68,7 +68,7 @@ public sealed class McpGatewayInMemoryToolEmbeddingStore(IMemoryCache cache)
             Vector = [.. embedding.Vector],
         };
 
-    private static string NormalizeToolId(string toolId) => toolId.ToUpperInvariant();
+    private static string NormalizeToolId(string toolId) => toolId.ToLowerInvariant();
 
     private void SetCacheEntry(object key, McpGatewayToolEmbedding embedding)
     {

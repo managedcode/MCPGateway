@@ -36,7 +36,7 @@ public sealed partial class McpGatewaySearchTests
             .IsFalse();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
         await Assert.That(searchResult.FocusedGraphNodeCount).IsGreaterThan(0);
         await Assert.That(embeddingGenerator.Calls.Count).IsEqualTo(2);
         await Assert
@@ -77,7 +77,7 @@ public sealed partial class McpGatewaySearchTests
             .IsTrue();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
     }
 
     [TUnit.Core.Test]
@@ -106,7 +106,7 @@ public sealed partial class McpGatewaySearchTests
             .IsTrue();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:notification_activity_search");
+            .IsEqualTo("notification_activity_search");
         await Assert.That(embeddingGenerator.Calls.Count).IsEqualTo(2);
         await Assert
             .That(embeddingGenerator.Calls[1].Single())
@@ -146,29 +146,29 @@ public sealed partial class McpGatewaySearchTests
                 )
             )
             .IsTrue();
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("graph-mcp:story_item_search");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("story_item_search");
         await Assert.That(searchResult.RelatedMatches.Count).IsGreaterThan(0);
         await Assert
             .That(
                 searchResult.RelatedMatches.Any(static match =>
-                    match.ToolId == "graph-mcp:story_item_detail"
+                    match.ToolId == "story_item_detail"
                 )
                     || searchResult.NextStepMatches.Any(static match =>
-                        match.ToolId == "graph-mcp:story_item_detail"
+                        match.ToolId == "story_item_detail"
                     )
             )
             .IsTrue();
         await Assert
             .That(
                 searchResult.RelatedMatches.Any(static match =>
-                    match.ToolId == "graph-mcp:people_profile_search"
+                    match.ToolId == "people_profile_search"
                 )
             )
             .IsFalse();
         await Assert
             .That(
                 searchResult.NextStepMatches.Any(static match =>
-                    match.ToolId == "graph-mcp:people_profile_search"
+                    match.ToolId == "people_profile_search"
                 )
             )
             .IsFalse();

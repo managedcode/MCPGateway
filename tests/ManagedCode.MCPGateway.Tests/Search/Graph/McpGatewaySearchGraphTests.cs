@@ -31,7 +31,7 @@ public sealed partial class McpGatewaySearchTests
             .IsFalse();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
     }
 
     [TUnit.Core.Test]
@@ -62,7 +62,7 @@ public sealed partial class McpGatewaySearchTests
             .IsFalse();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("test-mcp:github_repository_search");
+            .IsEqualTo("github_repository_search");
     }
 
     [TUnit.Core.Test]
@@ -84,26 +84,26 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(buildResult.ToolCount).IsEqualTo(4);
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("graph-mcp:story_item_search");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("story_item_search");
         await Assert.That(searchResult.RelatedMatches.Count).IsGreaterThan(0);
         await Assert
             .That(
                 searchResult.NextStepMatches.Any(static match =>
-                    match.ToolId == "graph-mcp:story_item_detail"
+                    match.ToolId == "story_item_detail"
                 )
             )
             .IsTrue();
         await Assert
             .That(
                 searchResult.RelatedMatches.Any(static match =>
-                    match.ToolId == "graph-mcp:people_profile_search"
+                    match.ToolId == "people_profile_search"
                 )
             )
             .IsFalse();
         await Assert
             .That(
                 searchResult.NextStepMatches.Any(static match =>
-                    match.ToolId == "graph-mcp:people_profile_search"
+                    match.ToolId == "people_profile_search"
                 )
             )
             .IsFalse();
@@ -147,11 +147,11 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(buildResult.IsGraphSearchEnabled).IsTrue();
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("graph-mcp:story_item_search");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("story_item_search");
         await Assert
             .That(
                 searchResult.NextStepMatches.Any(static match =>
-                    match.ToolId == "graph-mcp:story_item_detail"
+                    match.ToolId == "story_item_detail"
                 )
             )
             .IsTrue();
@@ -195,7 +195,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("graph-mcp:story_comments_list");
+            .IsEqualTo("story_comments_list");
     }
 
     [TUnit.Core.Test]
@@ -242,7 +242,7 @@ public sealed partial class McpGatewaySearchTests
     public async Task McpGatewayMarkdownLdGraphFile_CreatesRoundTrippableGraphBundle()
     {
         var descriptor = new McpGatewayToolDescriptor(
-            "local:story_item_search",
+            "story_item_search",
             "local",
             McpGatewaySourceKind.Local,
             new Tool

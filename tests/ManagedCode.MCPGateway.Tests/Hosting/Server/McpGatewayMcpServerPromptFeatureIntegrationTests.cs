@@ -15,7 +15,7 @@ public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
         });
 
         var prompt = await gatewayServer.Client.GetPromptAsync(
-            "local:release_review_bundle",
+            "local_release_review_bundle",
             new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["repository"] = "ManagedCode/MCPGateway",
@@ -51,7 +51,7 @@ public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
         });
 
         var completion = await gatewayServer.Client.CompleteAsync(
-            new PromptReference { Name = "local:release_review_bundle" },
+            new PromptReference { Name = "local_release_review_bundle" },
             "repository",
             "Managed"
         );
@@ -93,7 +93,7 @@ public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
 
         await Assert.That(gatewayServer.Client.ServerCapabilities.Prompts?.ListChanged).IsTrue();
         await Assert
-            .That(prompts.Any(static prompt => prompt.Name == "local:hotfix_review_bundle"))
+            .That(prompts.Any(static prompt => prompt.Name == "local_hotfix_review_bundle"))
             .IsTrue();
     }
 
@@ -125,7 +125,7 @@ public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
         var prompts = await gatewayServer.Client.ListPromptsAsync();
 
         await Assert
-            .That(prompts.Any(static prompt => prompt.Name == "source-a:deployment_review_prompt"))
+            .That(prompts.Any(static prompt => prompt.Name == "source-a_deployment_review_prompt"))
             .IsTrue();
     }
 

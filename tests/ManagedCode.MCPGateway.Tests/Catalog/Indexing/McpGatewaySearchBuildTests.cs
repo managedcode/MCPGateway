@@ -185,7 +185,7 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
-    public async Task BuildIndexAsync_SkipsDuplicateToolIds()
+    public async Task BuildIndexAsync_ResolvesDuplicateToolIds()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
         {
@@ -209,8 +209,25 @@ public sealed partial class McpGatewaySearchTests
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
         var buildResult = await gateway.BuildIndexAsync();
+        var tools = await gateway.ListToolsAsync();
 
-        await Assert.That(buildResult.ToolCount).IsEqualTo(1);
+        await Assert.That(buildResult.ToolCount).IsEqualTo(2);
+        await Assert
+            .That(tools.Select(static tool => tool.ToolId).Distinct(StringComparer.Ordinal).Count())
+            .IsEqualTo(2);
+        await Assert
+            .That(tools.All(static tool => !tool.ToolId.Contains(':', StringComparison.Ordinal)))
+            .IsTrue();
+        await Assert
+            .That(
+                tools.All(static tool =>
+                    tool.ToolId.StartsWith(
+                        "local_github_search_issues",
+                        StringComparison.Ordinal
+                    )
+                )
+            )
+            .IsTrue();
         await Assert
             .That(
                 buildResult.Diagnostics.Any(static diagnostic =>
@@ -445,7 +462,7 @@ public sealed partial class McpGatewaySearchTests
             .That(typeof(IMcpGatewayRegistry).IsAssignableFrom(gateway.GetType()))
             .IsFalse();
         await Assert.That(tools.Count).IsEqualTo(1);
-        await Assert.That(tools.Single().ToolId).IsEqualTo("local:weather_search_forecast");
+        await Assert.That(tools.Single().ToolId).IsEqualTo("weather_search_forecast");
     }
 
     [TUnit.Core.Test]
@@ -654,7 +671,7 @@ public sealed partial class McpGatewaySearchTests
 
         var tools = await gateway.ListToolsAsync();
         var descriptor = tools.Single(static tool =>
-            tool.ToolId == "test-mcp:github_repository_search"
+            tool.ToolId == "github_repository_search"
         );
 
         await Assert.That(descriptor.InputSchema.ValueKind).IsEqualTo(JsonValueKind.Object);
@@ -679,10 +696,10 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(tools.Count).IsEqualTo(2);
         await Assert
-            .That(tools.Any(static tool => tool.ToolId == "local:github_search_issues"))
+            .That(tools.Any(static tool => tool.ToolId == "github_search_issues"))
             .IsTrue();
         await Assert
-            .That(tools.Any(static tool => tool.ToolId == "local:weather_search_forecast"))
+            .That(tools.Any(static tool => tool.ToolId == "weather_search_forecast"))
             .IsTrue();
     }
 

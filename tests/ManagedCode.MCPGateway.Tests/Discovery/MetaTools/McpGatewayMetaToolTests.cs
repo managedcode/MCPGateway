@@ -59,7 +59,7 @@ public sealed class McpGatewayMetaToolTests
         await Assert.That(matches[0].ValueKind).IsEqualTo(JsonValueKind.Object);
         await Assert
             .That(GetJsonProperty(matches[0], "toolId").GetString())
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
     }
 
     [TUnit.Core.Test]
@@ -88,7 +88,7 @@ public sealed class McpGatewayMetaToolTests
             new AIFunctionArguments(
                 new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
                 {
-                    ["toolId"] = "local:context_summary_echo",
+                    ["toolId"] = "context_summary_echo",
                     ["query"] = "open github",
                     ["contextSummary"] = "user is on repository settings page",
                 },
@@ -186,12 +186,12 @@ public sealed class McpGatewayMetaToolTests
         var operationsTools = GetJsonProperty(categories[0], "tools");
         await Assert
             .That(GetJsonProperty(operationsTools[0], "toolId").GetString())
-            .IsEqualTo("local:incident_status_lookup");
+            .IsEqualTo("incident_status_lookup");
 
         var suggestedMatches = GetJsonProperty(routeResult, "suggestedMatches");
         await Assert
             .That(GetJsonProperty(suggestedMatches[0], "toolId").GetString())
-            .IsEqualTo("local:incident_status_lookup");
+            .IsEqualTo("incident_status_lookup");
     }
 
     [TUnit.Core.Test]
@@ -291,7 +291,7 @@ public sealed class McpGatewayMetaToolTests
         var operationsTools = GetJsonProperty(categories[0], "tools");
         await Assert
             .That(GetJsonProperty(operationsTools[0], "toolId").GetString())
-            .IsEqualTo("local:incident_create_bridge");
+            .IsEqualTo("incident_create_bridge");
         await Assert
             .That(GetJsonProperty(operationsTools[0], "isEnabledByDefault").GetBoolean())
             .IsFalse();
@@ -299,7 +299,7 @@ public sealed class McpGatewayMetaToolTests
         var suggestedMatches = GetJsonProperty(routeResult, "suggestedMatches");
         await Assert
             .That(GetJsonProperty(suggestedMatches[0], "toolId").GetString())
-            .IsEqualTo("local:incident_create_bridge");
+            .IsEqualTo("incident_create_bridge");
     }
 
     private static AIFunction GetFunction(IReadOnlyList<AITool> tools, string toolName) =>

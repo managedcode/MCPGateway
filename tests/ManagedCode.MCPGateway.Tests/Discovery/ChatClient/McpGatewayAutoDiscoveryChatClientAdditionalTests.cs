@@ -132,18 +132,18 @@ public sealed class McpGatewayAutoDiscoveryChatClientAdditionalTests
             options => options.MaxDiscoveredTools = 5
         );
         var searchResult = new McpGatewaySearchResult(
-            [CreateSearchMatch("local:story_item_search", "story_item_search")],
+            [CreateSearchMatch("story_item_search", "story_item_search")],
             [],
             "graph"
         )
         {
             RelatedMatches =
             [
-                CreateSearchMatch("local:story_comments_list", "story_comments_list"),
+                CreateSearchMatch("story_comments_list", "story_comments_list"),
             ],
             NextStepMatches =
             [
-                CreateSearchMatch("local:people_profile_search", "people_profile_search"),
+                CreateSearchMatch("people_profile_search", "people_profile_search"),
             ],
         };
 

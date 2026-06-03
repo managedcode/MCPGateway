@@ -31,7 +31,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
 
         var baselineDisposeCount = Volatile.Read(ref disposeCount);
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"isolated:{TestMcpTaskFeatureServerHost.RequiredToolName}",
+            TestMcpTaskFeatureServerHost.RequiredToolName,
             new Dictionary<string, object?> { ["value"] = "alpha" }
         );
 
@@ -76,7 +76,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
         );
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"isolated:{LocalCancellableTaskToolName}",
+            LocalCancellableTaskToolName,
             new Dictionary<string, object?> { ["value"] = "beta" }
         );
         var initialDisposeCount = Volatile.Read(ref disposeCount);
@@ -118,7 +118,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
         );
 
         _ = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"isolated:{LocalCancellableTaskToolName}",
+            LocalCancellableTaskToolName,
             new Dictionary<string, object?> { ["value"] = "gamma" }
         );
         var initialDisposeCount = Volatile.Read(ref disposeCount);

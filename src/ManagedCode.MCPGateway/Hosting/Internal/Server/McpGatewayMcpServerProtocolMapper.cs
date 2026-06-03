@@ -325,9 +325,10 @@ internal static class McpGatewayMcpServerProtocolMapper
         string resourceName,
         string fallbackValue
     ) =>
-        string.IsNullOrWhiteSpace(resourceName)
-            ? $"{sourceId}:{fallbackValue}"
-            : $"{sourceId}:{resourceName}";
+        McpGatewayProtocolName.CreateSourceQualifiedName(
+            sourceId,
+            string.IsNullOrWhiteSpace(resourceName) ? fallbackValue : resourceName
+        );
 
     private static JsonObject CreateResourceContentMeta(
         JsonObject? upstreamMeta,

@@ -21,7 +21,7 @@ internal sealed class MultiGatewayHttpHost(
 ) : IAsyncDisposable
 {
     public const string SharedToolName = "resolve_gateway_identity";
-    public const string ExportedSharedToolName = $"local:{SharedToolName}";
+    public const string ExportedSharedToolName = SharedToolName;
     private const string AuthenticationScheme = "TestGatewayBearer";
     private const string GatewayClaimType = "mcp-gateway";
 

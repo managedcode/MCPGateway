@@ -65,9 +65,7 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
         });
 
         var tools = await gatewayServer.Client.ListToolsAsync();
-        var tool = tools.Single(static candidate =>
-            candidate.Name == "local-ops:incident_status_lookup"
-        );
+        var tool = tools.Single(static candidate => candidate.Name == "incident_status_lookup");
 
         await Assert.That(tool.ProtocolTool?.Annotations?.ReadOnlyHint).IsTrue();
         await Assert.That(tool.ProtocolTool?.Annotations?.IdempotentHint).IsTrue();
@@ -106,7 +104,7 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
 
         var resources = await gatewayServer.Client.ListResourcesAsync();
         var resource = resources.Single(static candidate =>
-            candidate.Name == "source-a:repository_overview"
+            candidate.Name == "source-a_repository_overview"
         );
 
         await Assert.That(resource.Uri).IsNotEqualTo("docs://repository/overview");
@@ -150,9 +148,9 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
         var readOnlyTool = tools
             .Where(static tool => tool.ProtocolTool?.Annotations?.ReadOnlyHint == true)
             .OrderBy(static tool => tool.Name, StringComparer.OrdinalIgnoreCase)
-            .First(static tool => tool.Name == "local-ops:incident_status_lookup");
+            .First(static tool => tool.Name == "incident_status_lookup");
         var upstreamTool = tools.Single(static tool =>
-            tool.Name == "source-a:github_repository_search"
+            tool.Name == "github_repository_search"
         );
 
         var localResult = await gatewayServer.Client.CallToolAsync(
@@ -165,7 +163,7 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
         );
         var prompts = await gatewayServer.Client.ListPromptsAsync();
         var prompt = await gatewayServer.Client.GetPromptAsync(
-            "source-a:repository_triage_system_prompt",
+            "source-a_repository_triage_system_prompt",
             new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["repository"] = "ManagedCode/MCPGateway",
@@ -173,7 +171,7 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
         );
         var resources = await gatewayServer.Client.ListResourcesAsync();
         var repositoryOverview = resources.Single(static resource =>
-            resource.Name == "source-a:repository_overview"
+            resource.Name == "source-a_repository_overview"
         );
         var resourceRead = await gatewayServer.Client.ReadResourceAsync(repositoryOverview.Uri);
 
@@ -187,7 +185,7 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
         await Assert
             .That(
                 prompts.Any(static candidate =>
-                    candidate.Name == "source-a:repository_triage_system_prompt"
+                    candidate.Name == "source-a_repository_triage_system_prompt"
                 )
             )
             .IsTrue();
@@ -248,9 +246,7 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
         });
 
         var tools = await gatewayServer.Client.ListToolsAsync();
-        var planTool = tools.Single(static tool =>
-            tool.Name == "local-ops:incident_plan_mitigation"
-        );
+        var planTool = tools.Single(static tool => tool.Name == "incident_plan_mitigation");
         var requiredArguments = planTool
             .ProtocolTool!.InputSchema.GetProperty("required")
             .EnumerateArray()
@@ -270,15 +266,15 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
             }
         );
         var deploymentResult = await gatewayServer.Client.CallToolAsync(
-            "ops:deployment_status_lookup",
+            "deployment_status_lookup",
             new Dictionary<string, object?>(StringComparer.Ordinal) { ["environment"] = "prod-eu" }
         );
         var deploymentPrompt = await gatewayServer.Client.GetPromptAsync(
-            "ops:deployment_review_system_prompt",
+            "ops_deployment_review_system_prompt",
             new Dictionary<string, object?>(StringComparer.Ordinal) { ["environment"] = "prod-eu" }
         );
         var repositoryPrompt = await gatewayServer.Client.GetPromptAsync(
-            "repo:repository_triage_system_prompt",
+            "repo_repository_triage_system_prompt",
             new Dictionary<string, object?>(StringComparer.Ordinal)
             {
                 ["repository"] = "ManagedCode/MCPGateway",
@@ -336,7 +332,7 @@ public sealed class McpGatewayMcpServerAdvancedIntegrationTests
             coordination = new
             {
                 chatChannel = $"incidents-{incidentId}",
-                reviewPrompt = "ops:deployment_review_system_prompt",
+                reviewPrompt = "ops_deployment_review_system_prompt",
             },
         };
 }

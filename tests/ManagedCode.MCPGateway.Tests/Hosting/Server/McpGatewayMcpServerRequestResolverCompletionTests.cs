@@ -14,7 +14,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         var (_, binding) = CreateResolverContext(
             promptDescriptors:
             [
-                CreatePromptDescriptor("alpha:release_review", "alpha", "release_review"),
+                CreatePromptDescriptor("alpha_release_review", "alpha", "release_review"),
             ],
             resourceDescriptors:
             [
@@ -29,7 +29,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
 
         var promptCompletion = await McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(
             binding,
-            new PromptReference { Name = "alpha:release_review", Title = "Release review" },
+            new PromptReference { Name = "ALPHA_RELEASE_REVIEW", Title = "Release review" },
             CancellationToken.None
         );
         var resourceCompletion = await McpGatewayMcpServerRequestResolver.ResolveCompletionAsync(

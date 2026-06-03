@@ -12,7 +12,7 @@ public sealed class McpGatewayDiscoveredToolTests
 
         var discoveredTools = toolSet.CreateDiscoveredTools([
             new McpGatewaySearchMatch(
-                ToolId: "local:incident_status_lookup",
+                ToolId: "incident_status_lookup",
                 SourceId: "ops",
                 SourceKind: McpGatewaySourceKind.Local,
                 ToolName: "incident_status_lookup",
@@ -45,14 +45,14 @@ public sealed class McpGatewayDiscoveredToolTests
     }
 
     [TUnit.Core.Test]
-    public async Task CreateDiscoveredTools_PrefixesNamesThatStartWithDigits()
+    public async Task CreateDiscoveredTools_AllowsNamesThatStartWithDigits()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(static _ => { });
         var toolSet = serviceProvider.GetRequiredService<McpGatewayToolSet>();
 
         var discoveredTools = toolSet.CreateDiscoveredTools([
             new McpGatewaySearchMatch(
-                ToolId: "local:123-tool",
+                ToolId: "123-tool",
                 SourceId: "9-source",
                 SourceKind: McpGatewaySourceKind.Local,
                 ToolName: "123 tool",
@@ -65,6 +65,6 @@ public sealed class McpGatewayDiscoveredToolTests
         ]);
 
         await Assert.That(discoveredTools.Count).IsEqualTo(1);
-        await Assert.That(discoveredTools[0].Name).IsEqualTo("t_123_tool");
+        await Assert.That(discoveredTools[0].Name).IsEqualTo("123_tool");
     }
 }

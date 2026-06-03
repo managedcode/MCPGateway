@@ -22,9 +22,9 @@ public sealed class McpGatewayMcpServerIntegrationTests
         await Assert.That(gatewayServer.Client.ServerCapabilities.Tools).IsNotNull();
         await Assert.That(tools.Count).IsEqualTo(9);
         await Assert
-            .That(tools.Any(static tool => tool.Name == "source-a:github_repository_search"))
+            .That(tools.Any(static tool => tool.Name == "github_repository_search"))
             .IsTrue();
-        var structuredTool = tools.Single(static tool => tool.Name == "source-a:github_repository_search");
+        var structuredTool = tools.Single(static tool => tool.Name == "github_repository_search");
         await Assert.That(structuredTool.ProtocolTool.OutputSchema?.GetProperty("type").GetString())
             .IsEqualTo("object");
         await Assert.That(structuredTool.ProtocolTool.Meta?["vendor"]!.GetValue<string>())
@@ -32,10 +32,10 @@ public sealed class McpGatewayMcpServerIntegrationTests
         await Assert.That(structuredTool.ProtocolTool.Meta?["sourceId"]!.GetValue<string>())
             .IsEqualTo("source-a");
         await Assert
-            .That(tools.Any(static tool => tool.Name == "source-b:story_item_detail"))
+            .That(tools.Any(static tool => tool.Name == "story_item_detail"))
             .IsTrue();
         await Assert
-            .That(tools.Any(static tool => tool.Name == "source-c:incident_status_lookup"))
+            .That(tools.Any(static tool => tool.Name == "incident_status_lookup"))
             .IsTrue();
     }
 
@@ -53,7 +53,7 @@ public sealed class McpGatewayMcpServerIntegrationTests
         });
 
         var result = await gatewayServer.Client.CallToolAsync(
-            "source-a:plain_text_search",
+            "plain_text_search",
             new Dictionary<string, object?>(StringComparer.Ordinal) { ["query"] = "hello" }
         );
 
@@ -77,7 +77,7 @@ public sealed class McpGatewayMcpServerIntegrationTests
         });
 
         var result = await gatewayServer.Client.CallToolAsync(
-            "source-b:story_item_detail",
+            "story_item_detail",
             new Dictionary<string, object?>(StringComparer.Ordinal) { ["storyId"] = "story-42" }
         );
 
@@ -107,19 +107,19 @@ public sealed class McpGatewayMcpServerIntegrationTests
         await Assert
             .That(
                 prompts.Any(static prompt =>
-                    prompt.Name == "source-a:repository_triage_system_prompt"
+                    prompt.Name == "source-a_repository_triage_system_prompt"
                 )
             )
             .IsTrue();
         await Assert
             .That(
-                prompts.Any(static prompt => prompt.Name == "source-b:story_triage_system_prompt")
+                prompts.Any(static prompt => prompt.Name == "source-b_story_triage_system_prompt")
             )
             .IsTrue();
         await Assert
             .That(
                 prompts.Any(static prompt =>
-                    prompt.Name == "source-c:deployment_review_system_prompt"
+                    prompt.Name == "source-c_deployment_review_system_prompt"
                 )
             )
             .IsTrue();
@@ -139,7 +139,7 @@ public sealed class McpGatewayMcpServerIntegrationTests
         });
 
         var prompt = await gatewayServer.Client.GetPromptAsync(
-            "source-c:deployment_review_system_prompt",
+            "source-c_deployment_review_system_prompt",
             new Dictionary<string, object?>(StringComparer.Ordinal) { ["environment"] = "prod" }
         );
 
@@ -166,13 +166,13 @@ public sealed class McpGatewayMcpServerIntegrationTests
         await Assert.That(gatewayServer.Client.ServerCapabilities.Resources).IsNotNull();
         await Assert.That(resources.Count).IsEqualTo(3);
         await Assert
-            .That(resources.Any(static resource => resource.Name == "source-a:repository_overview"))
+            .That(resources.Any(static resource => resource.Name == "source-a_repository_overview"))
             .IsTrue();
         await Assert
-            .That(resources.Any(static resource => resource.Name == "source-a:repository_archive"))
+            .That(resources.Any(static resource => resource.Name == "source-a_repository_archive"))
             .IsTrue();
         await Assert
-            .That(resources.Any(static resource => resource.Name == "source-c:deployment_summary"))
+            .That(resources.Any(static resource => resource.Name == "source-c_deployment_summary"))
             .IsTrue();
     }
 
@@ -193,13 +193,13 @@ public sealed class McpGatewayMcpServerIntegrationTests
 
         await Assert.That(templates.Count).IsEqualTo(3);
         await Assert
-            .That(templates.Any(static template => template.Name == "source-a:issue_detail"))
+            .That(templates.Any(static template => template.Name == "source-a_issue_detail"))
             .IsTrue();
         await Assert
-            .That(templates.Any(static template => template.Name == "source-b:story_context"))
+            .That(templates.Any(static template => template.Name == "source-b_story_context"))
             .IsTrue();
         await Assert
-            .That(templates.Any(static template => template.Name == "source-c:runbook_detail"))
+            .That(templates.Any(static template => template.Name == "source-c_runbook_detail"))
             .IsTrue();
     }
 
@@ -213,7 +213,7 @@ public sealed class McpGatewayMcpServerIntegrationTests
         });
 
         var resource = (await gatewayServer.Client.ListResourcesAsync()).Single(static candidate =>
-            candidate.Name == "source-a:repository_archive"
+            candidate.Name == "source-a_repository_archive"
         );
         var readResult = await gatewayServer.Client.ReadResourceAsync(resource.Uri);
 
@@ -234,7 +234,7 @@ public sealed class McpGatewayMcpServerIntegrationTests
         });
 
         var template = (await gatewayServer.Client.ListResourceTemplatesAsync()).Single(
-            static candidate => candidate.Name == "source-a:issue_detail"
+            static candidate => candidate.Name == "source-a_issue_detail"
         );
         var readResult = await gatewayServer.Client.ReadResourceAsync(
             template.UriTemplate,

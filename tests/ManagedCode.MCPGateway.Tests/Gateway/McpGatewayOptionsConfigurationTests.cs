@@ -130,7 +130,7 @@ public sealed class McpGatewayOptionsConfigurationTests
             await options.MarkdownLdGraphDocumentFactory!(
                 [
                     new McpGatewayToolDescriptor(
-                        "local:lookup",
+                        "lookup",
                         "local",
                         McpGatewaySourceKind.Local,
                         new Tool

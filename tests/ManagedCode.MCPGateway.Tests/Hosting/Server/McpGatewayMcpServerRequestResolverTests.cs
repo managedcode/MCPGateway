@@ -25,8 +25,8 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         var (resolver, binding) = CreateResolverContext(
             toolDescriptors:
             [
-                CreateToolDescriptor("alpha:shared_tool", "alpha", "shared_tool"),
-                CreateToolDescriptor("beta:shared_tool", "beta", "shared_tool"),
+                CreateToolDescriptor("alpha_shared_tool", "alpha", "shared_tool"),
+                CreateToolDescriptor("beta_shared_tool", "beta", "shared_tool"),
             ],
             registrations: [alphaRegistration, betaRegistration]
         );
@@ -35,7 +35,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         var unknown = await resolver.ResolveToolAsync(binding, "missing", CancellationToken.None);
         var resolved = await resolver.ResolveToolAsync(
             binding,
-            "alpha:shared_tool",
+            "ALPHA_SHARED_TOOL",
             CancellationToken.None
         );
         var exception = await CaptureAsync(() =>
@@ -45,7 +45,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         await Assert.That(blank).IsNull();
         await Assert.That(unknown).IsNull();
         await Assert.That(resolved).IsNotNull();
-        await Assert.That(resolved!.ToolId).IsEqualTo("alpha:shared_tool");
+        await Assert.That(resolved!.ToolId).IsEqualTo("alpha_shared_tool");
         await Assert.That(resolved.TaskSupport).IsEqualTo(ToolTaskSupport.Optional);
         await Assert.That(exception).IsNotNull();
         await Assert.That(exception!.Message).Contains("ambiguous");
@@ -61,9 +61,9 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         var (resolver, binding) = CreateResolverContext(
             toolDescriptors:
             [
-                CreateToolDescriptor("alpha:known_tool", "alpha", "known_tool"),
-                CreateToolDescriptor("alpha:missing_tool", "alpha", "missing_tool"),
-                CreateToolDescriptor("beta:other_tool", "beta", "other_tool"),
+                CreateToolDescriptor("known_tool", "alpha", "known_tool"),
+                CreateToolDescriptor("missing_tool", "alpha", "missing_tool"),
+                CreateToolDescriptor("other_tool", "beta", "other_tool"),
             ],
             registrations: [alphaRegistration]
         );
@@ -71,11 +71,9 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         var supports = await resolver.LoadToolTaskSupportsAsync(binding, CancellationToken.None);
 
         await Assert.That(supports.Count).IsEqualTo(2);
-        await Assert.That(supports["alpha:known_tool"]).IsEqualTo(ToolTaskSupport.Required);
-        await Assert.That(supports["alpha:missing_tool"]).IsNull();
-        await Assert
-            .That(supports.ContainsKey("beta:other_tool"))
-            .IsFalse();
+        await Assert.That(supports["KNOWN_TOOL"]).IsEqualTo(ToolTaskSupport.Required);
+        await Assert.That(supports["missing_tool"]).IsNull();
+        await Assert.That(supports.ContainsKey("other_tool")).IsFalse();
     }
 
     [Test]
@@ -86,16 +84,16 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         var (resolver, binding) = CreateResolverContext(
             promptDescriptors:
             [
-                CreatePromptDescriptor("alpha:release_review", "alpha", "release_review"),
-                CreatePromptDescriptor("beta:release_review", "beta", "release_review"),
-                CreatePromptDescriptor("gamma:missing", "gamma", "missing"),
+                CreatePromptDescriptor("alpha_release_review", "alpha", "release_review"),
+                CreatePromptDescriptor("beta_release_review", "beta", "release_review"),
+                CreatePromptDescriptor("gamma_missing", "gamma", "missing"),
             ],
             registrations: [alphaRegistration, betaRegistration]
         );
 
         var byId = await McpGatewayMcpServerRequestResolver.ResolvePromptAsync(
             binding,
-            "alpha:release_review",
+            "ALPHA_RELEASE_REVIEW",
             CancellationToken.None
         );
         var blank = await McpGatewayMcpServerRequestResolver.ResolvePromptAsync(
@@ -105,7 +103,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         );
         var missingRegistration = await McpGatewayMcpServerRequestResolver.ResolvePromptAsync(
             binding,
-            "gamma:missing",
+            "gamma_missing",
             CancellationToken.None
         );
         var exception = await CaptureAsync(() =>

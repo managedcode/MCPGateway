@@ -20,7 +20,7 @@ public sealed partial class McpGatewayInvocationTests
 
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
-                ToolId: "test-mcp:github_repository_search",
+                ToolId: "github_repository_search",
                 Query: "managedcode"
             )
         );
@@ -47,7 +47,7 @@ public sealed partial class McpGatewayInvocationTests
 
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
-                ToolId: "test-mcp:github_repository_search",
+                ToolId: "github_repository_search",
                 Query: "managedcode",
                 ContextSummary: "user is on repository settings page",
                 Context: new Dictionary<string, object?>
@@ -95,7 +95,7 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
-                ToolId: "test-mcp:github_repository_search",
+                ToolId: "github_repository_search",
                 Query: "managedcode",
                 Context: new Dictionary<string, object?> { ["broken"] = cyclicContext }
             )
@@ -127,7 +127,7 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var invokeResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "test-mcp:json_text_search", Query: "managedcode")
+            new McpGatewayInvokeRequest(ToolId: "json_text_search", Query: "managedcode")
         );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
@@ -151,7 +151,7 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var invokeResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "test-mcp:plain_text_search", Query: "managedcode")
+            new McpGatewayInvokeRequest(ToolId: "plain_text_search", Query: "managedcode")
         );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();

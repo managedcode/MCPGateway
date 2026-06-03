@@ -36,7 +36,7 @@ public sealed class McpGatewayResourceTemplateUrlTests
         );
 
         var resource = (await gatewayServer.Client.ListResourcesAsync()).Single(static candidate =>
-            candidate.Name == "source-a:file_detail"
+            candidate.Name == "source-a_file_detail"
         );
         var readResult = await gatewayServer.Client.ReadResourceAsync(resource.Uri);
         var content = (TextResourceContents)readResult.Contents.Single();
@@ -85,7 +85,7 @@ public sealed class McpGatewayResourceTemplateUrlTests
         );
 
         var template = (await gatewayServer.Client.ListResourceTemplatesAsync()).Single(
-            static candidate => candidate.Name == "source-a:file_detail"
+            static candidate => candidate.Name == "source-a_file_detail"
         );
 
         await Assert.That(template.UriTemplate).StartsWith("mcpgw-");

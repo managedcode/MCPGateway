@@ -157,7 +157,11 @@ internal sealed class McpGatewayPromptCatalog(
             .ToList();
 
         return new McpGatewayPromptDescriptor(
-            PromptId: $"{registration.SourceId}:{protocolPrompt.Name}",
+            PromptId: McpGatewayProtocolName.CreateSourceQualifiedName(
+                registration.SourceId,
+                protocolPrompt.Name,
+                "prompt"
+            ),
             SourceId: registration.SourceId,
             SourceKind: McpGatewaySourceKindMapper.Map(registration.Kind),
             ProtocolPrompt: protocolPrompt
@@ -185,7 +189,11 @@ internal sealed class McpGatewayPromptCatalog(
         }
 
         return new McpGatewayPromptResult(
-            PromptId: $"{sourceId}:{promptName}",
+            PromptId: McpGatewayProtocolName.CreateSourceQualifiedName(
+                sourceId,
+                promptName,
+                "prompt"
+            ),
             SourceId: sourceId,
             SourceKind: McpGatewaySourceKindMapper.Map(sourceKind),
             PromptName: promptName,

@@ -55,7 +55,7 @@ internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFa
         var descriptors = await binding.Gateway.ListToolsAsync(cancellationToken);
 
         var exportedMatch = descriptors.FirstOrDefault(candidate =>
-            string.Equals(candidate.ToolId, requestedToolName, StringComparison.Ordinal)
+            string.Equals(candidate.ToolId, requestedToolName, StringComparison.OrdinalIgnoreCase)
         );
         if (exportedMatch is not null)
         {
@@ -64,7 +64,7 @@ internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFa
 
         var toolNameMatches = descriptors
             .Where(candidate =>
-            string.Equals(candidate.ToolName, requestedToolName, StringComparison.Ordinal)
+                string.Equals(candidate.ToolName, requestedToolName, StringComparison.OrdinalIgnoreCase)
             )
             .ToList();
 
@@ -88,7 +88,7 @@ internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFa
         var descriptors = await binding.Gateway.ListToolsAsync(cancellationToken);
         var supports = new Dictionary<string, ToolTaskSupport?>(
             descriptors.Count,
-            StringComparer.Ordinal
+            StringComparer.OrdinalIgnoreCase
         );
 
         foreach (var descriptor in descriptors)
@@ -128,7 +128,7 @@ internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFa
         var descriptors = await binding.PromptCatalog.ListPromptsAsync(cancellationToken);
 
         var exportedMatch = descriptors.FirstOrDefault(candidate =>
-            string.Equals(candidate.PromptId, requestedPromptName, StringComparison.Ordinal)
+            string.Equals(candidate.PromptId, requestedPromptName, StringComparison.OrdinalIgnoreCase)
         );
         if (exportedMatch is not null)
         {
@@ -142,7 +142,7 @@ internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFa
 
         var promptNameMatches = descriptors
             .Where(candidate =>
-                string.Equals(candidate.PromptName, requestedPromptName, StringComparison.Ordinal)
+                string.Equals(candidate.PromptName, requestedPromptName, StringComparison.OrdinalIgnoreCase)
             )
             .ToList();
 

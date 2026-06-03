@@ -141,12 +141,28 @@ internal sealed partial class McpGatewayRuntime
     )
     {
         var entries = new List<ToolCatalogEntry>();
-        var seenToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var reservedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var loadedRegistrations =
+            new List<(McpGatewayToolSourceRegistration Registration, IReadOnlyList<McpGatewayLoadedTool> Tools)>();
 
         foreach (var registration in registrySnapshot.Registrations)
         {
             var tools = await LoadRegistrationToolsAsync(registration, diagnostics, cancellationToken);
-            AddCatalogEntries(entries, seenToolIds, registration, tools, diagnostics);
+            loadedRegistrations.Add((registration, tools));
+        }
+
+        var normalizedToolNameCounts = CountNormalizedToolNames(loadedRegistrations);
+
+        foreach (var (registration, tools) in loadedRegistrations)
+        {
+            AddCatalogEntries(
+                entries,
+                reservedToolIds,
+                normalizedToolNameCounts,
+                registration,
+                tools,
+                diagnostics
+            );
         }
 
         return entries;
@@ -182,7 +198,8 @@ internal sealed partial class McpGatewayRuntime
 
     private void AddCatalogEntries(
         ICollection<ToolCatalogEntry> entries,
-        ISet<string> seenToolIds,
+        ISet<string> reservedToolIds,
+        IReadOnlyDictionary<string, int> normalizedToolNameCounts,
         McpGatewayToolSourceRegistration registration,
         IReadOnlyList<McpGatewayLoadedTool> tools,
         IList<McpGatewayDiagnostic> diagnostics
@@ -190,13 +207,25 @@ internal sealed partial class McpGatewayRuntime
     {
         foreach (var loadedTool in tools)
         {
-            var descriptor = BuildDescriptor(registration, loadedTool);
-            if (descriptor is null)
+            if (string.IsNullOrWhiteSpace(loadedTool.Tool.Name))
             {
                 continue;
             }
 
-            if (!seenToolIds.Add(descriptor.ToolId))
+            var toolName = loadedTool.Tool.Name.Trim();
+            var normalizedToolName = McpGatewayProtocolName.Normalize(toolName, "gateway_tool");
+            var requiresSourcePrefix =
+                normalizedToolNameCounts.TryGetValue(normalizedToolName, out var count)
+                && count > 1;
+            var toolId = McpGatewayProtocolName.CreateToolId(
+                registration.SourceId,
+                toolName,
+                reservedToolIds,
+                requiresSourcePrefix
+            );
+            var descriptor = BuildDescriptor(registration, loadedTool, toolName, toolId);
+
+            if (requiresSourcePrefix)
             {
                 diagnostics.Add(
                     new McpGatewayDiagnostic(
@@ -204,11 +233,10 @@ internal sealed partial class McpGatewayRuntime
                         string.Format(
                             CultureInfo.InvariantCulture,
                             DuplicateToolIdMessageFormat,
-                            descriptor.ToolId
+                            normalizedToolName
                         )
                     )
                 );
-                continue;
             }
 
             var document = BuildDescriptorDocument(descriptor);
@@ -223,6 +251,31 @@ internal sealed partial class McpGatewayRuntime
                 )
             );
         }
+    }
+
+    private static IReadOnlyDictionary<string, int> CountNormalizedToolNames(
+        IReadOnlyList<(McpGatewayToolSourceRegistration Registration, IReadOnlyList<McpGatewayLoadedTool> Tools)> loadedRegistrations
+    )
+    {
+        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (_, tools) in loadedRegistrations)
+        {
+            foreach (var loadedTool in tools)
+            {
+                if (string.IsNullOrWhiteSpace(loadedTool.Tool.Name))
+                {
+                    continue;
+                }
+
+                var normalizedToolName = McpGatewayProtocolName.Normalize(
+                    loadedTool.Tool.Name,
+                    "gateway_tool"
+                );
+                counts[normalizedToolName] = counts.GetValueOrDefault(normalizedToolName) + 1;
+            }
+        }
+
+        return counts;
     }
 
     private async Task<VectorizationOutcome> VectorizeEntriesAsync(

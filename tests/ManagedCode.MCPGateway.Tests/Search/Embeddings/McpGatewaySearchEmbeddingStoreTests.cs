@@ -128,7 +128,7 @@ public sealed partial class McpGatewaySearchTests
 
         await SeedSearchEmbeddingsAsync(embeddingStore, initialEmbeddingGenerator);
 
-        embeddingStore.Remove("local:weather_search_forecast");
+        embeddingStore.Remove("weather_search_forecast");
 
         var incrementalEmbeddingGenerator = new TestEmbeddingGenerator();
         await using var incrementalServiceProvider = GatewayTestServiceProviderFactory.Create(
@@ -155,7 +155,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(embeddingStore.UpsertCalls[1].Count).IsEqualTo(1);
         await Assert
             .That(embeddingStore.UpsertCalls[1].Single().ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
     }
 
     private static async Task<McpGatewayIndexBuildResult> BuildSearchIndexAsync(

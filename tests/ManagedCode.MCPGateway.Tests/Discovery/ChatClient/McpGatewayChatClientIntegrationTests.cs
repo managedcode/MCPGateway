@@ -167,17 +167,17 @@ public sealed class McpGatewayChatClientIntegrationTests
             options => options.MaxDiscoveredTools = 4
         );
         var searchResult = new McpGatewaySearchResult(
-            [CreateSearchMatch("local:story_item_search", "story_item_search")],
+            [CreateSearchMatch("story_item_search", "story_item_search")],
             [],
             "graph"
         )
         {
             RelatedMatches =
             [
-                CreateSearchMatch("local:story_comments_list", "story_comments_list"),
-                CreateSearchMatch("local:story_item_detail", "story_item_detail"),
+                CreateSearchMatch("story_comments_list", "story_comments_list"),
+                CreateSearchMatch("story_item_detail", "story_item_detail"),
             ],
-            NextStepMatches = [CreateSearchMatch("local:story_item_detail", "story_item_detail")],
+            NextStepMatches = [CreateSearchMatch("story_item_detail", "story_item_detail")],
         };
 
         var response = await chatClient.GetResponseAsync([

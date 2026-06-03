@@ -75,7 +75,7 @@ public sealed class McpGatewaySearchMetadataTests
         );
 
         await Assert.That(searchResult.Matches.Count).IsEqualTo(1);
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:ticket_status_lookup");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("ticket_status_lookup");
         await Assert.That(searchResult.Matches[0].Categories).IsEquivalentTo(["operations"]);
         await Assert.That(searchResult.Matches[0].Tags.Contains("pagerduty")).IsTrue();
         await Assert.That(searchResult.Matches[0].UsageExamples.Count).IsEqualTo(1);
@@ -127,14 +127,14 @@ public sealed class McpGatewaySearchMetadataTests
         await Assert
             .That(
                 defaultSearchResult.Matches.Any(static match =>
-                    match.ToolId == "local:admin_user_reset_password"
+                    match.ToolId == "admin_user_reset_password"
                 )
             )
             .IsFalse();
         await Assert.That(explicitSearchResult.Matches.Count).IsEqualTo(1);
         await Assert
             .That(explicitSearchResult.Matches[0].ToolId)
-            .IsEqualTo("local:admin_user_reset_password");
+            .IsEqualTo("admin_user_reset_password");
         await Assert.That(explicitSearchResult.Matches[0].IsEnabledByDefault).IsFalse();
     }
 
@@ -201,7 +201,7 @@ public sealed class McpGatewaySearchMetadataTests
         await Assert.That(searchResult.Matches.Count).IsEqualTo(2);
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:incident_war_room_prepare");
+            .IsEqualTo("incident_war_room_prepare");
         await Assert.That(searchResult.Matches[0].Categories).IsEquivalentTo(["operations"]);
         await Assert
             .That(searchResult.Matches[0].DataSources)

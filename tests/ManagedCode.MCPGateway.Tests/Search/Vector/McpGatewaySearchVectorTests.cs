@@ -66,7 +66,7 @@ public sealed partial class McpGatewaySearchTests
         var searchResult = await gateway.SearchAsync("github pull requests", maxResults: 2);
 
         await Assert.That(searchResult.RankingMode).IsEqualTo("vector");
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("github_search_issues");
         await Assert.That(searchResult.Matches[0].Score >= searchResult.Matches[1].Score).IsTrue();
         await Assert.That(embeddingGenerator.Calls.Count).IsEqualTo(2);
         await Assert.That(embeddingGenerator.Calls[1].Single()).IsEqualTo("github pull requests");
@@ -92,7 +92,7 @@ public sealed partial class McpGatewaySearchTests
         );
 
         await Assert.That(searchResult.RankingMode).IsEqualTo("vector");
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("github_search_issues");
         await Assert
             .That(
                 embeddingGenerator
@@ -121,7 +121,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.RankingMode).IsEqualTo("vector");
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
         await Assert
             .That(embeddingGenerator.Calls[1].Single())
             .IsEqualTo("context summary: weather forecast");
@@ -154,7 +154,7 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(buildResult.IsVectorSearchEnabled).IsTrue();
         await Assert.That(searchResult.RankingMode).IsEqualTo("vector");
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("github_search_issues");
         await Assert.That(keyedEmbeddingGenerator.Calls.Count).IsEqualTo(2);
         await Assert.That(fallbackEmbeddingGenerator.Calls.Count).IsEqualTo(0);
     }
@@ -180,7 +180,7 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(buildResult.IsVectorSearchEnabled).IsTrue();
         await Assert.That(searchResult.RankingMode).IsEqualTo("vector");
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("github_search_issues");
         await Assert.That(tracker.InstanceIds.Distinct().Count()).IsEqualTo(2);
         await Assert.That(tracker.Calls.Count).IsEqualTo(2);
     }

@@ -34,9 +34,13 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         });
 
         var tools = await gatewayServer.Client.ListToolsAsync();
-        var requiredTool = tools.Single(tool => tool.Name == $"source-a:{TestMcpTaskFeatureServerHost.RequiredToolName}");
-        var optionalTool = tools.Single(tool => tool.Name == $"source-a:{TestMcpTaskFeatureServerHost.OptionalToolName}");
-        var localTool = tools.Single(tool => tool.Name == $"local:{LocalTaskToolName}");
+        var requiredTool = tools.Single(tool =>
+            tool.Name == TestMcpTaskFeatureServerHost.RequiredToolName
+        );
+        var optionalTool = tools.Single(tool =>
+            tool.Name == TestMcpTaskFeatureServerHost.OptionalToolName
+        );
+        var localTool = tools.Single(tool => tool.Name == LocalTaskToolName);
 
         await Assert.That(gatewayServer.Client.ServerCapabilities.Tasks).IsNotNull();
         await Assert.That(gatewayServer.Client.ServerCapabilities.Tasks?.Requests?.Tools?.Call).IsNotNull();
@@ -55,7 +59,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         });
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"source-a:{TestMcpTaskFeatureServerHost.RequiredToolName}",
+            TestMcpTaskFeatureServerHost.RequiredToolName,
             new Dictionary<string, object?> { ["value"] = "alpha" }
         );
 
@@ -84,7 +88,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         });
 
         var result = await gatewayServer.Client.CallToolAsync(
-            $"source-a:{TestMcpTaskFeatureServerHost.RequiredToolName}",
+            TestMcpTaskFeatureServerHost.RequiredToolName,
             new Dictionary<string, object?> { ["value"] = "alpha" }
         );
 
@@ -120,7 +124,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         );
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"source-a:{TestMcpTaskFeatureServerHost.OptionalToolName}",
+            TestMcpTaskFeatureServerHost.OptionalToolName,
             new Dictionary<string, object?> { ["value"] = "beta" }
         );
 
@@ -164,7 +168,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         );
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"{source.SourceId}:{InstantCompletedTaskToolName}",
+            InstantCompletedTaskToolName,
             new Dictionary<string, object?> { ["value"] = "race" }
         );
         var payload = await completionNotification.Task.WaitAsync(TimeSpan.FromSeconds(5));
@@ -191,7 +195,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         );
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"{source.SourceId}:{InstantCompletedTaskToolName}",
+            InstantCompletedTaskToolName,
             new Dictionary<string, object?> { ["value"] = "failure" }
         );
 
@@ -226,7 +230,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         });
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"local:{LocalCancellableTaskToolName}",
+            LocalCancellableTaskToolName,
             new Dictionary<string, object?> { ["value"] = "gamma" }
         );
 
@@ -254,7 +258,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         });
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"local:{LocalTaskToolName}",
+            LocalTaskToolName,
             new Dictionary<string, object?> { ["value"] = "delta" }
         );
         var taskResult = DeserializeToolResult(
@@ -282,7 +286,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         });
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"local:{LocalFailingTaskToolName}",
+            LocalFailingTaskToolName,
             new Dictionary<string, object?> { ["value"] = "epsilon" }
         );
         var taskResult = DeserializeToolResult(
@@ -305,7 +309,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         });
 
         var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            $"source-a:{TestMcpTaskFeatureServerHost.CancellableToolName}",
+            TestMcpTaskFeatureServerHost.CancellableToolName,
             new Dictionary<string, object?> { ["value"] = "zeta" }
         );
 

@@ -29,10 +29,10 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert
             .That(firstSearch.Matches[0].ToolId)
-            .IsEqualTo("local:notification_activity_search");
+            .IsEqualTo("notification_activity_search");
         await Assert
             .That(secondSearch.Matches[0].ToolId)
-            .IsEqualTo("local:notification_activity_search");
+            .IsEqualTo("notification_activity_search");
         await Assert.That(secondSearch.Matches.Count).IsEqualTo(2);
         await Assert.That(chatClient.Calls.Count).IsEqualTo(1);
         await Assert.That(embeddingGenerator.Calls.Count).IsEqualTo(2);
@@ -71,7 +71,7 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert
             .That(cachedSearch.Matches[0].ToolId)
-            .IsEqualTo("local:notification_activity_search");
+            .IsEqualTo("notification_activity_search");
         await Assert.That(chatClient.Calls.Count).IsEqualTo(1);
         await Assert.That(embeddingGenerator.Calls.Count).IsEqualTo(2);
 
@@ -168,7 +168,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert
             .That(
                 secondBrowse.Matches.Any(static match =>
-                    match.ToolId == "local:weather_search_forecast"
+                    match.ToolId == "weather_search_forecast"
                 )
             )
             .IsTrue();
@@ -232,14 +232,14 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert
             .That(notificationSearch.Matches[0].ToolId)
-            .IsEqualTo("local:notification_activity_search");
+            .IsEqualTo("notification_activity_search");
         await Assert.That(notificationChatClient.Calls.Count).IsEqualTo(1);
         await Assert.That(familyChatClient.Calls.Count).IsEqualTo(1);
         await Assert
             .That(
-                familySearch.Matches[0].ToolId == "local:storied_person_add_father"
-                    || familySearch.Matches[0].ToolId == "local:storied_person_add_mother"
-                    || familySearch.Matches[0].ToolId == "local:storied_person_add_potential_parent"
+                familySearch.Matches[0].ToolId == "storied_person_add_father"
+                    || familySearch.Matches[0].ToolId == "storied_person_add_mother"
+                    || familySearch.Matches[0].ToolId == "storied_person_add_potential_parent"
             )
             .IsTrue();
     }

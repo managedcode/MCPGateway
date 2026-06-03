@@ -48,7 +48,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         "markdown_ld_graph_document_factory_missing";
     private const string SourceLoadFailedMessageTemplate =
         "Failed to load tools from source '{0}': {1}";
-    private const string DuplicateToolIdMessageTemplate = "Skipped duplicate tool id '{0}'.";
+    private const string DuplicateToolIdMessageTemplate =
+        "Resolved duplicate canonical tool id base '{0}' with a source-qualified id.";
     private const string GraphBuildFailedMessageTemplate =
         "Building the Markdown-LD tool graph failed: {0}";
     private const string GraphFallbackMessage =

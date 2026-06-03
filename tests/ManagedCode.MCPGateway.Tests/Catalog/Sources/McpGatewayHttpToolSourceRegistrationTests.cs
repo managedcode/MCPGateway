@@ -103,7 +103,7 @@ public sealed class McpGatewayHttpToolSourceRegistrationTests
 
         var tools = await gateway.ListToolsAsync();
         var tool = tools.Single(static descriptor =>
-            descriptor.ToolId == "http-upstream:streamable_http_lookup"
+            descriptor.ToolId == "streamable_http_lookup"
         );
 
         await Assert.That(tool.SourceKind).IsEqualTo(McpGatewaySourceKind.HttpMcp);

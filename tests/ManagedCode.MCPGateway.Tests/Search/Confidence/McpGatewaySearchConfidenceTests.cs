@@ -63,12 +63,12 @@ public sealed partial class McpGatewaySearchTests
             .IsFalse();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:notification_activity_search");
+            .IsEqualTo("notification_activity_search");
         await Assert.That(searchResult.Matches[0].Score).IsGreaterThan(0.5d);
         await Assert
             .That(
                 searchResult.Matches.All(static match =>
-                    match.ToolId != "local:storied_person_add_father" || match.Score < 1d
+                    match.ToolId != "storied_person_add_father" || match.Score < 1d
                 )
             )
             .IsTrue();
@@ -95,7 +95,7 @@ public sealed partial class McpGatewaySearchTests
             .IsFalse();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:commerce_shipping_tracking");
+            .IsEqualTo("commerce_shipping_tracking");
         await Assert.That(searchResult.Matches[0].Score).IsGreaterThan(0.5d);
     }
 

@@ -63,7 +63,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.Matches.Count).IsGreaterThan(0);
         await Assert
             .That(searchResult.Matches[0].ToolMatch?.ToolId)
-            .IsEqualTo("local:advisory_lookup");
+            .IsEqualTo("advisory_lookup");
         await Assert.That(searchResult.Matches[0].Evidence.Count).IsGreaterThan(0);
     }
 
@@ -95,7 +95,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.GeneratedSparql).Contains("epsilon");
         await Assert
             .That(searchResult.Matches[0].ToolMatch?.ToolId)
-            .IsEqualTo("local:alpha_beta_gamma_delta_epsilon_report");
+            .IsEqualTo("alpha_beta_gamma_delta_epsilon_report");
     }
 
     [TUnit.Core.Test]
@@ -161,14 +161,14 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.GeneratedSparql).Contains("SELECT");
         await Assert.That(searchResult.GeneratedExpansionSparql).Contains("SELECT");
         var storySearchMatch = searchResult.Matches.FirstOrDefault(static match =>
-            match.ToolMatch?.ToolId == "graph-mcp:story_item_search"
+            match.ToolMatch?.ToolId == "story_item_search"
         );
 
         await Assert.That(storySearchMatch).IsNotNull();
         await Assert
             .That(
                 searchResult.Matches.Any(static match =>
-                    match.ToolMatch?.ToolId == "graph-mcp:story_item_detail"
+                    match.ToolMatch?.ToolId == "story_item_detail"
                 )
             )
             .IsTrue();
@@ -205,7 +205,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.GeneratedSparql).Contains("SERVICE");
         await Assert
             .That(searchResult.Matches.Any(static match =>
-                match.ToolMatch?.ToolId == "local:advisory_lookup"
+                match.ToolMatch?.ToolId == "advisory_lookup"
             ))
             .IsTrue();
     }
@@ -250,7 +250,7 @@ public sealed partial class McpGatewaySearchTests
     public async Task McpGatewayMarkdownLdGraphFile_ExportsPortableGraphArtifacts()
     {
         var descriptor = new McpGatewayToolDescriptor(
-            "local:story_item_search",
+            "story_item_search",
             "local",
             McpGatewaySourceKind.Local,
             new Tool

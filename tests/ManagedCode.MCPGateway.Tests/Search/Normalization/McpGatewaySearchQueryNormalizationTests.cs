@@ -30,7 +30,7 @@ public sealed partial class McpGatewaySearchTests
             maxResults: 1
         );
 
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:travel_hotel_search");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("travel_hotel_search");
         await Assert.That(chatClient.Calls.Count).IsEqualTo(0);
         await Assert
             .That(
@@ -65,8 +65,8 @@ public sealed partial class McpGatewaySearchTests
             maxResults: 2
         );
 
-        await Assert.That(firstSearch.Matches[0].ToolId).IsEqualTo("local:travel_hotel_search");
-        await Assert.That(secondSearch.Matches[0].ToolId).IsEqualTo("local:travel_hotel_search");
+        await Assert.That(firstSearch.Matches[0].ToolId).IsEqualTo("travel_hotel_search");
+        await Assert.That(secondSearch.Matches[0].ToolId).IsEqualTo("travel_hotel_search");
         await Assert.That(secondSearch.Matches.Count).IsEqualTo(2);
         await Assert.That(chatClient.Calls.Count).IsEqualTo(1);
         await Assert
@@ -105,8 +105,8 @@ public sealed partial class McpGatewaySearchTests
             maxResults: 3
         );
 
-        await Assert.That(firstSearch.Matches[0].ToolId).IsEqualTo("local:travel_hotel_search");
-        await Assert.That(secondSearch.Matches[0].ToolId).IsEqualTo("local:travel_hotel_search");
+        await Assert.That(firstSearch.Matches[0].ToolId).IsEqualTo("travel_hotel_search");
+        await Assert.That(secondSearch.Matches[0].ToolId).IsEqualTo("travel_hotel_search");
         await Assert.That(secondSearch.Matches.Count).IsEqualTo(3);
         await Assert.That(chatClient.Calls.Count).IsEqualTo(1);
         await Assert
@@ -153,7 +153,7 @@ public sealed partial class McpGatewaySearchTests
             maxResults: 1
         );
 
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:travel_hotel_search");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("travel_hotel_search");
         await Assert.That(chatClient.Calls.Count).IsEqualTo(1);
         await Assert
             .That(

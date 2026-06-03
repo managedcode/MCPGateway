@@ -24,12 +24,12 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
 
         var tools = await gatewayServer.Client.ListToolsAsync();
         var toolResult = await gatewayServer.Client.CallToolAsync(
-            "isolated:plain_text_search",
+            "plain_text_search",
             new Dictionary<string, object?> { ["query"] = "mcp" }
         );
         var prompts = await gatewayServer.Client.ListPromptsAsync();
         var prompt = await gatewayServer.Client.GetPromptAsync(
-            "isolated:repository_triage_system_prompt",
+            "isolated_repository_triage_system_prompt",
             new Dictionary<string, object?>
             {
                 ["repository"] = "ManagedCode/MCPGateway",
@@ -37,16 +37,16 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
             }
         );
         var resource = (await gatewayServer.Client.ListResourcesAsync()).Single(static candidate =>
-            candidate.Name == "isolated:repository_overview"
+            candidate.Name == "isolated_repository_overview"
         );
         var resourceResult = await gatewayServer.Client.ReadResourceAsync(resource.Uri);
 
-        await Assert.That(tools.Any(static tool => tool.Name == "isolated:plain_text_search")).IsTrue();
+        await Assert.That(tools.Any(static tool => tool.Name == "plain_text_search")).IsTrue();
         await Assert.That(GetSingleText(toolResult)).IsEqualTo("plain:mcp");
         await Assert
             .That(
                 prompts.Any(static prompt =>
-                    prompt.Name == "isolated:repository_triage_system_prompt"
+                    prompt.Name == "isolated_repository_triage_system_prompt"
                 )
             )
             .IsTrue();
@@ -72,7 +72,7 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
         });
 
         var completion = await gatewayServer.Client.CompleteAsync(
-            new PromptReference { Name = $"source-a:{TestMcpProtocolFeatureServerHost.PromptName}" },
+            new PromptReference { Name = $"source-a_{TestMcpProtocolFeatureServerHost.PromptName}" },
             TestMcpProtocolFeatureServerHost.PromptArgumentName,
             "Managed"
         );
@@ -95,7 +95,7 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
 
         var template = (await gatewayServer.Client.ListResourceTemplatesAsync()).Single(
             static candidate =>
-                candidate.Name == $"source-a:{TestMcpProtocolFeatureServerHost.ResourceTemplateName}"
+                candidate.Name == $"source-a_{TestMcpProtocolFeatureServerHost.ResourceTemplateName}"
         );
         var completion = await gatewayServer.Client.CompleteAsync(
             new ResourceTemplateReference { Uri = template.UriTemplate },
@@ -134,7 +134,7 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
         );
 
         var resource = (await gatewayServer.Client.ListResourcesAsync()).Single(static candidate =>
-            candidate.Name == $"source-a:{TestMcpProtocolFeatureServerHost.ResourceName}"
+            candidate.Name == $"source-a_{TestMcpProtocolFeatureServerHost.ResourceName}"
         );
 
         await gatewayServer.Client.SubscribeToResourceAsync(resource.Uri);
@@ -188,7 +188,7 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
         );
 
         var resource = (await gatewayServer.Client.ListResourcesAsync()).Single(static candidate =>
-            candidate.Name == $"source-a:{TestMcpProtocolFeatureServerHost.ResourceName}"
+            candidate.Name == $"source-a_{TestMcpProtocolFeatureServerHost.ResourceName}"
         );
 
         await gatewayServer.Client.SubscribeToResourceAsync(resource.Uri);

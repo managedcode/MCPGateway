@@ -18,7 +18,7 @@ public sealed class McpGatewayPromptCatalogTests
 
         var prompts = await promptCatalog.ListPromptsAsync();
         var descriptor = prompts.Single(static prompt =>
-            prompt.PromptId == "test-mcp:repository_triage_system_prompt"
+            prompt.PromptId == "test-mcp_repository_triage_system_prompt"
         );
 
         await Assert.That(prompts.Count).IsEqualTo(2);
@@ -54,7 +54,7 @@ public sealed class McpGatewayPromptCatalogTests
         );
 
         await Assert.That(prompt).IsNotNull();
-        await Assert.That(prompt!.PromptId).IsEqualTo("test-mcp:repository_triage_system_prompt");
+        await Assert.That(prompt!.PromptId).IsEqualTo("test-mcp_repository_triage_system_prompt");
         await Assert.That(prompt.Messages.Count).IsEqualTo(1);
         await Assert.That(prompt.Messages[0].Role).IsEqualTo(Role.User);
         await Assert.That(ReadText(prompt.Messages[0])).Contains("ManagedCode.MCPGateway");
@@ -79,7 +79,7 @@ public sealed class McpGatewayPromptCatalogTests
         await Assert
             .That(
                 prompts.Any(static prompt =>
-                    prompt.PromptId == "factory-mcp:repository_triage_system_prompt"
+                    prompt.PromptId == "factory-mcp_repository_triage_system_prompt"
                 )
             )
             .IsTrue();
@@ -98,7 +98,7 @@ public sealed class McpGatewayPromptCatalogTests
 
         var prompts = await promptCatalog.ListPromptsAsync();
         var descriptor = prompts.Single(static prompt =>
-            prompt.PromptId == "local:release_review_bundle"
+            prompt.PromptId == "local_release_review_bundle"
         );
 
         await Assert.That(descriptor.SourceKind).IsEqualTo(McpGatewaySourceKind.Local);
@@ -134,7 +134,7 @@ public sealed class McpGatewayPromptCatalogTests
         );
 
         await Assert.That(prompt).IsNotNull();
-        await Assert.That(prompt!.PromptId).IsEqualTo("local:release_review_bundle");
+        await Assert.That(prompt!.PromptId).IsEqualTo("local_release_review_bundle");
         await Assert.That(prompt.Messages.Count).IsEqualTo(4);
         await Assert.That(ReadText(prompt.Messages[0]))
             .Contains("Combine repository and deployment guidance");

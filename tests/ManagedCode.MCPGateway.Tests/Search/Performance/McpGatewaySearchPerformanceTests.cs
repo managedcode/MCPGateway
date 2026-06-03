@@ -61,8 +61,8 @@ public sealed partial class McpGatewaySearchTests
         {
             var searchResult = await gateway.SearchAsync(query, maxResults: 1);
             var expectedToolId = query.Contains("umbrella", StringComparison.Ordinal)
-                ? "local:weather_dispatch_specialist"
-                : "local:portfolio_status_specialist";
+                ? "weather_dispatch_specialist"
+                : "portfolio_status_specialist";
 
             await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo(expectedToolId);
         }
@@ -103,7 +103,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.Matches.Count).IsGreaterThan(0);
         await Assert
             .That(searchResult.Matches[0].ToolMatch?.ToolId)
-            .IsEqualTo("local:weather_dispatch_specialist");
+            .IsEqualTo("weather_dispatch_specialist");
         await Assert.That(searchResult.FocusedGraphNodeCount).IsGreaterThan(0);
         await Assert.That(searchResult.FocusedGraphEdgeCount).IsGreaterThan(0);
     }
@@ -125,7 +125,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert.That(searchResult.UsedSchemaSearch).IsTrue();
         await Assert.That(searchResult.Matches.Count).IsGreaterThan(0);
-        await Assert.That(searchResult.Matches[0].ToolId).StartsWith("local:archive_lookup_");
+        await Assert.That(searchResult.Matches[0].ToolId).StartsWith("archive_lookup_");
         await Assert.That(searchResult.FocusedGraphNodeCount).IsGreaterThan(0);
         await Assert.That(searchResult.FocusedGraphEdgeCount).IsGreaterThan(0);
     }
@@ -150,7 +150,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.Matches.Count).IsGreaterThan(0);
         await Assert
             .That(searchResult.Matches[0].ToolMatch?.ToolId)
-            .StartsWith("local:archive_lookup_");
+            .StartsWith("archive_lookup_");
         await Assert.That(searchResult.FocusedGraphNodeCount).IsGreaterThan(0);
         await Assert.That(searchResult.FocusedGraphEdgeCount).IsGreaterThan(0);
     }

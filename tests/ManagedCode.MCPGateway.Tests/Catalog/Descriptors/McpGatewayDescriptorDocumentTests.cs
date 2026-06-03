@@ -9,7 +9,7 @@ public sealed class McpGatewayDescriptorDocumentTests
     public async Task BuildDescriptorDocument_AppendsSchemaDescriptionsTypesAndEnumValues()
     {
         var descriptor = new McpGatewayToolDescriptor(
-            ToolId: "local:release_workflow_lookup",
+            ToolId: "release_workflow_lookup",
             SourceId: "local",
             SourceKind: McpGatewaySourceKind.Local,
             ProtocolTool: new Tool
@@ -39,7 +39,7 @@ public sealed class McpGatewayDescriptorDocumentTests
     public async Task BuildDescriptorDocument_AppendsRawSchemaWhenPropertiesAreAbsent()
     {
         var descriptor = new McpGatewayToolDescriptor(
-            ToolId: "local:broken_schema_lookup",
+            ToolId: "broken_schema_lookup",
             SourceId: "local",
             SourceKind: McpGatewaySourceKind.Local,
             ProtocolTool: new Tool

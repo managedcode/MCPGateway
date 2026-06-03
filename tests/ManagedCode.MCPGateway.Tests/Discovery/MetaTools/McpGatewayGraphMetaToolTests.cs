@@ -118,7 +118,7 @@ public sealed class McpGatewayGraphMetaToolTests
         var matches = GetJsonProperty(graphResult, "matches");
         await Assert
             .That(GetJsonProperty(GetJsonProperty(matches[0], "toolMatch"), "toolId").GetString())
-            .IsEqualTo("local:advisory_lookup");
+            .IsEqualTo("advisory_lookup");
     }
 
     [TUnit.Core.Test]
@@ -160,7 +160,7 @@ public sealed class McpGatewayGraphMetaToolTests
             .That(
                 matches.EnumerateArray().Any(static match =>
                     GetJsonProperty(GetJsonProperty(match, "toolMatch"), "toolId").GetString()
-                    == "graph-mcp:story_item_search"
+                    == "story_item_search"
                 )
             )
             .IsTrue();
@@ -169,7 +169,7 @@ public sealed class McpGatewayGraphMetaToolTests
             .That(
                 matches.EnumerateArray().Any(static match =>
                     GetJsonProperty(GetJsonProperty(match, "toolMatch"), "toolId").GetString()
-                    == "graph-mcp:story_item_detail"
+                    == "story_item_detail"
                 )
             )
             .IsTrue();

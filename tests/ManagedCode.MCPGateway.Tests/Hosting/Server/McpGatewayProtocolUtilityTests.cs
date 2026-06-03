@@ -109,7 +109,7 @@ public sealed class McpGatewayProtocolUtilityTests
     public async Task ProtocolMapper_MapsToolPromptAndResourceContracts()
     {
         var toolDescriptor = new McpGatewayToolDescriptor(
-            "local:lookup",
+            "lookup",
             "local",
             McpGatewaySourceKind.Local,
             new Tool
@@ -165,7 +165,7 @@ public sealed class McpGatewayProtocolUtilityTests
             IsEnabledByDefault = false,
         };
         var promptDescriptor = new McpGatewayPromptDescriptor(
-            "local:release_review",
+            "local_release_review",
             "local",
             McpGatewaySourceKind.Local,
             new Prompt
@@ -236,9 +236,9 @@ public sealed class McpGatewayProtocolUtilityTests
         await Assert.That(tool.Meta?["securitySchemes"]).IsTypeOf<JsonArray>();
         await Assert.That(tool.Meta?["sourceId"]!.GetValue<string>()).IsEqualTo("local");
         await Assert.That(tool.Execution?.TaskSupport).IsEqualTo(ToolTaskSupport.Optional);
-        await Assert.That(prompt.Name).IsEqualTo("local:release_review");
+        await Assert.That(prompt.Name).IsEqualTo("local_release_review");
         await Assert.That(prompt.Arguments?.Count).IsEqualTo(1);
-        await Assert.That(resource.Name).IsEqualTo("source-a:overview");
+        await Assert.That(resource.Name).IsEqualTo("source-a_overview");
         await Assert.That(resource.Uri).StartsWith("mcpgw-");
         await Assert.That(template.UriTemplate).StartsWith("mcpgw-");
     }
@@ -332,19 +332,19 @@ public sealed class McpGatewayProtocolUtilityTests
         var successResult = McpGatewayMcpServerProtocolMapper.ToProtocolToolResult(
             new McpGatewayInvokeResult(
                 true,
-                "local:lookup",
+                "lookup",
                 "local",
                 "lookup",
                 new { status = "ok" }
             )
         );
         var emptyResult = McpGatewayMcpServerProtocolMapper.ToProtocolToolResult(
-            new McpGatewayInvokeResult(true, "local:none", "local", "none", null)
+            new McpGatewayInvokeResult(true, "none", "local", "none", null)
         );
         var errorResult = McpGatewayMcpServerProtocolMapper.ToProtocolToolResult(
             new McpGatewayInvokeResult(
                 false,
-                "local:lookup",
+                "lookup",
                 "local",
                 "lookup",
                 null,

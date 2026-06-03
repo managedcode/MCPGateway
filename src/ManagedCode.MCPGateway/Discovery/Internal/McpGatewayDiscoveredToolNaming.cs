@@ -65,14 +65,17 @@ internal static class McpGatewayDiscoveredToolNaming
         ArgumentNullException.ThrowIfNull(match);
         ArgumentNullException.ThrowIfNull(reservedNames);
 
-        var sanitizedToolName = SanitizeToolName(match.ToolName);
+        var sanitizedToolName = McpGatewayProtocolName.Normalize(match.ToolName, DefaultToolName);
         if (reservedNames.Add(sanitizedToolName))
         {
             return sanitizedToolName;
         }
 
-        var sanitizedSourceId = SanitizeToolName(match.SourceId);
-        var compositeName = $"{sanitizedSourceId}{NameSeparator}{sanitizedToolName}";
+        var compositeName = McpGatewayProtocolName.CreateSourceQualifiedName(
+            match.SourceId,
+            sanitizedToolName,
+            DefaultToolName
+        );
         if (reservedNames.Add(compositeName))
         {
             return compositeName;
@@ -158,29 +161,4 @@ internal static class McpGatewayDiscoveredToolNaming
         return string.Join(", ", parts);
     }
 
-    private static string SanitizeToolName(string value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return DefaultToolName;
-        }
-
-        var builder = new System.Text.StringBuilder(value.Length);
-        foreach (var character in value)
-        {
-            builder.Append(char.IsLetterOrDigit(character) || character == '_' ? character : '_');
-        }
-
-        if (builder.Length == 0)
-        {
-            return DefaultToolName;
-        }
-
-        if (!char.IsLetter(builder[0]) && builder[0] != '_')
-        {
-            builder.Insert(0, "t_");
-        }
-
-        return builder.ToString();
-    }
 }

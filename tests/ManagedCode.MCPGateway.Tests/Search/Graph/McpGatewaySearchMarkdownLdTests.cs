@@ -44,7 +44,7 @@ public sealed partial class McpGatewaySearchTests
             .IsFalse();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
     }
 
     [TUnit.Core.Test]
@@ -75,7 +75,7 @@ public sealed partial class McpGatewaySearchTests
         var searchResult = await gateway.SearchAsync("severity filter", maxResults: 1);
 
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:advisory_lookup");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("advisory_lookup");
     }
 
     [TUnit.Core.Test]
@@ -103,7 +103,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:notification_activity_search");
+            .IsEqualTo("notification_activity_search");
     }
 
     [TUnit.Core.Test]
@@ -135,7 +135,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:release_workflow_lookup");
+            .IsEqualTo("release_workflow_lookup");
     }
 
     [TUnit.Core.Test]
@@ -195,7 +195,7 @@ public sealed partial class McpGatewaySearchTests
         var searchResult = await gateway.SearchAsync("merge trains approvals", maxResults: 1);
 
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("github_search_issues");
     }
 
     [TUnit.Core.Test]
@@ -220,7 +220,7 @@ public sealed partial class McpGatewaySearchTests
             .IsTrue();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:commerce_shipping_tracking");
+            .IsEqualTo("commerce_shipping_tracking");
     }
 
     [TUnit.Core.Test]
@@ -255,7 +255,7 @@ public sealed partial class McpGatewaySearchTests
                 )
             )
             .IsTrue();
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:travel_hotel_search");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("travel_hotel_search");
         await Assert.That(chatClient.Calls.Count).IsEqualTo(1);
     }
 
@@ -290,7 +290,7 @@ public sealed partial class McpGatewaySearchTests
             .IsTrue();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:github_pull_request_search");
+            .IsEqualTo("github_pull_request_search");
     }
 
     [TUnit.Core.Test]
@@ -333,7 +333,7 @@ public sealed partial class McpGatewaySearchTests
             .IsFalse();
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
     }
 
     [TUnit.Core.Test]
@@ -358,7 +358,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(searchResult.RankingMode).IsEqualTo("graph");
         await Assert
             .That(searchResult.Matches[0].ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
     }
 
     [TUnit.Core.Test]
@@ -374,10 +374,10 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(searchResult.RankingMode).IsEqualTo("browse");
         await Assert.That(searchResult.Matches.Count).IsEqualTo(2);
-        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("local:github_search_issues");
+        await Assert.That(searchResult.Matches[0].ToolId).IsEqualTo("github_search_issues");
         await Assert
             .That(searchResult.Matches[1].ToolId)
-            .IsEqualTo("local:weather_search_forecast");
+            .IsEqualTo("weather_search_forecast");
     }
 
     [TUnit.Core.Test]

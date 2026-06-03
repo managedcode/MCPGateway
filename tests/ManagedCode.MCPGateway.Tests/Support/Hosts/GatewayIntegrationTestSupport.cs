@@ -10,10 +10,10 @@ internal static class GatewayIntegrationTestSupport
     public const string WeatherAirQualityToolName = "weather_air_quality_watch";
     public const string PortfolioToolName = "portfolio_status_specialist";
     public const string InvoiceToolName = "finance_invoice_watch";
-    public const string WeatherToolId = $"local:{WeatherToolName}";
-    public const string WeatherAirQualityToolId = $"local:{WeatherAirQualityToolName}";
-    public const string PortfolioToolId = $"local:{PortfolioToolName}";
-    public const string InvoiceToolId = $"local:{InvoiceToolName}";
+    public const string WeatherToolId = WeatherToolName;
+    public const string WeatherAirQualityToolId = WeatherAirQualityToolName;
+    public const string PortfolioToolId = PortfolioToolName;
+    public const string InvoiceToolId = InvoiceToolName;
     public const string WeatherInvokeQuery = "Kyiv";
     public const string PortfolioInvokeQuery = "ACME";
     public const string FinalAssistantResponse = "done:weather:Kyiv|portfolio:ACME";

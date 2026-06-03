@@ -25,7 +25,7 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var invokeResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:text_uppercase", Query: "hello gateway")
+            new McpGatewayInvokeRequest(ToolId: "text_uppercase", Query: "hello gateway")
         );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
@@ -52,7 +52,7 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var invokeResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:optional_query_echo", Query: "hello gateway")
+            new McpGatewayInvokeRequest(ToolId: "optional_query_echo", Query: "hello gateway")
         );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
@@ -80,7 +80,7 @@ public sealed partial class McpGatewayInvocationTests
 
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
-                ToolId: "local:context_summary_echo",
+                ToolId: "context_summary_echo",
                 Query: "open github",
                 ContextSummary: "user is on repository settings page"
             )
@@ -112,7 +112,7 @@ public sealed partial class McpGatewayInvocationTests
 
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
-                ToolId: "local:structured_context_echo",
+                ToolId: "structured_context_echo",
                 Context: new Dictionary<string, object?>
                 {
                     ["domain"] = "genealogy",
@@ -145,7 +145,7 @@ public sealed partial class McpGatewayInvocationTests
 
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
-                ToolId: "local:context_summary_echo",
+                ToolId: "context_summary_echo",
                 Query: "mapped query",
                 ContextSummary: "mapped summary",
                 Arguments: new Dictionary<string, object?>
@@ -239,7 +239,7 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var invokeResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:missing_tool")
+            new McpGatewayInvokeRequest(ToolId: "missing_tool")
         );
 
         await Assert.That(invokeResult.IsSuccess).IsFalse();
@@ -267,7 +267,7 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var invokeResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:json_string_result")
+            new McpGatewayInvokeRequest(ToolId: "json_string_result")
         );
 
         await Assert.That(invokeResult.IsSuccess).IsTrue();
@@ -326,19 +326,19 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var boolResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:json_bool_result")
+            new McpGatewayInvokeRequest(ToolId: "json_bool_result")
         );
         var int64Result = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:json_int64_result")
+            new McpGatewayInvokeRequest(ToolId: "json_int64_result")
         );
         var decimalResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:json_decimal_result")
+            new McpGatewayInvokeRequest(ToolId: "json_decimal_result")
         );
         var doubleResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:json_double_result")
+            new McpGatewayInvokeRequest(ToolId: "json_double_result")
         );
         var nullResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:json_null_result")
+            new McpGatewayInvokeRequest(ToolId: "json_null_result")
         );
 
         await Assert.That(boolResult.Output).IsTypeOf<bool>();
@@ -379,10 +379,10 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var objectResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:json_object_result")
+            new McpGatewayInvokeRequest(ToolId: "json_object_result")
         );
         var documentResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:json_document_result")
+            new McpGatewayInvokeRequest(ToolId: "json_document_result")
         );
 
         await Assert.That(objectResult.Output).IsTypeOf<JsonElement>();
@@ -414,7 +414,7 @@ public sealed partial class McpGatewayInvocationTests
         await gateway.BuildIndexAsync();
 
         var invokeResult = await gateway.InvokeAsync(
-            new McpGatewayInvokeRequest(ToolId: "local:throwing_tool")
+            new McpGatewayInvokeRequest(ToolId: "throwing_tool")
         );
 
         await Assert.That(invokeResult.IsSuccess).IsFalse();

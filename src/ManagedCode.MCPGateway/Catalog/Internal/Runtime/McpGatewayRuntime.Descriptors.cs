@@ -11,25 +11,21 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
-    private static McpGatewayToolDescriptor? BuildDescriptor(
+    private static McpGatewayToolDescriptor BuildDescriptor(
         McpGatewayToolSourceRegistration registration,
-        McpGatewayLoadedTool loadedTool
+        McpGatewayLoadedTool loadedTool,
+        string toolName,
+        string toolId
     )
     {
         var tool = loadedTool.Tool;
-        if (string.IsNullOrWhiteSpace(tool.Name))
-        {
-            return null;
-        }
-
-        var toolName = tool.Name.Trim();
         var sourceKind = McpGatewaySourceKindMapper.Map(registration.Kind);
 
         var searchHints = ResolveSearchHints(tool, loadedTool.SearchHints);
         var protocolTool = ResolveProtocolTool(tool, toolName, searchHints);
 
         return new McpGatewayToolDescriptor(
-            ToolId: $"{registration.SourceId}:{toolName}",
+            ToolId: toolId,
             SourceId: registration.SourceId,
             SourceKind: sourceKind,
             ProtocolTool: protocolTool,
