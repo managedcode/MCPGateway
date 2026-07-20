@@ -88,6 +88,7 @@ If no new rule is detected -> do not update the file.
 - test-list: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build --list-tests`
 - test-detailed: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build --output Detailed --no-progress`
 - test-trx: `dotnet test --solution ManagedCode.MCPGateway.slnx -c Release --no-build --report-trx --results-directory ./artifacts/test-results`
+- package-vulnerability-audit: `dotnet package list --vulnerable --include-transitive`
 - test-runner-help: `tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests --help`
 - format: `dotnet format ManagedCode.MCPGateway.slnx`
 - format-check: `dotnet format ManagedCode.MCPGateway.slnx --verify-no-changes`
@@ -265,6 +266,7 @@ If no new rule is detected -> do not update the file.
   - restore
   - build
   - test
+- At the end of every task, run `dotnet package list --vulnerable --include-transitive`, update any affected direct or transitive dependency to a non-vulnerable version when the repository controls it, and report the resulting vulnerable-package list explicitly so releases never ship with silently known NuGet vulnerabilities.
 
 ### Code Style
 

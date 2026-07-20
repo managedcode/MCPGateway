@@ -268,7 +268,7 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(export.EdgeCount).IsGreaterThan(0);
         await Assert.That(export.JsonLd).Contains("story_item_search");
         await Assert.That(export.Turtle).Contains("story_item_search");
-        await Assert.That(export.MermaidFlowchart).Contains("story_item_search");
-        await Assert.That(export.DotGraph).Contains("story_item_search");
+        await Assert.That(export.MermaidFlowchart).Contains("Story search");
+        await Assert.That(export.DotGraph).Contains("Story search");
     }
 }

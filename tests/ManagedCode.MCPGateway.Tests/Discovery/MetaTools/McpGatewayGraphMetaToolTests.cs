@@ -203,10 +203,10 @@ public sealed class McpGatewayGraphMetaToolTests
             .Contains("story_item_search");
         await Assert
             .That(GetJsonProperty(exportResult, "mermaidFlowchart").GetString())
-            .Contains("story_item_search");
+            .Contains("Search story feed items");
         await Assert
             .That(GetJsonProperty(exportResult, "dotGraph").GetString())
-            .Contains("story_item_search");
+            .Contains("Search story feed items");
     }
 
     private static AIFunction GetFunction(IReadOnlyList<AITool> tools, string toolName) =>

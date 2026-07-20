@@ -10,6 +10,7 @@ public sealed partial class McpGatewaySearchTests
     private const int PerformanceCatalogToolCount = 120;
 
     [TUnit.Core.Test]
+    [TUnit.Core.NotInParallel]
     public async Task BuildIndexAsync_AutoStrategyLargeCatalogPerformanceSmoke()
     {
         var embeddingGenerator = CreatePerformanceEmbeddingGenerator();
@@ -33,6 +34,7 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
+    [TUnit.Core.NotInParallel]
     public async Task SearchAsync_AutoStrategyRepeatedQueriesReuseBuiltIndexAndRuntimeCachesPerformanceSmoke()
     {
         var embeddingGenerator = CreatePerformanceEmbeddingGenerator();
