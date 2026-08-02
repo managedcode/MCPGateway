@@ -125,24 +125,6 @@ internal sealed class McpGatewayRegistrationCollection(
             }
         );
 
-    public void AddHttpServer(
-        string sourceId,
-        Uri endpoint,
-        HttpTransportMode transportMode,
-        IReadOnlyDictionary<string, string>? headers = null,
-        string? displayName = null
-    ) =>
-        AddHttpServer(
-            new McpGatewayHttpServerOptions
-            {
-                SourceId = sourceId,
-                Endpoint = endpoint,
-                TransportMode = transportMode,
-                AdditionalHeaders = headers,
-                DisplayName = displayName,
-            }
-        );
-
     public void AddHttpServer(McpGatewayHttpServerOptions httpServer)
     {
         ArgumentNullException.ThrowIfNull(httpServer);
@@ -151,16 +133,7 @@ internal sealed class McpGatewayRegistrationCollection(
             throw new ArgumentException(EndpointRequiredMessage, nameof(httpServer));
         }
 
-        McpGatewayHttpToolSourceRegistration.ValidateTransportMode(httpServer.TransportMode);
         ValidateOptionalPositive(httpServer.ConnectionTimeout, nameof(httpServer.ConnectionTimeout));
-        ValidateOptionalNonNegative(
-            httpServer.MaxReconnectionAttempts,
-            nameof(httpServer.MaxReconnectionAttempts)
-        );
-        ValidateOptionalPositive(
-            httpServer.DefaultReconnectionInterval,
-            nameof(httpServer.DefaultReconnectionInterval)
-        );
 
         _registrations.Enqueue(
             new McpGatewayHttpToolSourceRegistration(
@@ -178,19 +151,32 @@ internal sealed class McpGatewayRegistrationCollection(
         string? displayName = null
     )
     {
-        if (string.IsNullOrWhiteSpace(command))
+        AddStdioServer(
+            new McpGatewayStdioServerOptions
+            {
+                SourceId = sourceId,
+                Command = command,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                EnvironmentVariables = environmentVariables,
+                DisplayName = displayName,
+            }
+        );
+    }
+
+    public void AddStdioServer(McpGatewayStdioServerOptions stdioServer)
+    {
+        ArgumentNullException.ThrowIfNull(stdioServer);
+        if (string.IsNullOrWhiteSpace(stdioServer.Command))
         {
-            throw new ArgumentException(CommandRequiredMessage, nameof(command));
+            throw new ArgumentException(CommandRequiredMessage, nameof(stdioServer));
         }
+
+        ValidateOptionalPositive(stdioServer.ShutdownTimeout, nameof(stdioServer.ShutdownTimeout));
 
         _registrations.Enqueue(
             new McpGatewayStdioToolSourceRegistration(
-                ValidateSourceId(sourceId),
-                command.Trim(),
-                arguments,
-                workingDirectory,
-                environmentVariables,
-                displayName
+                stdioServer.CloneWithSourceId(ValidateSourceId(stdioServer.SourceId))
             )
         );
     }
@@ -284,14 +270,6 @@ internal sealed class McpGatewayRegistrationCollection(
         if (value.HasValue && value.Value <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(name, value, "The value must be positive.");
-        }
-    }
-
-    private static void ValidateOptionalNonNegative(int? value, string name)
-    {
-        if (value.HasValue && value.Value < 0)
-        {
-            throw new ArgumentOutOfRangeException(name, value, "The value must be non-negative.");
         }
     }
 

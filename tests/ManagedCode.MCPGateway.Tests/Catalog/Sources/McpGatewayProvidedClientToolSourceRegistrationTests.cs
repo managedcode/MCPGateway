@@ -1,8 +1,7 @@
 #pragma warning disable MCPEXP001
 
-using System.Reflection;
-using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
@@ -10,6 +9,8 @@ namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
 {
+    private const string RejectedProtocolVersion = "2025-11-25";
+
     [Test]
     public async Task PromptResourceAndCompletionMethods_ForwardToProvidedClient()
     {
@@ -128,7 +129,7 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
             NullLoggerFactory.Instance,
             CancellationToken.None
         );
-        var resourceSubscription = await registration.SubscribeToResourceAsync(
+        var resourceSubscription = await registration.ListenForResourceUpdatesAsync(
             "docs://missing",
             static (_, _) => ValueTask.CompletedTask,
             NullLoggerFactory.Instance,
@@ -195,68 +196,25 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
         await registration.DisposeAsync();
 
         await Assert.That(loadException).IsTypeOf<OperationCanceledException>();
-        await Assert.That(GetCachedClient(registration)).IsNull();
+        await Assert.That(registration.HasCachedClient).IsFalse();
     }
 
     [Test]
-    public async Task MissingTaskAndPromptListCapabilities_ReturnNullAcrossTaskHelpers()
+    public async Task MissingPromptListCapability_ReturnsNullSubscription()
     {
         await using var taskServer = await TestMcpTaskFeatureServerHost.StartAsync();
-        await using var contentServer = await TestMcpServerHost.StartAsync();
         var promptRegistration = new McpGatewayProvidedClientToolSourceRegistration(
             "promptless",
             _ => ValueTask.FromResult(taskServer.Client),
             disposeClient: false,
             displayName: null
         );
-        var taskRegistration = new McpGatewayProvidedClientToolSourceRegistration(
-            "content",
-            _ => ValueTask.FromResult(contentServer.Client),
-            disposeClient: false,
-            displayName: null
-        );
-
-        var promptSubscription = await promptRegistration.SubscribeToPromptListChangesAsync(
+        var promptSubscription = await promptRegistration.ListenForPromptListChangesAsync(
             static (_, _) => ValueTask.CompletedTask,
             NullLoggerFactory.Instance,
             CancellationToken.None
         );
-        var task = await taskRegistration.CallToolAsTaskAsync(
-            "github_repository_search",
-            arguments: null,
-            new McpTaskMetadata(),
-            progress: null,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var trackedTask = await taskRegistration.GetTaskAsync(
-            "task-id",
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var taskResult = await taskRegistration.GetTaskResultAsync(
-            "task-id",
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var cancelledTask = await taskRegistration.CancelTaskAsync(
-            "task-id",
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var taskSubscription = await taskRegistration.SubscribeToTaskStatusAsync(
-            "task-id",
-            static (_, _) => ValueTask.CompletedTask,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-
         await Assert.That(promptSubscription).IsNull();
-        await Assert.That(task).IsNull();
-        await Assert.That(trackedTask).IsNull();
-        await Assert.That(taskResult).IsNull();
-        await Assert.That(cancelledTask).IsNull();
-        await Assert.That(taskSubscription).IsNull();
     }
 
     [Test]
@@ -284,7 +242,7 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
         );
 
         await using var promptSubscriptionWithSignal =
-            await promptRegistration.SubscribeToPromptListChangesAsync(
+            await promptRegistration.ListenForPromptListChangesAsync(
                 (_, _) =>
                 {
                     promptChanged.TrySetResult(true);
@@ -293,7 +251,7 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
                 NullLoggerFactory.Instance,
                 CancellationToken.None
             );
-        await using var resourceSubscription = await resourceRegistration.SubscribeToResourceAsync(
+        await using var resourceSubscription = await resourceRegistration.ListenForResourceUpdatesAsync(
             TestMcpProtocolFeatureServerHost.ResourceUri,
             (notification, _) =>
             {
@@ -316,7 +274,7 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
     }
 
     [Test]
-    public async Task TaskMethods_ForwardTaskLifecycleToProvidedClient()
+    public async Task LoadToolsAsync_PreservesTheOwningClientForTaskAwareInvocation()
     {
         await using var taskServer = await TestMcpTaskFeatureServerHost.StartAsync();
         var registration = new McpGatewayProvidedClientToolSourceRegistration(
@@ -325,60 +283,53 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
             disposeClient: false,
             displayName: null
         );
-        var task = await registration.CallToolAsTaskAsync(
-            TestMcpTaskFeatureServerHost.OptionalToolName,
-            new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["value"] = "alpha",
-            },
-            new McpTaskMetadata(),
-            progress: null,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        await using var statusSubscription = await registration.SubscribeToTaskStatusAsync(
-            task!.TaskId,
-            static (_, _) => ValueTask.CompletedTask,
+        var tools = await registration.LoadToolsAsync(
             NullLoggerFactory.Instance,
             CancellationToken.None
         );
 
-        var trackedTask = await registration.GetTaskAsync(
-            task.TaskId,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var taskResult = await registration.GetTaskResultAsync(
-            task.TaskId,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var cancelledTask = await registration.CallToolAsTaskAsync(
-            TestMcpTaskFeatureServerHost.CancellableToolName,
-            new Dictionary<string, object?>(StringComparer.Ordinal)
-            {
-                ["value"] = "beta",
-            },
-            new McpTaskMetadata(),
-            progress: null,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var cancelled = await registration.CancelTaskAsync(
-            cancelledTask!.TaskId,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var resultPayload = taskResult?.Deserialize<CallToolResult>(McpGatewayJsonSerializer.Options);
+        await Assert.That(tools.Count).IsEqualTo(3);
+        await Assert.That(tools.All(tool => ReferenceEquals(tool.Client, taskServer.Client))).IsTrue();
+    }
 
-        await Assert.That(task).IsNotNull();
-        await Assert.That(trackedTask).IsNotNull();
-        await Assert.That(taskResult).IsNotNull();
-        await Assert.That(resultPayload).IsNotNull();
-        await Assert.That(((TextContentBlock)resultPayload!.Content.Single()).Text).IsEqualTo("optional:alpha");
-        await Assert.That(cancelled).IsNotNull();
-        await Assert.That(cancelled!.Status).IsEqualTo(McpTaskStatus.Cancelled);
-        await Assert.That(statusSubscription).IsNotNull();
+    [Test]
+    public async Task LoadToolsAsync_RejectsProvidedClientUsingNonCurrentProtocol()
+    {
+        await using var serverHost = await TestMcpServerHost.StartWithProtocolVersionAsync(
+            RejectedProtocolVersion
+        );
+        var registration = new McpGatewayProvidedClientToolSourceRegistration(
+            "rejected-protocol",
+            _ => ValueTask.FromResult(serverHost.Client),
+            disposeClient: false,
+            displayName: null
+        );
+
+        var exception = await CaptureAsync(
+            registration
+                .LoadToolsAsync(NullLoggerFactory.Instance, CancellationToken.None)
+                .AsTask()
+        );
+
+        await Assert.That(exception).IsTypeOf<UnsupportedProtocolVersionException>();
+        var protocolException = (UnsupportedProtocolVersionException)exception!;
+        await Assert.That(protocolException.Requested).IsEqualTo(RejectedProtocolVersion);
+        await Assert
+            .That(protocolException.Supported)
+            .IsEquivalentTo([McpGatewayMcpProtocolConstants.CurrentProtocolVersion]);
+    }
+
+    private static async Task<Exception?> CaptureAsync(Task action)
+    {
+        try
+        {
+            await action;
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
     }
 
     private static async Task WaitForCachedClientAsync(
@@ -388,7 +339,7 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
         var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
         while (DateTimeOffset.UtcNow < deadline)
         {
-            if (GetCachedClient(registration) is not null)
+            if (registration.HasCachedClient)
             {
                 return;
             }
@@ -396,15 +347,8 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
             await Task.Delay(TimeSpan.FromMilliseconds(10));
         }
 
-        await Assert.That(GetCachedClient(registration)).IsNotNull();
+        await Assert.That(registration.HasCachedClient).IsTrue();
     }
-
-    private static object? GetCachedClient(
-        McpGatewayProvidedClientToolSourceRegistration registration
-    ) =>
-        typeof(McpGatewayClientToolSourceRegistration)
-            .GetField("_client", BindingFlags.Instance | BindingFlags.NonPublic)
-            ?.GetValue(registration);
 }
 
 #pragma warning restore MCPEXP001

@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
@@ -143,19 +142,6 @@ public sealed partial class McpGatewaySearchTests
                 )
             )
             .IsFalse();
-    }
-
-    [TUnit.Core.Test]
-    public async Task McpGatewayClientFactory_UsesAssemblyBuildVersionForClientInfo()
-    {
-        var clientOptions = McpGatewayClientFactory.CreateClientOptions();
-        var expectedVersion =
-            typeof(McpGatewayClientFactory)
-                .Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()
-                ?.InformationalVersion
-            ?? typeof(McpGatewayClientFactory).Assembly.GetName().Version?.ToString();
-
-        await Assert.That(clientOptions.ClientInfo?.Version).IsEqualTo(expectedVersion);
     }
 
     [TUnit.Core.Test]

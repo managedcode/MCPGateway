@@ -8,6 +8,28 @@ namespace ManagedCode.MCPGateway.Tests;
 public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
 {
     [Test]
+    public async Task ListToolsAsync_UsesJuly2026ResultAndCacheMetadata()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+
+        var response = await gatewayServer.Client.SendRequestAsync(
+            new JsonRpcRequest { Method = RequestMethods.ToolsList }
+        );
+        var result = response.Result?.Deserialize<ListToolsResult>(
+            McpGatewayJsonSerializer.Options
+        ) ?? throw new InvalidOperationException("tools/list did not return a valid result.");
+
+        await Assert
+            .That(gatewayServer.Client.NegotiatedProtocolVersion)
+            .IsEqualTo(McpGatewayMcpProtocolConstants.CurrentProtocolVersion);
+        await Assert
+            .That(result.ResultType)
+            .IsEqualTo(McpGatewayMcpProtocolConstants.CompleteResultType);
+        await Assert.That(result.TimeToLive).IsEqualTo(TimeSpan.Zero);
+        await Assert.That(result.CacheScope).IsEqualTo(CacheScope.Private);
+    }
+
+    [Test]
     public async Task WithMcpGatewayCatalog_UsesCustomBindingResolverForIsolatedGatewayInstance()
     {
         await using var upstreamServer = await TestMcpServerHost.StartAsync();
@@ -108,7 +130,7 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
     }
 
     [Test]
-    public async Task SubscribeToResourceAsync_ForwardsUpstreamResourceUpdatedNotification()
+    public async Task ListenForResourceUpdatesAsync_ForwardsUpstreamResourceUpdatedNotification()
     {
         await using var upstreamServer = await TestMcpProtocolFeatureServerHost.StartAsync();
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
@@ -137,17 +159,64 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
             candidate.Name == $"source-a_{TestMcpProtocolFeatureServerHost.ResourceName}"
         );
 
-        await gatewayServer.Client.SubscribeToResourceAsync(resource.Uri);
+        await using var listener = await McpTestSubscriptionListener.ListenAsync(
+            gatewayServer.Client,
+            new SubscriptionsListenNotifications { ResourceSubscriptions = [resource.Uri] }
+        );
+        await Assert
+            .That(
+                gatewayServer
+                    .GetRequiredService<McpGatewayResourceSubscriptionManager>()
+                    .SubscriptionStateCount
+            )
+            .IsEqualTo(1);
         await upstreamServer.EmitResourceUpdatedAsync();
 
         var payload = await updatedResource.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         await Assert.That(gatewayServer.Client.ServerCapabilities.Resources?.Subscribe).IsTrue();
         await Assert.That(payload.Uri).IsEqualTo(resource.Uri);
+        await Assert.That(payload.Meta?[MetaKeys.SubscriptionId]).IsNotNull();
     }
 
     [Test]
-    public async Task UnsubscribeFromResourceAsync_StopsForwardingUpstreamNotifications()
+    public async Task ListenForPromptChangesAsync_ForwardsTaggedUpstreamNotification()
+    {
+        await using var upstreamServer = await TestMcpPromptListFeatureServerHost.StartAsync();
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
+        {
+            options.AddMcpClient("prompt-source", upstreamServer.Client, disposeClient: false);
+        });
+        var promptChanged = new TaskCompletionSource<PromptListChangedNotificationParams>(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        await using var notificationRegistration = gatewayServer.Client.RegisterNotificationHandler(
+            NotificationMethods.PromptListChangedNotification,
+            (notification, _) =>
+            {
+                var payload = notification.Params?.Deserialize<PromptListChangedNotificationParams>();
+                if (payload is not null)
+                {
+                    promptChanged.TrySetResult(payload);
+                }
+
+                return ValueTask.CompletedTask;
+            }
+        );
+        await using var listener = await McpTestSubscriptionListener.ListenAsync(
+            gatewayServer.Client,
+            new SubscriptionsListenNotifications { PromptsListChanged = true }
+        );
+
+        await upstreamServer.AddPromptAsync("fresh_prompt");
+        var payload = await promptChanged.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await Assert.That(listener.Granted.PromptsListChanged).IsTrue();
+        await Assert.That(payload.Meta?[MetaKeys.SubscriptionId]).IsNotNull();
+    }
+
+    [Test]
+    public async Task DisposingResourceListener_StopsForwardingUpstreamNotifications()
     {
         await using var upstreamServer = await TestMcpProtocolFeatureServerHost.StartAsync();
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
@@ -191,11 +260,21 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
             candidate.Name == $"source-a_{TestMcpProtocolFeatureServerHost.ResourceName}"
         );
 
-        await gatewayServer.Client.SubscribeToResourceAsync(resource.Uri);
+        var listener = await McpTestSubscriptionListener.ListenAsync(
+            gatewayServer.Client,
+            new SubscriptionsListenNotifications { ResourceSubscriptions = [resource.Uri] }
+        );
         await upstreamServer.EmitResourceUpdatedAsync();
         _ = await firstNotification.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        await gatewayServer.Client.UnsubscribeFromResourceAsync(resource.Uri);
+        await listener.DisposeAsync();
+        await WaitUntilAsync(
+            () =>
+                gatewayServer
+                    .GetRequiredService<McpGatewayMcpServerSubscriptionCoordinator>()
+                    .ActiveListenerCount
+                == 0
+        );
         await upstreamServer.EmitResourceUpdatedAsync();
 
         var completedTask = await Task.WhenAny(
@@ -207,21 +286,22 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
         await Assert.That(notificationCount).IsEqualTo(1);
     }
 
-    [Test]
-    public async Task SetLoggingLevelAsync_AdvertisesLoggingCapabilityAndUpdatesServerLevel()
-    {
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
-
-        await gatewayServer.Client.SetLoggingLevelAsync(ModelContextProtocol.Protocol.LoggingLevel.Debug);
-
-        await Assert.That(gatewayServer.Client.ServerCapabilities.Logging).IsNotNull();
-        await Assert.That(gatewayServer.Server.LoggingLevel).IsEqualTo(
-            ModelContextProtocol.Protocol.LoggingLevel.Debug
-        );
-    }
-
     private static string GetSingleText(CallToolResult result) =>
         result.Content.OfType<TextContentBlock>().Single().Text;
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var timeoutAt = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            if (DateTimeOffset.UtcNow >= timeoutAt)
+            {
+                throw new TimeoutException("Condition was not satisfied within five seconds.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(25));
+        }
+    }
 
     private static IReadOnlyList<IMcpGatewayServerSource> CreateSources(IMcpGatewayRegistry registry) =>
         ((IMcpGatewayCatalogSource)registry)
@@ -332,14 +412,6 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
             string? displayName = null
         ) => inner.AddHttpServer(sourceId, endpoint, headers, displayName);
 
-        public void AddHttpServer(
-            string sourceId,
-            Uri endpoint,
-            ModelContextProtocol.Client.HttpTransportMode transportMode,
-            IReadOnlyDictionary<string, string>? headers = null,
-            string? displayName = null
-        ) => inner.AddHttpServer(sourceId, endpoint, transportMode, headers, displayName);
-
         public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
             inner.AddHttpServer(httpServer);
 
@@ -359,6 +431,9 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
                 environmentVariables,
                 displayName
             );
+
+        public void AddStdioServer(McpGatewayStdioServerOptions stdioServer) =>
+            inner.AddStdioServer(stdioServer);
 
         public void AddMcpClient(
             string sourceId,

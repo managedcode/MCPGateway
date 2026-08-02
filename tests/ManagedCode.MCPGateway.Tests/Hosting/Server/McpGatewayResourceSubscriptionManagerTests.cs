@@ -9,6 +9,9 @@ namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayResourceSubscriptionManagerTests
 {
+    private const string ListenerId = "listen:string:resource-manager-test";
+    private const string SubscriptionId = "resource-manager-test";
+
     [Test]
     public async Task SubscribeAsync_ReplacesExistingSubscriptionAndForwardsNotifications()
     {
@@ -41,18 +44,8 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
 
         var exposedUri = McpGatewayResourceUriCodec.ToGatewayUri("source-a", "docs://overview");
 
-        await manager.SubscribeAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            exposedUri,
-            CancellationToken.None
-        );
-        await manager.SubscribeAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            exposedUri,
-            CancellationToken.None
-        );
+        await SubscribeAsync(manager, gatewayServer.Server, exposedUri);
+        await SubscribeAsync(manager, gatewayServer.Server, exposedUri);
         await registration.EmitAsync(
             new ResourceUpdatedNotificationParams
             {
@@ -63,7 +56,7 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
         );
         var payload = await notificationReceived.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        await manager.UnsubscribeAsync(gatewayServer.Server, exposedUri, CancellationToken.None);
+        await UnsubscribeAsync(manager, gatewayServer.Server, exposedUri);
         await manager.DisposeAsync();
 
         await Assert.That(registration.SubscriptionCount).IsEqualTo(2);
@@ -81,12 +74,7 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
         var manager = CreateManager(serviceProvider, registration);
         using var cancellationSource = new CancellationTokenSource();
 
-        await manager.SubscribeAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            "docs://overview",
-            CancellationToken.None
-        );
+        await SubscribeAsync(manager, gatewayServer.Server, "docs://overview");
         cancellationSource.Cancel();
         await registration.EmitAsync(
             new ResourceUpdatedNotificationParams { Uri = "docs://overview" },
@@ -110,12 +98,7 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
         Exception? exception = null;
         try
         {
-            await manager.SubscribeAsync(
-                requestServices: null,
-                gatewayServer.Server,
-                "docs://overview",
-                CancellationToken.None
-            );
+            await SubscribeAsync(manager, gatewayServer.Server, "docs://overview");
         }
         catch (Exception ex)
         {
@@ -139,21 +122,12 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
             () => Interlocked.Increment(ref bindingDisposeCount)
         );
 
-        await manager.SubscribeAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            "docs://overview",
-            CancellationToken.None
-        );
+        await SubscribeAsync(manager, gatewayServer.Server, "docs://overview");
 
         Exception? exception = null;
         try
         {
-            await manager.UnsubscribeAsync(
-                gatewayServer.Server,
-                "docs://overview",
-                CancellationToken.None
-            );
+            await UnsubscribeAsync(manager, gatewayServer.Server, "docs://overview");
         }
         catch (Exception ex)
         {
@@ -167,33 +141,6 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
     }
 
     [Test]
-    public async Task RemoveSessionAsync_ReleasesSubscriptionAndPinnedBinding()
-    {
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
-        var registration = new TrackingResourceRegistration("source-a");
-        var bindingDisposeCount = 0;
-        await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
-        var manager = CreateManager(
-            serviceProvider,
-            new McpGatewayRegistrationBoundServerSource(registration),
-            () => Interlocked.Increment(ref bindingDisposeCount)
-        );
-
-        await manager.SubscribeAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            "docs://overview",
-            CancellationToken.None
-        );
-
-        await manager.RemoveSessionAsync(gatewayServer.Server.SessionId ?? string.Empty);
-
-        await Assert.That(registration.DisposedSubscriptionCount).IsEqualTo(1);
-        await Assert.That(bindingDisposeCount).IsEqualTo(1);
-        await Assert.That(manager.SubscriptionStateCount).IsEqualTo(0);
-    }
-
-    [Test]
     public async Task SubscribeAsync_ThrowsAfterManagerIsDisposed()
     {
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
@@ -202,12 +149,7 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
 
         await manager.DisposeAsync();
         var exception = await CaptureAsync(
-            manager.SubscribeAsync(
-                requestServices: null,
-                gatewayServer.Server,
-                "docs://overview",
-                CancellationToken.None
-            )
+            SubscribeAsync(manager, gatewayServer.Server, "docs://overview")
         );
 
         await Assert.That(exception).IsTypeOf<ObjectDisposedException>();
@@ -241,6 +183,31 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
         }
     }
 
+    private static async Task SubscribeAsync(
+        McpGatewayResourceSubscriptionManager manager,
+        ModelContextProtocol.Server.McpServer server,
+        string exposedUri
+    )
+    {
+        var deliveryGate = new McpGatewaySubscriptionDeliveryGate();
+        await deliveryGate.OpenAsync(CancellationToken.None);
+        await manager.SubscribeAsync(
+            requestServices: null,
+            server,
+            exposedUri,
+            ListenerId,
+            new RequestId(SubscriptionId),
+            deliveryGate,
+            CancellationToken.None
+        );
+    }
+
+    private static Task UnsubscribeAsync(
+        McpGatewayResourceSubscriptionManager manager,
+        ModelContextProtocol.Server.McpServer server,
+        string exposedUri
+    ) => manager.UnsubscribeAsync(server, exposedUri, ListenerId, CancellationToken.None);
+
     private static McpGatewayResourceSubscriptionManager CreateManager(
         ServiceProvider serviceProvider,
         TrackingResourceRegistration registration
@@ -273,11 +240,29 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
             onDisposed: onBindingDisposed
         );
 
-        return new McpGatewayResourceSubscriptionManager(
-            new McpGatewayMcpServerBindingManager(resolver),
+        var bindingManager = new McpGatewayMcpServerBindingManager(resolver);
+        var logger = NullLogger<McpGatewayResourceSubscriptionManager>.Instance;
+        var registry = new McpGatewayResourceSubscriptionRegistry();
+        var cleanup = new McpGatewayResourceSubscriptionCleanup(bindingManager);
+        var forwarder = new McpGatewayResourceSubscriptionForwarder(
+            registry,
+            cleanup,
+            logger
+        );
+        var subscriptionFactory = new McpGatewayResourceSubscriptionFactory(
+            bindingManager,
+            forwarder,
             serviceProvider,
-            NullLogger<McpGatewayResourceSubscriptionManager>.Instance,
             NullLoggerFactory.Instance
+        );
+        var lifetime = new McpGatewayResourceSubscriptionLifetime(registry, cleanup);
+        return new McpGatewayResourceSubscriptionManager(
+            bindingManager,
+            registry,
+            cleanup,
+            subscriptionFactory,
+            lifetime,
+            logger
         );
     }
 
@@ -297,7 +282,7 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
             CancellationToken cancellationToken
         ) => ValueTask.FromResult<IReadOnlyList<McpGatewayLoadedTool>>([]);
 
-        public override Task<IAsyncDisposable?> SubscribeToResourceAsync(
+        public override Task<IAsyncDisposable?> ListenForResourceUpdatesAsync(
             string resourceUri,
             Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
             Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
@@ -337,7 +322,7 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
     private sealed class ThrowingDisposeResourceSource(string sourceId)
         : TestMcpGatewayServerSource(sourceId)
     {
-        public override Task<IAsyncDisposable?> SubscribeToResourceAsync(
+        public override Task<IAsyncDisposable?> ListenForResourceUpdatesAsync(
             string resourceUri,
             Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
             Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
@@ -364,7 +349,7 @@ public sealed class McpGatewayResourceSubscriptionManagerTests
     private sealed class UnsupportedSubscriptionResourceSource(string sourceId)
         : TestMcpGatewayServerSource(sourceId)
     {
-        public override Task<IAsyncDisposable?> SubscribeToResourceAsync(
+        public override Task<IAsyncDisposable?> ListenForResourceUpdatesAsync(
             string resourceUri,
             Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
             Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,

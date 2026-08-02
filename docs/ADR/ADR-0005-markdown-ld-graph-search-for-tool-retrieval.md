@@ -20,7 +20,7 @@ Constraints:
 - keep embeddings optional and opt-in
 - use the tokenizer behavior inside `ManagedCode.MarkdownLd.Kb` instead of carrying a separate local tokenizer strategy
 - support graph creation during startup/index build, graph loading from a file-system path, and host-supplied Markdown-LD documents
-- do not introduce Microsoft Agent Framework into the core package
+- do not introduce a host-specific agent framework into the core package
 - avoid a separate hosted graph service or durable graph store
 
 ## Decision
@@ -94,7 +94,7 @@ Cons:
 
 - duplicates token-distance behavior already provided by `ManagedCode.MarkdownLd.Kb`
 - creates three user-visible modes when the product requirement is embeddings versus Markdown-LD graph
-- keeps legacy search code and tests alive after the graph path replaces it
+- keeps superseded search code and tests alive after the graph path replaces it
 
 Rejected because token-based retrieval should live inside the Markdown-LD graph strategy.
 
@@ -199,7 +199,7 @@ Primary scenarios:
 - vector query failure falls through to graph ranking
 - `Auto` vector-first search can supplement semantic primary results with bounded graph expansion and can still fall back to graph when vector ranking is unavailable
 - default graph mode does not call the embedding generator
-- chat-client and agent auto-discovery expose graph-ranked discovered tools when no embeddings are registered
+- generic chat-client auto-discovery exposes graph-ranked discovered tools when no embeddings are registered
 
 Tests:
 
@@ -215,7 +215,7 @@ Tests:
 - `SearchAsync_FallsBackWhenQueryEmbeddingFails`
 - `SearchAsync_FallsBackWhenQueryVectorIsEmpty`
 - `AutoDiscoveryChatClient_UsesFocusedGraphExpansionMatches`
-- `ChatClientAgent_UsesAutoDiscoveryWithoutEmbeddings`
+- `AutoDiscoveryChatClient_ReplacesDiscoveredToolsWithoutEmbeddings`
 
 Commands:
 

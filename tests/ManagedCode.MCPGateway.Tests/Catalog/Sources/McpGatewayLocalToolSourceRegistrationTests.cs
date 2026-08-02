@@ -102,7 +102,7 @@ public sealed class McpGatewayLocalToolSourceRegistrationTests
     }
 
     [Test]
-    public async Task LoadToolsAsync_UsesOptionalTaskSupportForLocalFunctions()
+    public async Task LoadToolsAsync_PreservesTheRegisteredLocalFunction()
     {
         var registration = new McpGatewayLocalToolSourceRegistration("local", null);
         registration.AddTool(
@@ -119,7 +119,8 @@ public sealed class McpGatewayLocalToolSourceRegistrationTests
         );
 
         await Assert.That(loadedTools.Count).IsEqualTo(1);
-        await Assert.That(loadedTools[0].TaskSupport).IsEqualTo(ToolTaskSupport.Optional);
+        await Assert.That(loadedTools[0].Tool.Name).IsEqualTo("lookup");
+        await Assert.That(loadedTools[0].Client).IsNull();
     }
 
     [Test]
@@ -164,47 +165,17 @@ public sealed class McpGatewayLocalToolSourceRegistrationTests
             NullLoggerFactory.Instance,
             CancellationToken.None
         );
-        var promptSubscription = await registration.SubscribeToPromptListChangesAsync(
+        var promptSubscription = await registration.ListenForPromptListChangesAsync(
             static (_, _) => ValueTask.CompletedTask,
             NullLoggerFactory.Instance,
             CancellationToken.None
         );
-        var task = await registration.CallToolAsTaskAsync(
-            "lookup",
-            arguments: null,
-            new McpTaskMetadata(),
-            progress: null,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var trackedTask = await registration.GetTaskAsync(
-            "task-id",
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var taskResult = await registration.GetTaskResultAsync(
-            "task-id",
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var cancelledTask = await registration.CancelTaskAsync(
-            "task-id",
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-        var resourceSubscription = await registration.SubscribeToResourceAsync(
+        var resourceSubscription = await registration.ListenForResourceUpdatesAsync(
             "docs://overview",
             static (_, _) => ValueTask.CompletedTask,
             NullLoggerFactory.Instance,
             CancellationToken.None
         );
-        var taskSubscription = await registration.SubscribeToTaskStatusAsync(
-            "task-id",
-            static (_, _) => ValueTask.CompletedTask,
-            NullLoggerFactory.Instance,
-            CancellationToken.None
-        );
-
         await Assert.That(blankTool).IsNull();
         await Assert.That(prompts.Count).IsEqualTo(0);
         await Assert.That(resources.Count).IsEqualTo(0);
@@ -213,12 +184,7 @@ public sealed class McpGatewayLocalToolSourceRegistrationTests
         await Assert.That(resource).IsNull();
         await Assert.That(completion).IsNull();
         await Assert.That(promptSubscription).IsNull();
-        await Assert.That(task).IsNull();
-        await Assert.That(trackedTask).IsNull();
-        await Assert.That(taskResult).IsNull();
-        await Assert.That(cancelledTask).IsNull();
         await Assert.That(resourceSubscription).IsNull();
-        await Assert.That(taskSubscription).IsNull();
     }
 
     private static ValueTask<GetPromptResult> BuildPromptAsync(

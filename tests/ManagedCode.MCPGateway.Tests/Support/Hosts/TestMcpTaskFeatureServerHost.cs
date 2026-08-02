@@ -1,12 +1,10 @@
-#pragma warning disable MCPEXP001
-
 using System.ComponentModel;
 using System.IO.Pipelines;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ModelContextProtocol;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -48,26 +46,22 @@ internal sealed class TestMcpTaskFeatureServerHost : IAsyncDisposable
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
 
-        var builder = services.AddMcpServer(options =>
+        var taskStore = new InMemoryMcpTaskStore
         {
-            options.TaskStore = new InMemoryMcpTaskStore();
-            options.SendTaskStatusNotifications = true;
-            options.Capabilities ??= new ServerCapabilities();
-            options.Capabilities.Tasks ??= new McpTasksCapability
-            {
-                Requests = new RequestMcpTasksCapability
-                {
-                    Tools = new ToolsMcpTasksCapability
-                    {
-                        Call = new CallToolMcpTasksCapability(),
-                    },
-                },
-                List = new ListMcpTasksCapability(),
-                Cancel = new CancelMcpTasksCapability(),
-            };
-        });
-
-        builder.WithTools<TestTaskTools>();
+            DefaultPollIntervalMs = 10,
+            DefaultTimeToLive = TimeSpan.FromMinutes(5),
+        };
+        services
+            .AddMcpServer()
+            .WithTools<TestTaskTools>()
+            .WithTasks(
+                taskStore,
+                options =>
+                    options.ExecutionModeSelector = static request =>
+                        request.Params?.Name == RequiredToolName
+                            ? McpTaskExecutionMode.Required
+                            : McpTaskExecutionMode.Optional
+            );
 
         var serviceProvider = services.BuildServiceProvider();
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
@@ -99,6 +93,7 @@ internal sealed class TestMcpTaskFeatureServerHost : IAsyncDisposable
             clientTransport,
             new McpClientOptions
             {
+                ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
                 ClientInfo = new Implementation
                 {
                     Name = "managedcode-mcpgateway-task-tests",
@@ -141,7 +136,6 @@ internal sealed class TestMcpTaskFeatureServerHost : IAsyncDisposable
             Title = "Optional task tool",
             ReadOnly = true,
             Idempotent = true,
-            TaskSupport = ToolTaskSupport.Optional,
             UseStructuredContent = false
         )]
         [Description("Runs a short optional background task.")]
@@ -159,7 +153,6 @@ internal sealed class TestMcpTaskFeatureServerHost : IAsyncDisposable
             Title = "Required task tool",
             ReadOnly = true,
             Idempotent = true,
-            TaskSupport = ToolTaskSupport.Required,
             UseStructuredContent = false
         )]
         [Description("Runs a short task that must be invoked through the tasks surface.")]
@@ -177,7 +170,6 @@ internal sealed class TestMcpTaskFeatureServerHost : IAsyncDisposable
             Title = "Cancellable task tool",
             ReadOnly = true,
             Idempotent = true,
-            TaskSupport = ToolTaskSupport.Optional,
             UseStructuredContent = false
         )]
         [Description("Runs a cancellable task.")]
@@ -191,5 +183,3 @@ internal sealed class TestMcpTaskFeatureServerHost : IAsyncDisposable
         }
     }
 }
-
-#pragma warning restore MCPEXP001

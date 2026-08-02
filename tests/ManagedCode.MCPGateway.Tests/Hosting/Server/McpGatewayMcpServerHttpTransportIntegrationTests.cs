@@ -2,12 +2,12 @@
 
 using System.Net;
 using System.Text;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace ManagedCode.MCPGateway.Tests;
 
@@ -93,36 +93,26 @@ public sealed class McpGatewayMcpServerHttpTransportIntegrationTests
     }
 
     [Test]
-    public async Task WithMcpGatewayCatalog_ComposesExistingHttpSessionHandler()
+    public async Task WithMcpGatewayCatalog_EnforcesCurrentProtocolAndStatelessHttp()
     {
-        var userHandlerCalled = false;
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddMcpGateway(static _ => { });
         services
             .AddMcpServer()
-            .WithHttpTransport(options =>
-            {
-                options.RunSessionHandler = (_, _, _) =>
-                {
-                    userHandlerCalled = true;
-                    return Task.CompletedTask;
-                };
-            })
+            .WithHttpTransport(static options => options.Stateless = false)
             .WithMcpGatewayCatalog();
         await using var serviceProvider = services.BuildServiceProvider();
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
+
         var transportOptions = serviceProvider
             .GetRequiredService<IOptions<HttpServerTransportOptions>>()
             .Value;
+        var serverOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        await transportOptions.RunSessionHandler!(
-            new DefaultHttpContext { RequestServices = serviceProvider },
-            gatewayServer.Server,
-            CancellationToken.None
-        );
-
-        await Assert.That(userHandlerCalled).IsTrue();
+        await Assert.That(transportOptions.Stateless).IsTrue();
+        await Assert
+            .That(serverOptions.ProtocolVersion)
+            .IsEqualTo(McpGatewayMcpProtocolConstants.CurrentProtocolVersion);
     }
 
     private static async Task<GatewayExerciseResult> ExerciseGatewayAsync(

@@ -108,7 +108,7 @@ public sealed class McpGatewayMcpServerBindingManagerTests
         await resolver.Cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         await Assert.That(exception).IsTypeOf<OperationCanceledException>();
-        await Assert.That(manager.SessionBindingCount).IsEqualTo(0);
+        await Assert.That(manager.ServerBindingCount).IsEqualTo(0);
     }
 
     [Test]
@@ -133,7 +133,7 @@ public sealed class McpGatewayMcpServerBindingManagerTests
         );
 
         await Assert.That(exception).IsTypeOf<ObjectDisposedException>();
-        await Assert.That(manager.SessionBindingCount).IsEqualTo(0);
+        await Assert.That(manager.ServerBindingCount).IsEqualTo(0);
     }
 
     [Test]

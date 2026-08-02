@@ -1,4 +1,3 @@
-using System.Collections.Frozen;
 using System.Text;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
@@ -401,118 +400,6 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const double RouteCategorizedToolScoreBoost = 0.01d;
     private const double RouteUsageExampleScoreBoost = 0.01d;
 
-    private static readonly char[] TokenSeparators =
-    [
-        ' ',
-        '\t',
-        '\r',
-        '\n',
-        '_',
-        '-',
-        '.',
-        ',',
-        ';',
-        ':',
-        '/',
-        '\\',
-        '(',
-        ')',
-        '[',
-        ']',
-        '{',
-        '}',
-        '"',
-        '\'',
-        '@',
-        '?',
-        '!',
-    ];
-    private static readonly FrozenSet<string> IgnoredSearchTerms = new[]
-    {
-        "a",
-        "an",
-        "and",
-        "again",
-        "any",
-        "for",
-        "just",
-        "me",
-        "need",
-        "now",
-        "please",
-        "plz",
-        "really",
-        "something",
-        "stuff",
-        "that",
-        "the",
-        "thing",
-        "this",
-        "to",
-        "active",
-        "browser",
-        "browsing",
-        "context",
-        "dashboard",
-        "dashboards",
-        "false",
-        "filter",
-        "filters",
-        "intent",
-        "mode",
-        "page",
-        "section",
-        "signal",
-        "signals",
-        "summary",
-        "true",
-        "user",
-        "with",
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-    private static readonly FrozenSet<string> GraphDiscoveryTerms = new[]
-    {
-        GraphOperationTermSearch,
-        GraphOperationTermFind,
-        GraphOperationTermList,
-        GraphOperationTermQuery,
-        GraphOperationTermDiscover,
-        GraphOperationTermBrowse,
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-    private static readonly FrozenSet<string> GraphInspectionTerms = new[]
-    {
-        GraphOperationTermGet,
-        GraphOperationTermRead,
-        GraphOperationTermLookup,
-        GraphOperationTermDetail,
-        GraphOperationTermDetails,
-        GraphOperationTermFetch,
-        GraphOperationTermShow,
-        GraphOperationTermInspect,
-        GraphOperationTermStatus,
-        GraphOperationTermRetrieve,
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-    private static readonly FrozenSet<string> GraphActionTerms = new[]
-    {
-        GraphOperationTermCreate,
-        GraphOperationTermUpdate,
-        GraphOperationTermDelete,
-        GraphOperationTermRemove,
-        GraphOperationTermAdd,
-        GraphOperationTermSet,
-        GraphOperationTermSend,
-        GraphOperationTermPost,
-        GraphOperationTermWrite,
-        GraphOperationTermInvoke,
-        GraphOperationTermRun,
-        GraphOperationTermExecute,
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
-    private static readonly FrozenSet<string> GraphGenericTerms = new[]
-    {
-        GraphGenericToolTerm,
-        GraphGenericToolsTerm,
-        GraphGenericMcpTerm,
-        GraphGenericGatewayTerm,
-    }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
     private static readonly CompositeFormat SourceLoadFailedMessageFormat = CompositeFormat.Parse(
         SourceLoadFailedMessageTemplate
     );
@@ -575,6 +462,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private readonly int _maxDescriptorLength;
     private readonly TimeSpan? _markdownLdFederatedSparqlQueryTimeout;
     private readonly IReadOnlyList<Uri> _markdownLdFederatedServiceEndpoints;
+    private readonly int _mcpTaskMaximumConsecutiveStuckPolls;
     private readonly Uri _graphLocalFederationEndpoint;
     private readonly IMcpGatewaySearchCache _searchRuntimeCache;
     private RuntimeState _state = RuntimeState.Empty;
@@ -626,6 +514,11 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
             nameof(McpGatewayOptions.MarkdownLdFederatedSparqlQueryTimeout)
         );
         _markdownLdFederatedServiceEndpoints = resolvedOptions.MarkdownLdFederatedServiceEndpoints;
+        _mcpTaskMaximumConsecutiveStuckPolls = ValidateMinimum(
+            resolvedOptions.McpTaskStore.MaximumConsecutiveStuckPolls,
+            $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(McpGatewayMcpTaskStoreOptions.MaximumConsecutiveStuckPolls)}",
+            1
+        );
         _graphLocalFederationEndpoint = new Uri(
             $"{GraphLocalFederationEndpointUriText}/{Guid.NewGuid():N}",
             UriKind.Absolute

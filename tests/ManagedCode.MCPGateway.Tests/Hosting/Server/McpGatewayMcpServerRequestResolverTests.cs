@@ -3,7 +3,6 @@
 using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
@@ -16,13 +15,13 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
     {
         var alphaRegistration = new TestRegistration(
             "alpha",
-            [CreateLoadedTool("shared_tool", ToolTaskSupport.Optional)]
+            [CreateLoadedTool("shared_tool")]
         );
         var betaRegistration = new TestRegistration(
             "beta",
-            [CreateLoadedTool("shared_tool", ToolTaskSupport.Required)]
+            [CreateLoadedTool("shared_tool")]
         );
-        var (resolver, binding) = CreateResolverContext(
+        var binding = CreateResolverContext(
             toolDescriptors:
             [
                 CreateToolDescriptor("alpha_shared_tool", "alpha", "shared_tool"),
@@ -31,49 +30,36 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
             registrations: [alphaRegistration, betaRegistration]
         );
 
-        var blank = await resolver.ResolveToolAsync(binding, " ", CancellationToken.None);
-        var unknown = await resolver.ResolveToolAsync(binding, "missing", CancellationToken.None);
-        var resolved = await resolver.ResolveToolAsync(
+        var blank = await McpGatewayMcpServerRequestResolver.ResolveToolAsync(
+            binding,
+            " ",
+            CancellationToken.None
+        );
+        var unknown = await McpGatewayMcpServerRequestResolver.ResolveToolAsync(
+            binding,
+            "missing",
+            CancellationToken.None
+        );
+        var resolved = await McpGatewayMcpServerRequestResolver.ResolveToolAsync(
             binding,
             "ALPHA_SHARED_TOOL",
             CancellationToken.None
         );
         var exception = await CaptureAsync(() =>
-            resolver.ResolveToolAsync(binding, "shared_tool", CancellationToken.None)
+            McpGatewayMcpServerRequestResolver.ResolveToolAsync(
+                binding,
+                "shared_tool",
+                CancellationToken.None
+            )
         );
 
         await Assert.That(blank).IsNull();
         await Assert.That(unknown).IsNull();
         await Assert.That(resolved).IsNotNull();
         await Assert.That(resolved!.ToolId).IsEqualTo("alpha_shared_tool");
-        await Assert.That(resolved.TaskSupport).IsEqualTo(ToolTaskSupport.Optional);
+        await Assert.That(resolved.SourceId).IsEqualTo("alpha");
         await Assert.That(exception).IsNotNull();
         await Assert.That(exception!.Message).Contains("ambiguous");
-    }
-
-    [Test]
-    public async Task LoadToolTaskSupportsAsync_SkipsMissingRegistrationsAndMissingTools()
-    {
-        var alphaRegistration = new TestRegistration(
-            "alpha",
-            [CreateLoadedTool("known_tool", ToolTaskSupport.Required)]
-        );
-        var (resolver, binding) = CreateResolverContext(
-            toolDescriptors:
-            [
-                CreateToolDescriptor("known_tool", "alpha", "known_tool"),
-                CreateToolDescriptor("missing_tool", "alpha", "missing_tool"),
-                CreateToolDescriptor("other_tool", "beta", "other_tool"),
-            ],
-            registrations: [alphaRegistration]
-        );
-
-        var supports = await resolver.LoadToolTaskSupportsAsync(binding, CancellationToken.None);
-
-        await Assert.That(supports.Count).IsEqualTo(2);
-        await Assert.That(supports["KNOWN_TOOL"]).IsEqualTo(ToolTaskSupport.Required);
-        await Assert.That(supports["missing_tool"]).IsNull();
-        await Assert.That(supports.ContainsKey("other_tool")).IsFalse();
     }
 
     [Test]
@@ -81,7 +67,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
     {
         var alphaRegistration = new TestRegistration("alpha");
         var betaRegistration = new TestRegistration("beta");
-        var (resolver, binding) = CreateResolverContext(
+        var binding = CreateResolverContext(
             promptDescriptors:
             [
                 CreatePromptDescriptor("alpha_release_review", "alpha", "release_review"),
@@ -128,7 +114,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         var alphaRegistration = new TestRegistration("alpha");
         var betaRegistration = new TestRegistration("beta");
         var gatewayUri = McpGatewayResourceUriCodec.ToGatewayUri("alpha", "docs://overview");
-        var (resolver, binding) = CreateResolverContext(
+        var binding = CreateResolverContext(
             resourceDescriptors:
             [
                 CreateResourceDescriptor("alpha", "overview", "docs://overview"),
@@ -164,37 +150,27 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
         await Assert.That(exception!.Message).Contains("ambiguous");
     }
 
-    private static (
-        McpGatewayMcpServerRequestResolver Resolver,
-        IMcpGatewayServerBinding Binding
-    ) CreateResolverContext(
+    private static IMcpGatewayServerBinding CreateResolverContext(
         IReadOnlyList<McpGatewayToolDescriptor>? toolDescriptors = null,
         IReadOnlyList<McpGatewayPromptDescriptor>? promptDescriptors = null,
         IReadOnlyList<McpGatewayResourceDescriptor>? resourceDescriptors = null,
         IReadOnlyList<McpGatewayResourceTemplateDescriptor>? templateDescriptors = null,
         IReadOnlyList<McpGatewayToolSourceRegistration>? registrations = null
     ) =>
-        (
-            new McpGatewayMcpServerRequestResolver(NullLoggerFactory.Instance),
-            new McpGatewayServerBinding(
+        new McpGatewayServerBinding(
                 new TestGateway(toolDescriptors ?? []),
                 new TestPromptCatalog(promptDescriptors ?? []),
                 new TestResourceCatalog(resourceDescriptors ?? [], templateDescriptors ?? []),
                 new TestRegistry(registrations ?? [])
-            )
         );
 
-    private static McpGatewayLoadedTool CreateLoadedTool(
-        string toolName,
-        ToolTaskSupport taskSupport
-    ) =>
+    private static McpGatewayLoadedTool CreateLoadedTool(string toolName) =>
         new(
             TestFunctionFactory.CreateFunction(
                 static () => "ok",
                 toolName,
                 $"Executes {toolName}."
-            ),
-            TaskSupport: taskSupport
+            )
         );
 
     private static McpGatewayToolDescriptor CreateToolDescriptor(
@@ -426,14 +402,6 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
             string? displayName = null
         ) => throw new NotSupportedException();
 
-        public void AddHttpServer(
-            string sourceId,
-            Uri endpoint,
-            ModelContextProtocol.Client.HttpTransportMode transportMode,
-            IReadOnlyDictionary<string, string>? headers = null,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
         public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
             throw new NotSupportedException();
 
@@ -445,6 +413,9 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
             IReadOnlyDictionary<string, string?>? environmentVariables = null,
             string? displayName = null
         ) => throw new NotSupportedException();
+
+        public void AddStdioServer(McpGatewayStdioServerOptions stdioServer) =>
+            throw new NotSupportedException();
 
         public void AddMcpClient(
             string sourceId,

@@ -13,7 +13,7 @@ It is built on:
 - `Microsoft.Extensions.AI`
 - the official `ModelContextProtocol` .NET SDK
 
-`ManagedCode.MCPGateway` treats the official [`modelcontextprotocol/csharp-sdk`](https://github.com/modelcontextprotocol/csharp-sdk) as its MCP protocol baseline. The package builds on top of that SDK rather than replacing it with a narrower custom protocol layer, and the shipped gateway surface now includes aggregated MCP `tools`, gateway-owned and upstream MCP `prompts`, and MCP `resources` plus downstream MCP export support for `completion`, `prompt list-change notifications`, `resource subscriptions`, `logging/setLevel`, and task-backed MCP tool execution.
+`ManagedCode.MCPGateway` treats the official [`modelcontextprotocol/csharp-sdk`](https://github.com/modelcontextprotocol/csharp-sdk) as its MCP protocol baseline. The package uses SDK `2.0.0` and pins every gateway-created client and exported server to protocol `2026-07-28`. Non-current peers are rejected. The shipped gateway surface includes aggregated MCP tools, prompts, and resources; per-request subscriptions; SDK Tasks and Apps extensions; cache-aware results; and task-backed tool execution.
 
 ## Install
 
@@ -26,7 +26,7 @@ dotnet add package ManagedCode.MCPGateway
 - one gateway for local `AITool` instances and MCP tools
 - one prompt catalog for source-aware MCP prompts plus gateway-owned custom and composite prompts
 - one resource catalog for MCP resources and resource templates aggregated across registered MCP sources
-- one downstream MCP server export path over the aggregated tool, prompt, and resource catalogs with stable MCP protocol parity for completions, prompt list-change notifications, resource subscriptions, logging level changes, and task-backed tool execution
+- one downstream MCP server export path over the aggregated tool, prompt, and resource catalogs with SDK 2.0 protocol support for completions, per-request notifications, resource subscriptions, Tasks, Apps, and cache hints
 - one search API with default schema-aware Markdown-LD SPARQL graph ranking, opt-in vector ranking, and vector-first `Auto`
 - one graph search API for schema/profile inspection, schema-aware SPARQL search, explicit allowlisted federation, graph evidence, and graph export
 - one category-first routing API for advanced tool discovery flows
@@ -142,9 +142,32 @@ services.AddMcpGateway(options =>
 });
 ```
 
-`AddHttpServer(...)` uses the official MCP C# SDK Streamable HTTP transport for modern remote MCP endpoints and keeps the source registered as an HTTP MCP source in gateway descriptors and downstream export metadata.
-Use the overload with `HttpTransportMode` only when a legacy endpoint requires `AutoDetect` or `Sse`.
-Use `McpGatewayHttpServerOptions` when a host needs the SDK HTTP transport knobs such as additional headers, connection timeout, known session id, session ownership, OAuth options, or SSE reconnection settings. The package does not set a transport timeout by default; hosts can pass one explicitly or own deadline policy through cancellation tokens and hosting infrastructure.
+`AddHttpServer(...)` uses the official MCP C# SDK Streamable HTTP transport, pins protocol `2026-07-28`, and keeps the source registered as an HTTP MCP source in gateway descriptors and downstream export metadata. `McpGatewayHttpServerOptions` exposes additional headers, connection timeout, and OAuth configuration. The package does not set a transport timeout by default; hosts can pass one explicitly or own deadline policy through cancellation tokens and hosting infrastructure.
+
+`AddStdioServer(...)` inherits the host process environment by default, matching the official SDK. For a third-party or otherwise untrusted stdio server, use `McpGatewayStdioServerOptions` to disable inheritance and pass the SDK's curated startup environment explicitly:
+
+```csharp
+using ManagedCode.MCPGateway;
+using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
+
+var safeEnvironment = StdioClientTransportOptions.GetDefaultEnvironmentVariables();
+
+services.AddMcpGateway(options =>
+{
+    options.AddStdioServer(new McpGatewayStdioServerOptions
+    {
+        SourceId = "filesystem",
+        Command = "npx",
+        Arguments = ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+        InheritEnvironmentVariables = false,
+        EnvironmentVariables = safeEnvironment,
+        ShutdownTimeout = TimeSpan.FromSeconds(10)
+    });
+});
+```
+
+The stdio options object also exposes the SDK shutdown timeout and stderr callback. Add any server-specific variables that are not in the curated environment before registration.
 
 You can also register:
 
@@ -324,29 +347,48 @@ services.AddMcpServer()
 - aggregated prompts through MCP `prompts/list` and `prompts/get`
 - aggregated resources through MCP `resources/list`, `resources/templates/list`, and `resources/read`
 - prompt and resource completions through MCP `completion/complete`
-- forwarded `notifications/prompts/list_changed` when upstream or gateway-owned prompts change
-- resource subscriptions through MCP `resources/subscribe` and `resources/unsubscribe`, including forwarded `notifications/resources/updated`
-- logging level changes through MCP `logging/setLevel`
-- task-backed tool execution through MCP `tools/call` with `task` metadata plus MCP `tasks/list`, `tasks/get`, `tasks/result`, and `tasks/cancel`
-- forwarded `notifications/tasks/status` for exported gateway tasks
+- protocol `2026-07-28` discovery through SDK `server/discover`, per-request metadata, `resultType`, `ttlMs`, and `cacheScope`
+- per-request `subscriptions/listen` for prompt list changes and resource updates, including subscription-id tagging and deterministic upstream cleanup
+- task-backed tool execution through the `io.modelcontextprotocol/tasks` extension with `tasks/get`, `tasks/update`, and `tasks/cancel`
+- MCP Apps through `io.modelcontextprotocol/ui`, including transparent tool UI metadata and source-aware UI resource routing
 
-Exported MCP tool names are canonical lowercase MCP-safe gateway ids. A unique upstream tool such as `notion-fetch` is exported as `notion-fetch`; when multiple sources expose the same normalized tool name, the gateway uses a source-qualified safe id such as `docs_search_repository` or `ops_search_repository`. Hash suffixes are added only when length or collision handling requires them. Names that would exceed 64 characters keep a readable normalized prefix and receive a deterministic hash suffix instead of being blindly truncated. `McpGatewayToolDescriptor.ToolId`, downstream MCP `Tool.Name`, and downstream `tools/call` names are the same value, and gateway-owned name resolution is case-insensitive so callers can vary casing without creating a different tool identity. Prompt names and exported resource names use the same lowercase MCP-safe source qualification, for example `ops_deployment_review_system_prompt` or `local_release_review_bundle`, while raw upstream `SourceId`, prompt name, tool name, and resource URI remain available as routing metadata and `_meta` values. Exported MCP resource URIs and URI templates are rewritten into gateway-owned opaque URIs so downstream `resources/read` calls route back to the correct upstream source even when multiple servers expose overlapping URI spaces. The same source-aware rewrite is also used for `completion/complete`, forwarded prompt list changes, and forwarded resource update notifications, so downstream clients always talk in terms of gateway-owned prompt names and resource URIs while the gateway proxies the corresponding upstream MCP operations. When an upstream MCP tool already advertises task support, the gateway preserves that contract on the exported tool and proxies the corresponding upstream task flow. Local gateway tools are exported as optional task-capable tools and are executed through the gateway-owned task store.
+Exported MCP tool names are canonical lowercase MCP-safe gateway ids. A unique upstream tool such as `notion-fetch` is exported as `notion-fetch`; when multiple sources expose the same normalized tool name, the gateway uses a source-qualified safe id such as `docs_search_repository` or `ops_search_repository`. Hash suffixes are added only when length or collision handling requires them. Names that would exceed 64 characters keep a readable normalized prefix and receive a deterministic hash suffix instead of being blindly truncated. `McpGatewayToolDescriptor.ToolId`, downstream MCP `Tool.Name`, and downstream `tools/call` names are the same value, and gateway-owned name resolution is case-insensitive so callers can vary casing without creating a different tool identity. Prompt names and exported resource names use the same lowercase MCP-safe source qualification, for example `ops_deployment_review_system_prompt` or `local_release_review_bundle`, while raw upstream `SourceId`, prompt name, tool name, and resource URI remain available as routing metadata and `_meta` values. Exported MCP resource URIs and URI templates are rewritten into gateway-owned opaque URIs so downstream `resources/read` calls route back to the correct upstream source even when multiple servers expose overlapping URI spaces. The same source-aware rewrite is used for MCP App `_meta.ui.resourceUri`, `completion/complete`, forwarded prompt list changes, and forwarded resource update notifications. Output schemas are preserved as arbitrary JSON Schema 2020-12 values, including boolean, primitive, and array schemas rather than only object schemas.
 
-The exported task store uses the official SDK `InMemoryMcpTaskStore` with MCPGateway-owned bounded defaults: task TTL 30 minutes, maximum task TTL 2 hours, cleanup every minute, maximum 10,000 tasks globally, and maximum 1,000 tasks per downstream session. Hosts can override those limits through `McpGatewayOptions.McpTaskStore`, or replace `McpServerOptions.TaskStore` with a durable production store when tasks must survive process restarts:
+The Tasks extension uses `tasks/get`, `tasks/update`, and `tasks/cancel`. A client opts into task execution through its extension capability. The gateway first invokes an upstream tool normally and, when the upstream server requires Tasks, retries through the SDK polling flow. Local and upstream tools can also run as gateway-owned downstream tasks.
+
+The default exported task store wraps the official SDK `InMemoryMcpTaskStore` with bounded defaults: task TTL 30 minutes, polling interval 1 second, maximum 10,000 retained tasks, and at most 60 consecutive unchanged upstream polls. Hosts can override those values through `McpGatewayOptions.McpTaskStore`:
 
 ```csharp
 services.AddMcpGateway(options =>
 {
     options.McpTaskStore.TaskTimeToLive = TimeSpan.FromHours(1);
-    options.McpTaskStore.MaximumTaskTimeToLive = TimeSpan.FromHours(4);
+    options.McpTaskStore.PollInterval = TimeSpan.FromMilliseconds(500);
     options.McpTaskStore.MaximumTasks = 50_000;
-    options.McpTaskStore.MaximumTasksPerSession = 5_000;
+    options.McpTaskStore.MaximumConsecutiveStuckPolls = 120;
 });
 ```
 
-`WithMcpGatewayCatalog()` does not replace the official SDK HTTP session manager with a custom session store. When used with `ModelContextProtocol.AspNetCore` Streamable HTTP transport, the gateway composes the SDK `HttpServerTransportOptions.RunSessionHandler` lifecycle so gateway-owned per-session prompt notification, resource subscription, and active task binding state is removed when the SDK session ends. Hosts should still use the official transport options for session policy such as `IdleTimeout`, `MaxIdleSessionCount`, `EventStreamStore`, and `SessionMigrationHandler`.
+For a caller-owned task store, pass any `IMcpTaskStore` implementation directly to the export registration. The following uses the SDK store explicitly; durable or distributed hosts can supply their own implementation through the same overload:
 
-If the downstream MCP host cannot use the default singleton `IMcpGateway`, `IMcpGatewayPromptCatalog`, and `IMcpGatewayResourceCatalog` registrations directly, register a custom `IMcpGatewayServerBindingResolver`. The resolver can create or select a request-specific or session-specific gateway instance and return it through `McpGatewayServerBinding`, while `WithMcpGatewayCatalog()` continues to own the exported MCP handlers, prompt/resource notifications, subscriptions, and task flow:
+```csharp
+using ModelContextProtocol.Extensions.Tasks;
+
+var taskStore = new InMemoryMcpTaskStore
+{
+    DefaultTimeToLive = TimeSpan.FromHours(1),
+    DefaultPollIntervalMs = 500
+};
+
+services.AddMcpServer()
+    .WithStdioServerTransport()
+    .WithMcpGatewayCatalog(taskStore);
+```
+
+`WithMcpGatewayCatalog()` enforces `HttpServerTransportOptions.Stateless = true` for Streamable HTTP. HTTP supports discovery, list, read, call, completion, and task requests; `subscriptions/listen` is acknowledged without notification grants because HTTP does not retain listener state. Use stdio for current-protocol prompt and resource notifications.
+
+Custom `IMcpGatewayServerSource` adapters expose current listener lifetimes through `ListenForPromptListChangesAsync(...)` and `ListenForResourceUpdatesAsync(...)`. These methods feed `subscriptions/listen` coordination and are disposed when the downstream listener is cancelled; they do not expose down-level resource RPCs.
+
+If the downstream MCP host cannot use the default singleton `IMcpGateway`, `IMcpGatewayPromptCatalog`, and `IMcpGatewayResourceCatalog` registrations directly, register a custom `IMcpGatewayServerBindingResolver`. The resolver can create or select a request-specific gateway instance and return it through `McpGatewayServerBinding`, while `WithMcpGatewayCatalog()` continues to own the exported MCP handlers, prompt/resource notifications, subscriptions, and task flow:
 
 ```csharp
 services.AddMcpGateway();
@@ -360,7 +402,7 @@ services.AddMcpServer()
     .WithMcpGatewayCatalog();
 ```
 
-Use the default resolver when one singleton aggregated gateway is enough. Use a custom binding resolver when the exported MCP endpoint needs to select a different gateway instance per downstream route, tenant, or authenticated session.
+Use the default resolver when one singleton aggregated gateway is enough. Use a custom binding resolver when the exported MCP endpoint needs to select a different gateway instance per downstream route, tenant, or authenticated request.
 
 If you need to fully reconfigure the in-memory runtime catalog, use `IMcpGatewayCatalogRuntime` instead of internal reflection:
 
@@ -554,7 +596,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges gateway-ranked graph candidate results as supporting evidence. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in that candidate fallback so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Large catalogs use a bounded candidate-backed schema path instead of an unbounded full-graph SPARQL pass.
+Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges gateway-ranked graph candidate results as supporting evidence. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in that candidate fallback so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Large catalogs use a bounded candidate-backed schema path instead of an unbounded full-graph SPARQL pass. The `0.2.8` graph engine deduplicates repeated catalog documents, symmetric related edges, topics, entities, and assertions while keeping confidence values bounded, so repeated file/custom-document inputs do not inflate the graph or exported JSON-LD.
 
 ```csharp
 services.AddMcpGateway(options =>

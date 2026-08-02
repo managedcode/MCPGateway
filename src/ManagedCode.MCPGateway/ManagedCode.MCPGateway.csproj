@@ -14,5 +14,7 @@
     <PackageReference Include="ManagedCode.MarkdownLd.Kb" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="ModelContextProtocol.Extensions.Apps" />
+    <PackageReference Include="ModelContextProtocol.Extensions.Tasks" />
   </ItemGroup>
 </Project>

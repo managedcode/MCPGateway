@@ -10,6 +10,9 @@ namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayResourceSubscriptionManagerConcurrencyTests
 {
+    private const string ListenerId = "listen:string:concurrency-test";
+    private const string SubscriptionId = "concurrency-test";
+
     [Test]
     public async Task SubscribeAsync_ConcurrentFirstSubscriptionsDoNotLeakPinnedBinding()
     {
@@ -46,38 +49,79 @@ public sealed class McpGatewayResourceSubscriptionManagerConcurrencyTests
                 return ValueTask.CompletedTask;
             }
         );
-        var manager = new McpGatewayResourceSubscriptionManager(
+        var manager = CreateManager(
             new McpGatewayMcpServerBindingManager(new StaticBindingResolver(binding)),
-            serviceProvider,
-            NullLogger<McpGatewayResourceSubscriptionManager>.Instance,
-            NullLoggerFactory.Instance
+            serviceProvider
         );
 
-        var firstSubscribe = manager.SubscribeAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            "docs://overview",
-            CancellationToken.None
-        );
+        var firstSubscribe = SubscribeAsync(manager, gatewayServer.Server);
         await source.FirstSubscriptionStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        var secondSubscribe = manager.SubscribeAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            "docs://overview",
-            CancellationToken.None
-        );
+        var secondSubscribe = SubscribeAsync(manager, gatewayServer.Server);
 
         source.ReleaseFirstSubscription.SetResult(true);
 
         await firstSubscribe.WaitAsync(TimeSpan.FromSeconds(5));
         await secondSubscribe.WaitAsync(TimeSpan.FromSeconds(5));
-        await manager.UnsubscribeAsync(gatewayServer.Server, "docs://overview", CancellationToken.None);
+        await manager.UnsubscribeAsync(
+            gatewayServer.Server,
+            "docs://overview",
+            ListenerId,
+            CancellationToken.None
+        );
 
         await Assert.That(source.SubscriptionCount).IsEqualTo(2);
         await Assert.That(source.DisposedSubscriptionCount).IsEqualTo(2);
         await Assert.That(bindingDisposeCount).IsEqualTo(1);
         await Assert.That(manager.SubscriptionStateCount).IsEqualTo(0);
+    }
+
+    private static McpGatewayResourceSubscriptionManager CreateManager(
+        McpGatewayMcpServerBindingManager bindingManager,
+        IServiceProvider serviceProvider
+    )
+    {
+        var logger = NullLogger<McpGatewayResourceSubscriptionManager>.Instance;
+        var registry = new McpGatewayResourceSubscriptionRegistry();
+        var cleanup = new McpGatewayResourceSubscriptionCleanup(bindingManager);
+        var forwarder = new McpGatewayResourceSubscriptionForwarder(
+            registry,
+            cleanup,
+            logger
+        );
+        var subscriptionFactory = new McpGatewayResourceSubscriptionFactory(
+            bindingManager,
+            forwarder,
+            serviceProvider,
+            NullLoggerFactory.Instance
+        );
+        var lifetime = new McpGatewayResourceSubscriptionLifetime(registry, cleanup);
+        return new McpGatewayResourceSubscriptionManager(
+            bindingManager,
+            registry,
+            cleanup,
+            subscriptionFactory,
+            lifetime,
+            logger
+        );
+    }
+
+    private static async Task SubscribeAsync(
+        McpGatewayResourceSubscriptionManager manager,
+        ModelContextProtocol.Server.McpServer server
+    )
+    {
+        var deliveryGate = new McpGatewaySubscriptionDeliveryGate();
+        await deliveryGate.OpenAsync(CancellationToken.None);
+        await manager.SubscribeAsync(
+            requestServices: null,
+            server,
+            "docs://overview",
+            ListenerId,
+            new RequestId(SubscriptionId),
+            deliveryGate,
+            CancellationToken.None
+        );
     }
 
     private sealed class BlockingResourceSource(string sourceId) : IMcpGatewayServerSource
@@ -98,12 +142,6 @@ public sealed class McpGatewayResourceSubscriptionManagerConcurrencyTests
 
         public string SourceId { get; } = sourceId;
 
-        public ValueTask<ToolTaskSupport?> GetToolTaskSupportAsync(
-            string toolName,
-            Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
-            CancellationToken cancellationToken = default
-        ) => ValueTask.FromResult<ToolTaskSupport?>(null);
-
         public ValueTask<CompleteResult?> CompleteAsync(
             Reference reference,
             Argument argument,
@@ -113,40 +151,13 @@ public sealed class McpGatewayResourceSubscriptionManagerConcurrencyTests
             CancellationToken cancellationToken = default
         ) => ValueTask.FromResult<CompleteResult?>(null);
 
-        public Task<IAsyncDisposable?> SubscribeToPromptListChangesAsync(
+        public Task<IAsyncDisposable?> ListenForPromptListChangesAsync(
             Func<PromptListChangedNotificationParams, CancellationToken, ValueTask> onChanged,
             Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
             CancellationToken cancellationToken = default
         ) => Task.FromResult<IAsyncDisposable?>(null);
 
-        public ValueTask<McpTask?> CallToolAsTaskAsync(
-            string toolName,
-            IReadOnlyDictionary<string, object?>? arguments,
-            McpTaskMetadata taskMetadata,
-            IProgress<ModelContextProtocol.ProgressNotificationValue>? progress,
-            Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
-            CancellationToken cancellationToken = default
-        ) => ValueTask.FromResult<McpTask?>(null);
-
-        public ValueTask<McpTask?> GetTaskAsync(
-            string taskId,
-            Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
-            CancellationToken cancellationToken = default
-        ) => ValueTask.FromResult<McpTask?>(null);
-
-        public ValueTask<System.Text.Json.JsonElement?> GetTaskResultAsync(
-            string taskId,
-            Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
-            CancellationToken cancellationToken = default
-        ) => ValueTask.FromResult<System.Text.Json.JsonElement?>(null);
-
-        public ValueTask<McpTask?> CancelTaskAsync(
-            string taskId,
-            Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
-            CancellationToken cancellationToken = default
-        ) => ValueTask.FromResult<McpTask?>(null);
-
-        public async Task<IAsyncDisposable?> SubscribeToResourceAsync(
+        public async Task<IAsyncDisposable?> ListenForResourceUpdatesAsync(
             string resourceUri,
             Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
             Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
@@ -162,13 +173,6 @@ public sealed class McpGatewayResourceSubscriptionManagerConcurrencyTests
 
             return new TrackingSubscription(this);
         }
-
-        public Task<IAsyncDisposable?> SubscribeToTaskStatusAsync(
-            string taskId,
-            Func<McpTaskStatusNotificationParams, CancellationToken, ValueTask> onUpdated,
-            Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
-            CancellationToken cancellationToken = default
-        ) => Task.FromResult<IAsyncDisposable?>(null);
 
         private sealed class TrackingSubscription(BlockingResourceSource owner) : IAsyncDisposable
         {
@@ -332,14 +336,6 @@ public sealed class McpGatewayResourceSubscriptionManagerConcurrencyTests
             string? displayName = null
         ) => throw new NotSupportedException();
 
-        public void AddHttpServer(
-            string sourceId,
-            Uri endpoint,
-            ModelContextProtocol.Client.HttpTransportMode transportMode,
-            IReadOnlyDictionary<string, string>? headers = null,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
         public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
             throw new NotSupportedException();
 
@@ -351,6 +347,9 @@ public sealed class McpGatewayResourceSubscriptionManagerConcurrencyTests
             IReadOnlyDictionary<string, string?>? environmentVariables = null,
             string? displayName = null
         ) => throw new NotSupportedException();
+
+        public void AddStdioServer(McpGatewayStdioServerOptions stdioServer) =>
+            throw new NotSupportedException();
 
         public void AddMcpClient(
             string sourceId,

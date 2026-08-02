@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Microsoft.Extensions.AI;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -85,6 +87,35 @@ public sealed class McpGatewayMcpServerIntegrationTests
         await Assert.That(result.StructuredContent).IsNotNull();
         await Assert.That(result.Content.Count).IsEqualTo(1);
         await Assert.That(((TextContentBlock)result.Content[0]).Text).Contains("story-42");
+    }
+
+    [TUnit.Core.Test]
+    public async Task CallToolAsync_PreservesRawPrimitiveStructuredResult()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
+        {
+            options.AddTool(
+                "local",
+                AIFunctionFactory.Create(
+                    static () => 72,
+                    new AIFunctionFactoryOptions
+                    {
+                        Name = "temperature_read",
+                        Description = "Returns the current temperature as a number.",
+                    }
+                )
+            );
+        });
+
+        var result = await gatewayServer.Client.CallToolAsync(
+            "temperature_read",
+            new Dictionary<string, object?>(StringComparer.Ordinal)
+        );
+        var structuredContent = JsonSerializer.SerializeToElement(result.StructuredContent);
+
+        await Assert.That(result.IsError).IsFalse();
+        await Assert.That(structuredContent.ValueKind).IsEqualTo(JsonValueKind.Number);
+        await Assert.That(structuredContent.GetInt32()).IsEqualTo(72);
     }
 
     [TUnit.Core.Test]

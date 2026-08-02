@@ -1,9 +1,5 @@
-#pragma warning disable MCPEXP001
-
-using ManagedCode.MCPGateway.Abstractions;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+using System.Text.Json;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -11,138 +7,141 @@ namespace ManagedCode.MCPGateway.Tests;
 public sealed class McpGatewayMcpServerTaskStoreTests
 {
     [Test]
-    public async Task GetTaskResultAsync_ThrowsImmediatelyWhenTerminalTaskHasNoStoredResult()
+    public async Task CreateTaskAsync_UsesConfiguredRetentionAndPollInterval()
     {
-        var taskStore = CreateTaskStore();
-        var requestId = new RequestId("request-1");
-        var task = await taskStore.CreateTaskAsync(
-            new McpTaskMetadata(),
-            requestId,
-            new JsonRpcRequest
-            {
-                Id = requestId,
-                Method = RequestMethods.ToolsCall,
-            },
-            "session-a",
-            CancellationToken.None
-        );
-        await taskStore.UpdateTaskStatusAsync(
-            task.TaskId,
-            McpTaskStatus.Completed,
-            "done",
-            "session-a",
-            CancellationToken.None
-        );
-
-        Exception? exception = null;
-        try
+        var store = CreateStore(options =>
         {
-            using var cancellationSource = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-            _ = await taskStore.GetTaskResultAsync(
-                task.TaskId,
-                "session-a",
-                cancellationSource.Token
-            );
-        }
-        catch (Exception ex)
-        {
-            exception = ex;
-        }
-
-        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
-        await Assert.That(exception!.Message).Contains(task.TaskId);
-    }
-
-    [Test]
-    public async Task CreateTaskAsync_UsesConfiguredTaskStoreMaximumTaskLimit()
-    {
-        var taskStore = CreateTaskStore(static options =>
-        {
-            options.McpTaskStore.MaximumTasks = 1;
-            options.McpTaskStore.MaximumTasksPerSession = null;
+            options.TaskTimeToLive = TimeSpan.FromMinutes(2);
+            options.PollInterval = TimeSpan.FromMilliseconds(125);
         });
-        var requestId = new RequestId("request-1");
-        _ = await taskStore.CreateTaskAsync(
-            new McpTaskMetadata(),
-            requestId,
-            new JsonRpcRequest
-            {
-                Id = requestId,
-                Method = RequestMethods.ToolsCall,
-            },
-            "session-a",
-            CancellationToken.None
-        );
 
-        Exception? exception = null;
-        try
-        {
-            _ = await taskStore.CreateTaskAsync(
-                new McpTaskMetadata(),
-                new RequestId("request-2"),
-                new JsonRpcRequest
-                {
-                    Id = new RequestId("request-2"),
-                    Method = RequestMethods.ToolsCall,
-                },
-                "session-b",
-                CancellationToken.None
-            );
-        }
-        catch (Exception ex)
-        {
-            exception = ex;
-        }
+        var task = await store.CreateTaskAsync();
 
-        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(task.Status).IsEqualTo(McpTaskStatus.Working);
+        await Assert.That(task.TimeToLive).IsEqualTo(TimeSpan.FromMinutes(2));
+        await Assert.That(task.PollIntervalMs).IsEqualTo(125);
+        await Assert.That(store.Count).IsEqualTo(1);
     }
 
     [Test]
-    public async Task Constructor_RejectsUnboundedInvalidTaskStoreOptions()
+    public async Task CreateTaskAsync_EnforcesTheConfiguredGlobalLimit()
     {
-        Exception? exception = null;
-        try
-        {
-            _ = CreateTaskStore(static options =>
+        var store = CreateStore(options => options.MaximumTasks = 1);
+        _ = await store.CreateTaskAsync();
+
+        var exception = await CaptureAsync(() => store.CreateTaskAsync());
+
+        await Assert.That(exception).IsTypeOf<InvalidOperationException>();
+        await Assert.That(exception!.Message).Contains("limit of 1");
+    }
+
+    [Test]
+    public async Task SetCompletedAsync_PreservesTheTypedJsonResult()
+    {
+        var store = CreateStore();
+        var task = await store.CreateTaskAsync();
+        var expected = JsonSerializer.SerializeToElement(new { value = "done" });
+
+        await store.SetCompletedAsync(task.TaskId, expected);
+        var completed = await store.GetTaskAsync(task.TaskId);
+
+        await Assert.That(completed).IsNotNull();
+        await Assert.That(completed!.Status).IsEqualTo(McpTaskStatus.Completed);
+        await Assert.That(completed.Result?.GetProperty("value").GetString()).IsEqualTo("done");
+    }
+
+    [Test]
+    public async Task ResolveInputRequestsAsync_RaisesTheV2ResponseEventAndReturnsToWorking()
+    {
+        var store = CreateStore();
+        var task = await store.CreateTaskAsync();
+        InputResponseReceivedEventArgs? received = null;
+        store.InputResponseReceived += args => received = args;
+        await store.SetInputRequestsAsync(
+            task.TaskId,
+            new Dictionary<string, InputRequest>
             {
-                options.McpTaskStore.TaskTimeToLive = TimeSpan.FromMinutes(2);
-                options.McpTaskStore.MaximumTaskTimeToLive = TimeSpan.FromMinutes(1);
-            });
-        }
-        catch (Exception ex)
+                ["request-1"] = new InputRequest
+                {
+                    Method = "elicitation/create",
+                    Params = JsonSerializer.SerializeToElement(new { message = "Confirm" }),
+                },
+            }
+        );
+
+        await store.ResolveInputRequestsAsync(
+            task.TaskId,
+            new Dictionary<string, InputResponse>
+            {
+                ["request-1"] = new InputResponse
+                {
+                    RawValue = JsonSerializer.SerializeToElement(new { action = "accept" }),
+                },
+            }
+        );
+        var updated = await store.GetTaskAsync(task.TaskId);
+
+        await Assert.That(received).IsNotNull();
+        await Assert.That(received!.TaskId).IsEqualTo(task.TaskId);
+        await Assert.That(received.RequestId).IsEqualTo("request-1");
+        await Assert.That(updated!.Status).IsEqualTo(McpTaskStatus.Working);
+        await Assert.That(updated.InputRequests?.Count ?? 0).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task CreateTaskAsync_ReclaimsExpiredEntriesBeforeApplyingTheLimit()
+    {
+        var store = CreateStore(options =>
         {
-            exception = ex;
-        }
+            options.MaximumTasks = 1;
+            options.TaskTimeToLive = TimeSpan.FromMilliseconds(20);
+        });
+        var expired = await store.CreateTaskAsync();
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+        var replacement = await store.CreateTaskAsync();
+
+        await Assert.That(replacement.TaskId).IsNotEqualTo(expired.TaskId);
+        await Assert.That(await store.GetTaskAsync(expired.TaskId)).IsNull();
+        await Assert.That(store.Count).IsEqualTo(1);
+    }
+
+    [Test]
+    public async Task Configure_RejectsUnboundedOrNonPositiveOptions()
+    {
+        var store = new McpGatewayMcpServerTaskStore();
+        var options = new McpGatewayMcpTaskStoreOptions { TaskTimeToLive = TimeSpan.Zero };
+
+        var exception = await CaptureAsync(() =>
+        {
+            store.Configure(options);
+            return Task.CompletedTask;
+        });
 
         await Assert.That(exception).IsTypeOf<ArgumentOutOfRangeException>();
     }
 
-    private static McpGatewayMcpServerTaskStore CreateTaskStore(
-        Action<McpGatewayOptions>? configure = null
+    private static McpGatewayMcpServerTaskStore CreateStore(
+        Action<McpGatewayMcpTaskStoreOptions>? configure = null
     )
     {
-        var loggerFactory = NullLoggerFactory.Instance;
-        var options = new McpGatewayOptions();
+        var options = new McpGatewayMcpTaskStoreOptions();
         configure?.Invoke(options);
-        return new McpGatewayMcpServerTaskStore(
-            new McpGatewayMcpServerBindingManager(new ThrowingBindingResolver()),
-            new McpGatewayMcpServerRequestResolver(loggerFactory),
-            EmptyServiceProvider.Instance,
-            Options.Create(options),
-            loggerFactory.CreateLogger<McpGatewayMcpServerTaskStore>(),
-            loggerFactory
-        );
+        var store = new McpGatewayMcpServerTaskStore();
+        store.Configure(options);
+        return store;
     }
 
-    private sealed class ThrowingBindingResolver : IMcpGatewayServerBindingResolver
+    private static async Task<Exception?> CaptureAsync(Func<Task> action)
     {
-        public ValueTask<IMcpGatewayServerBinding> ResolveAsync(
-            IServiceProvider? requestServices,
-            IServiceProvider serverServices,
-            ModelContextProtocol.Server.McpServer server,
-            CancellationToken cancellationToken = default
-        ) => throw new NotSupportedException();
+        try
+        {
+            await action();
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
     }
 }
-
-#pragma warning restore MCPEXP001

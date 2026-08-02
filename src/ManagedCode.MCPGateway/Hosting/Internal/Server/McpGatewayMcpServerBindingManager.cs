@@ -8,11 +8,11 @@ internal sealed class McpGatewayMcpServerBindingManager(
     IMcpGatewayServerBindingResolver bindingResolver
 ) : IAsyncDisposable
 {
-    private readonly ConcurrentDictionary<string, SessionBindingState> _sessionBindings =
+    private readonly ConcurrentDictionary<string, ServerBindingState> _serverBindings =
         new(StringComparer.Ordinal);
     private int _disposed;
 
-    internal int SessionBindingCount => _sessionBindings.Count;
+    internal int ServerBindingCount => _serverBindings.Count;
 
     public async ValueTask<McpGatewayServerBindingLease> AcquireAsync(
         IServiceProvider? requestServices,
@@ -25,11 +25,11 @@ internal sealed class McpGatewayMcpServerBindingManager(
         ArgumentNullException.ThrowIfNull(server);
         ThrowIfDisposed();
 
-        var sessionKey = McpGatewayMcpServerIdentity.GetKey(server);
-        if (_sessionBindings.TryGetValue(sessionKey, out var pinnedBinding))
+        var serverId = McpGatewayMcpServerIdentity.GetInstanceId(server);
+        if (_serverBindings.TryGetValue(serverId, out var pinnedBinding))
         {
             return new McpGatewayServerBindingLease(
-                await WaitForBindingAsync(sessionKey, pinnedBinding, cancellationToken),
+                await WaitForBindingAsync(serverId, pinnedBinding, cancellationToken),
                 ownsBinding: false
             );
         }
@@ -55,20 +55,20 @@ internal sealed class McpGatewayMcpServerBindingManager(
         ArgumentNullException.ThrowIfNull(server);
         ThrowIfDisposed();
 
-        var sessionKey = McpGatewayMcpServerIdentity.GetKey(server);
+        var serverId = McpGatewayMcpServerIdentity.GetInstanceId(server);
 
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ThrowIfDisposed();
 
-            if (_sessionBindings.TryGetValue(sessionKey, out var existingBinding))
+            if (_serverBindings.TryGetValue(serverId, out var existingBinding))
             {
                 existingBinding.AddReference();
                 try
                 {
                     return new McpGatewayServerBindingLease(
-                        await WaitForBindingAsync(sessionKey, existingBinding, cancellationToken),
+                        await WaitForBindingAsync(serverId, existingBinding, cancellationToken),
                         ownsBinding: false
                     );
                 }
@@ -79,7 +79,7 @@ internal sealed class McpGatewayMcpServerBindingManager(
                 }
             }
 
-            var createdBinding = SessionBindingState.Create(
+            var createdBinding = ServerBindingState.Create(
                 bindingResolver,
                 requestServices,
                 serverServices,
@@ -87,16 +87,16 @@ internal sealed class McpGatewayMcpServerBindingManager(
                 CancellationToken.None
             );
 
-            if (_sessionBindings.TryAdd(sessionKey, createdBinding))
+            if (_serverBindings.TryAdd(serverId, createdBinding))
             {
                 try
                 {
                     if (Volatile.Read(ref _disposed) != 0)
                     {
                         if (
-                            _sessionBindings.TryRemove(
-                                new KeyValuePair<string, SessionBindingState>(
-                                    sessionKey,
+                            _serverBindings.TryRemove(
+                                new KeyValuePair<string, ServerBindingState>(
+                                    serverId,
                                     createdBinding
                                 )
                             )
@@ -109,7 +109,7 @@ internal sealed class McpGatewayMcpServerBindingManager(
                     }
 
                     return new McpGatewayServerBindingLease(
-                        await WaitForBindingAsync(sessionKey, createdBinding, cancellationToken),
+                        await WaitForBindingAsync(serverId, createdBinding, cancellationToken),
                         ownsBinding: false
                     );
                 }
@@ -128,8 +128,8 @@ internal sealed class McpGatewayMcpServerBindingManager(
     {
         ArgumentNullException.ThrowIfNull(server);
 
-        var sessionKey = McpGatewayMcpServerIdentity.GetKey(server);
-        if (!_sessionBindings.TryGetValue(sessionKey, out var bindingState))
+        var serverId = McpGatewayMcpServerIdentity.GetInstanceId(server);
+        if (!_serverBindings.TryGetValue(serverId, out var bindingState))
         {
             return;
         }
@@ -140,8 +140,8 @@ internal sealed class McpGatewayMcpServerBindingManager(
         }
 
         if (
-            _sessionBindings.TryRemove(
-                new KeyValuePair<string, SessionBindingState>(sessionKey, bindingState)
+            _serverBindings.TryRemove(
+                new KeyValuePair<string, ServerBindingState>(serverId, bindingState)
             )
         )
         {
@@ -156,8 +156,8 @@ internal sealed class McpGatewayMcpServerBindingManager(
             return;
         }
 
-        var bindings = _sessionBindings.Values.ToArray();
-        _sessionBindings.Clear();
+        var bindings = _serverBindings.Values.ToArray();
+        _serverBindings.Clear();
         var cleanupExceptions = new List<Exception>();
 
         foreach (var bindingState in bindings)
@@ -185,8 +185,8 @@ internal sealed class McpGatewayMcpServerBindingManager(
     }
 
     private async Task<IMcpGatewayServerBinding> WaitForBindingAsync(
-        string sessionKey,
-        SessionBindingState bindingState,
+        string serverId,
+        ServerBindingState bindingState,
         CancellationToken cancellationToken
     )
     {
@@ -201,8 +201,8 @@ internal sealed class McpGatewayMcpServerBindingManager(
         catch
         {
             if (
-                _sessionBindings.TryRemove(
-                    new KeyValuePair<string, SessionBindingState>(sessionKey, bindingState)
+                _serverBindings.TryRemove(
+                    new KeyValuePair<string, ServerBindingState>(serverId, bindingState)
                 )
             )
             {
@@ -232,7 +232,7 @@ internal sealed class McpGatewayMcpServerBindingManager(
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
     }
 
-    private sealed class SessionBindingState(
+    private sealed class ServerBindingState(
         Task<IMcpGatewayServerBinding> bindingTask,
         CancellationTokenSource resolutionCancellation
     )
@@ -243,7 +243,7 @@ internal sealed class McpGatewayMcpServerBindingManager(
 
         public Task<IMcpGatewayServerBinding> BindingTask { get; } = bindingTask;
 
-        public static SessionBindingState Create(
+        public static ServerBindingState Create(
             IMcpGatewayServerBindingResolver resolver,
             IServiceProvider? requestServices,
             IServiceProvider serverServices,

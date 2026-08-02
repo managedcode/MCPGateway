@@ -156,21 +156,25 @@ Mitigations:
 - move tests before or alongside production moves
 - prioritize the largest and riskiest buckets first
 
-## Temporary Exception
+## Temporary Exceptions
 
-One maintainability exception remains after the slice move and the MCP metadata/routing expansion:
+Production code is within the repository `file_max_loc` limit: the largest production files are currently `615` code LOC against the `650` limit. Three pre-existing test-only files remain above the stricter test-project `400` code LOC limit and also contain test/helper types above the local `300` type limit:
 
-- `src/ManagedCode.MCPGateway/Search/Internal/Graph/McpGatewayRuntime.GraphIndexing.cs` is currently `714` code LOC, which is `64` lines above the repository `file_max_loc` limit of `650`.
+- `tests/ManagedCode.MCPGateway.Tests/Catalog/Indexing/McpGatewaySearchBuildTests.cs`: `628` code LOC
+- `tests/ManagedCode.MCPGateway.Tests/Search/Graph/McpGatewaySearchMarkdownLdTests.cs`: `495` code LOC
+- `tests/ManagedCode.MCPGateway.Tests/Support/Hosts/TestMcpServerHost.cs`: `479` code LOC
 
 Justification:
 
-- the file is now isolated inside the correct `Search/Graph` slice instead of being hidden in a flat runtime bucket
-- the latest MCP improvements added category, tag, data-source, and execution-contract graph enrichment in one place, and splitting that logic safely needs a dedicated follow-up instead of a rushed late-turn cut
+- these files contain established integration matrices and shared protocol-host setup that predate the SDK 2.0 migration
+- splitting them during the protocol-contract replacement would add broad mechanical churn to already verified behavior without changing the shipped package
+- current production boundaries comply with the root limit, and the remaining debt is isolated to the test project
 
 Required follow-up:
 
-- extract graph markdown rendering and metadata/tag projection into dedicated collaborators inside `Search/Internal/Graph/`
-- keep the follow-up local to the graph slice instead of re-expanding a shared runtime bucket
+- split index-build tests by generated, file-system, and custom-document graph modes
+- split Markdown-LD search tests by graph construction, ranking, and context behavior
+- split the MCP test host into transport setup, server lifecycle, and configurable protocol fixtures
 
 ## Invariants
 

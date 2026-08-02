@@ -6,7 +6,6 @@
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
     <PackageVersion Include="DotNet.ReproducibleBuilds" Version="2.0.5" />
     <PackageVersion Include="ManagedCode.MarkdownLd.Kb" Version="0.2.8" />
-    <PackageVersion Include="Microsoft.Agents.AI" Version="1.16.0" />
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.8.3" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.10" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
@@ -20,6 +19,8 @@
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="10.0.301" />
     <PackageVersion Include="ModelContextProtocol" Version="2.0.0" />
     <PackageVersion Include="ModelContextProtocol.AspNetCore" Version="2.0.0" />
+    <PackageVersion Include="ModelContextProtocol.Extensions.Apps" Version="2.0.0" />
+    <PackageVersion Include="ModelContextProtocol.Extensions.Tasks" Version="2.0.0" />
     <PackageVersion Include="TUnit" Version="1.63.0" />
   </ItemGroup>
 </Project>

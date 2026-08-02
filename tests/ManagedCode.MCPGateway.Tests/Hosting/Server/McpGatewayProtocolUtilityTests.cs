@@ -1,7 +1,10 @@
 #pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP003
 
+using System.Net.Mime;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -139,6 +142,15 @@ public sealed class McpGatewayProtocolUtilityTests
                         new JsonObject { ["type"] = "oauth2", ["scopes"] = new JsonArray() }
                     ),
                     ["vendor"] = "upstream",
+                    [McpGatewayMcpProtocolConstants.McpAppUiMetaPropertyName] = new JsonObject
+                    {
+                        [McpGatewayMcpProtocolConstants.McpAppResourceUriPropertyName] =
+                            "ui://stories/search.html",
+                        [McpGatewayMcpProtocolConstants.McpAppVisibilityPropertyName] = new JsonArray(
+                            McpUiToolVisibility.Model,
+                            McpUiToolVisibility.App
+                        ),
+                    },
                 },
                 OutputSchema = JsonSerializer.SerializeToElement(
                     new
@@ -211,10 +223,7 @@ public sealed class McpGatewayProtocolUtilityTests
             }
         );
 
-        var tool = McpGatewayMcpServerProtocolMapper.ToProtocolTool(
-            toolDescriptor,
-            ToolTaskSupport.Optional
-        );
+        var tool = McpGatewayMcpServerProtocolMapper.ToProtocolTool(toolDescriptor);
         var prompt = McpGatewayMcpServerProtocolMapper.ToProtocolPrompt(promptDescriptor);
         var resource = McpGatewayMcpServerProtocolMapper.ToProtocolResource(resourceDescriptor);
         var template = McpGatewayMcpServerProtocolMapper.ToProtocolResourceTemplate(
@@ -235,7 +244,17 @@ public sealed class McpGatewayProtocolUtilityTests
         await Assert.That(tool.Meta?["vendor"]!.GetValue<string>()).IsEqualTo("upstream");
         await Assert.That(tool.Meta?["securitySchemes"]).IsTypeOf<JsonArray>();
         await Assert.That(tool.Meta?["sourceId"]!.GetValue<string>()).IsEqualTo("local");
-        await Assert.That(tool.Execution?.TaskSupport).IsEqualTo(ToolTaskSupport.Optional);
+        var appResourceUri = tool.Meta?[McpGatewayMcpProtocolConstants.McpAppUiMetaPropertyName]?[
+            McpGatewayMcpProtocolConstants.McpAppResourceUriPropertyName
+        ]!.GetValue<string>();
+        var decodedAppResource = McpGatewayResourceUriCodec.TryDecodeGatewayUri(
+            appResourceUri!,
+            out var appSourceId,
+            out var upstreamAppResourceUri
+        );
+        await Assert.That(decodedAppResource).IsTrue();
+        await Assert.That(appSourceId).IsEqualTo("local");
+        await Assert.That(upstreamAppResourceUri).IsEqualTo("ui://stories/search.html");
         await Assert.That(prompt.Name).IsEqualTo("local_release_review");
         await Assert.That(prompt.Arguments?.Count).IsEqualTo(1);
         await Assert.That(resource.Name).IsEqualTo("source-a_overview");
@@ -260,6 +279,28 @@ public sealed class McpGatewayProtocolUtilityTests
 
         await Assert.That(nonObjectException).IsTypeOf<ArgumentException>();
         await Assert.That(nonObjectException!.Message).Contains("not a valid MCP tool input");
+    }
+
+    [Test]
+    public async Task ProtocolMapper_PreservesBooleanJsonSchemaOutput()
+    {
+        var descriptor = new McpGatewayToolDescriptor(
+            "unconstrained_result",
+            "source-a",
+            McpGatewaySourceKind.CustomMcpClient,
+            new Tool
+            {
+                Name = "unconstrained_result",
+                Description = "Returns a value accepted by a boolean JSON Schema.",
+                InputSchema = McpGatewayProtocolTool.CreateDefaultObjectSchema(),
+                OutputSchema = JsonSerializer.SerializeToElement(true),
+            },
+            []
+        );
+
+        var mapped = McpGatewayMcpServerProtocolMapper.ToProtocolTool(descriptor);
+
+        await Assert.That(mapped.OutputSchema?.ValueKind).IsEqualTo(JsonValueKind.True);
     }
 
     [Test]
@@ -303,7 +344,7 @@ public sealed class McpGatewayProtocolUtilityTests
             BlobResourceContents.FromBytes(
                 new byte[] { 0x01, 0x02 },
                 "docs://archive",
-                "application/octet-stream"
+                MediaTypeNames.Application.Octet
             ),
             new McpGatewayResolvedResourceRequest(
                 "source-a",
@@ -366,3 +407,4 @@ public sealed class McpGatewayProtocolUtilityTests
 }
 
 #pragma warning restore MCPEXP001
+#pragma warning restore MCPEXP003

@@ -142,24 +142,6 @@ internal sealed class McpGatewayRegistry(
             }
         );
 
-    public void AddHttpServer(
-        string sourceId,
-        Uri endpoint,
-        HttpTransportMode transportMode,
-        IReadOnlyDictionary<string, string>? headers = null,
-        string? displayName = null
-    ) =>
-        AddHttpServer(
-            new McpGatewayHttpServerOptions
-            {
-                SourceId = sourceId,
-                Endpoint = endpoint,
-                TransportMode = transportMode,
-                AdditionalHeaders = headers,
-                DisplayName = displayName,
-            }
-        );
-
     public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
         Mutate(registrations =>
             registrations.AddHttpServer(httpServer),
@@ -174,15 +156,20 @@ internal sealed class McpGatewayRegistry(
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
         string? displayName = null
     ) =>
-        Mutate(registrations =>
-            registrations.AddStdioServer(
-                sourceId,
-                command,
-                arguments,
-                workingDirectory,
-                environmentVariables,
-                displayName
-            ),
+        AddStdioServer(
+            new McpGatewayStdioServerOptions
+            {
+                SourceId = sourceId,
+                Command = command,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                EnvironmentVariables = environmentVariables,
+                DisplayName = displayName,
+            }
+        );
+
+    public void AddStdioServer(McpGatewayStdioServerOptions stdioServer) =>
+        Mutate(registrations => registrations.AddStdioServer(stdioServer),
             notifyPromptChanges: true
         );
 

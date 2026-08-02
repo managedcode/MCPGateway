@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.IO.Pipelines;
 using Microsoft.Extensions.DependencyInjection;
@@ -16,7 +15,6 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
     private readonly ServiceProvider _serviceProvider;
     private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly Task _serverTask;
-    private readonly ProtocolFeatureState _state;
 
     public const string PromptName = "repository_picker_prompt";
     public const string PromptArgumentName = "repository";
@@ -31,8 +29,7 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
         McpClient client,
         ModelContextProtocol.Server.McpServer server,
         CancellationTokenSource cancellationTokenSource,
-        Task serverTask,
-        ProtocolFeatureState state
+        Task serverTask
     )
     {
         _serviceProvider = serviceProvider;
@@ -40,7 +37,6 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
         Server = server;
         _cancellationTokenSource = cancellationTokenSource;
         _serverTask = serverTask;
-        _state = state;
     }
 
     public McpClient Client { get; }
@@ -51,17 +47,19 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
         CancellationToken cancellationToken = default
     )
     {
-        var state = new ProtocolFeatureState();
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
-        var builder = services.AddMcpServer();
+        var builder = services.AddMcpServer(static options =>
+        {
+            options.Capabilities ??= new ServerCapabilities();
+            options.Capabilities.Resources ??= new ResourcesCapability();
+            options.Capabilities.Resources.Subscribe = true;
+        });
 
         builder
             .WithPrompts<TestProtocolPrompts>()
             .WithResources<TestProtocolResources>()
-            .WithCompleteHandler(ProtocolFeatureState.CompleteAsync)
-            .WithSubscribeToResourcesHandler(state.SubscribeAsync)
-            .WithUnsubscribeFromResourcesHandler(state.UnsubscribeAsync);
+            .WithCompleteHandler(ProtocolFeatureState.CompleteAsync);
 
         var serviceProvider = services.BuildServiceProvider();
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
@@ -93,6 +91,7 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
             clientTransport,
             new McpClientOptions
             {
+                ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
                 ClientInfo = new Implementation
                 {
                     Name = "managedcode-mcpgateway-protocol-tests",
@@ -108,15 +107,20 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
             client,
             server,
             serverCancellation,
-            serverTask,
-            state
+            serverTask
         );
     }
 
     public Task EmitResourceUpdatedAsync(
         string resourceUri = ResourceUri,
         CancellationToken cancellationToken = default
-    ) => _state.EmitResourceUpdatedAsync(resourceUri, cancellationToken);
+    ) =>
+        Server.SendNotificationAsync(
+            NotificationMethods.ResourceUpdatedNotification,
+            new ResourceUpdatedNotificationParams { Uri = resourceUri },
+            McpJsonUtilities.DefaultOptions,
+            cancellationToken
+        );
 
     public async ValueTask DisposeAsync()
     {
@@ -194,7 +198,7 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
             };
     }
 
-    private sealed class ProtocolFeatureState
+    private static class ProtocolFeatureState
     {
         private static readonly string[] PromptCompletionValues =
         [
@@ -209,8 +213,6 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
             "modelcontextprotocol",
             "openai",
         ];
-
-        private readonly ConcurrentDictionary<SubscriptionKey, McpServer> _subscriptions = new();
 
         public static ValueTask<CompleteResult> CompleteAsync(
             RequestContext<CompleteRequestParams> request,
@@ -262,63 +264,5 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
             );
         }
 
-        public ValueTask<EmptyResult> SubscribeAsync(
-            RequestContext<SubscribeRequestParams> request,
-            CancellationToken cancellationToken
-        )
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var resourceUri = request.Params?.Uri?.Trim() ?? string.Empty;
-            if (resourceUri.Length > 0)
-            {
-                _subscriptions[SubscriptionKey.Create(request.Server, resourceUri)] = request.Server;
-            }
-
-            return ValueTask.FromResult(new EmptyResult());
-        }
-
-        public ValueTask<EmptyResult> UnsubscribeAsync(
-            RequestContext<UnsubscribeRequestParams> request,
-            CancellationToken cancellationToken
-        )
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var resourceUri = request.Params?.Uri?.Trim() ?? string.Empty;
-            if (resourceUri.Length > 0)
-            {
-                _subscriptions.TryRemove(SubscriptionKey.Create(request.Server, resourceUri), out _);
-            }
-
-            return ValueTask.FromResult(new EmptyResult());
-        }
-
-        public async Task EmitResourceUpdatedAsync(
-            string resourceUri,
-            CancellationToken cancellationToken
-        )
-        {
-            var subscribers = _subscriptions
-                .Where(pair => string.Equals(pair.Key.ResourceUri, resourceUri, StringComparison.Ordinal))
-                .Select(static pair => pair.Value)
-                .ToArray();
-
-            foreach (var subscriber in subscribers)
-            {
-                await subscriber.SendNotificationAsync(
-                    NotificationMethods.ResourceUpdatedNotification,
-                    new ResourceUpdatedNotificationParams { Uri = resourceUri },
-                    McpJsonUtilities.DefaultOptions,
-                    cancellationToken
-                );
-            }
-        }
-
-        private sealed record SubscriptionKey(string SessionId, string ResourceUri)
-        {
-            public static SubscriptionKey Create(McpServer server, string resourceUri) =>
-                new(server.SessionId ?? string.Empty, resourceUri);
-        }
     }
 }

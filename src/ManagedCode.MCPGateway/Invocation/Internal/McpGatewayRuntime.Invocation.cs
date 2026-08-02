@@ -5,6 +5,8 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
+using ModelContextProtocol.Extensions.Tasks;
+using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway;
 
@@ -76,7 +78,7 @@ internal sealed partial class McpGatewayRuntime
         return arguments;
     }
 
-    private static async Task<McpGatewayInvokeResult> InvokeResolvedToolAsync(
+    private async Task<McpGatewayInvokeResult> InvokeResolvedToolAsync(
         ToolCatalogEntry entry,
         McpGatewayInvokeRequest request,
         Dictionary<string, object?> arguments,
@@ -113,7 +115,7 @@ internal sealed partial class McpGatewayRuntime
         return await InvokeFunctionAsync(entry, arguments, function, cancellationToken);
     }
 
-    private static async Task<McpGatewayInvokeResult> InvokeMcpToolAsync(
+    private async Task<McpGatewayInvokeResult> InvokeMcpToolAsync(
         ToolCatalogEntry entry,
         McpGatewayInvokeRequest request,
         Dictionary<string, object?> arguments,
@@ -121,13 +123,35 @@ internal sealed partial class McpGatewayRuntime
         CancellationToken cancellationToken
     )
     {
-        var result = await AttachInvocationMeta(tool, request)
-            .CallAsync(
-                arguments,
-                progress: null,
-                options: new RequestOptions(),
-                cancellationToken: cancellationToken
+        CallToolResult result;
+        try
+        {
+            result = await AttachInvocationMeta(tool, request)
+                .CallAsync(
+                    arguments,
+                    progress: null,
+                    options: new RequestOptions(),
+                    cancellationToken: cancellationToken
+                );
+        }
+        catch (MissingRequiredClientCapabilityException exception)
+            when (
+                entry.Client is { } client
+                && RequiresTasksCapability(exception)
+                && SupportsTasks(client)
+            )
+        {
+            result = await client.CallToolWithPollingAsync(
+                new CallToolRequestParams
+                {
+                    Name = tool.ProtocolTool.Name,
+                    Arguments = SerializeToolArguments(arguments),
+                    Meta = BuildInvocationMeta(request),
+                },
+                _mcpTaskMaximumConsecutiveStuckPolls,
+                cancellationToken
             );
+        }
 
         return new McpGatewayInvokeResult(
             true,
@@ -135,6 +159,31 @@ internal sealed partial class McpGatewayRuntime
             entry.Descriptor.SourceId,
             entry.Descriptor.ToolName,
             ExtractMcpOutput(result)
+        );
+    }
+
+    private static bool RequiresTasksCapability(
+        MissingRequiredClientCapabilityException exception
+    ) =>
+        exception.RequiredCapabilities.Extensions?.ContainsKey(TasksProtocol.ExtensionId)
+        is true;
+
+    private static bool SupportsTasks(McpClient client) =>
+        client.ServerCapabilities.Extensions?.ContainsKey(TasksProtocol.ExtensionId) is true;
+
+    private static IDictionary<string, JsonElement>? SerializeToolArguments(
+        IReadOnlyDictionary<string, object?> arguments
+    )
+    {
+        if (arguments.Count == 0)
+        {
+            return null;
+        }
+
+        var serialized = McpGatewayJsonSerializer.TrySerializeToElement(arguments)
+            ?? throw new JsonException("Tool arguments could not be serialized.");
+        return serialized.Deserialize<Dictionary<string, JsonElement>>(
+            McpGatewayJsonSerializer.Options
         );
     }
 

@@ -5,12 +5,14 @@ namespace ManagedCode.MCPGateway.Tests;
 
 public sealed partial class McpGatewayInvocationTests
 {
+    private const string MissingQuery = "missing";
+
     private static string TextUppercase([Description("Text to uppercase.")] string query) =>
         query.ToUpperInvariant();
 
     private static string OptionalQueryEcho(
         [Description("Text to uppercase.")] string? query = null
-    ) => (query ?? "missing").ToUpperInvariant();
+    ) => (query ?? MissingQuery).ToUpperInvariant();
 
     private static string EchoContextSummary(
         [Description("Main query text.")] string query,

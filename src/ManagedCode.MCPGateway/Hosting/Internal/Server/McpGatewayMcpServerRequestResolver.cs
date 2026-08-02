@@ -1,7 +1,6 @@
 #pragma warning disable MCPEXP001
 
 using ManagedCode.MCPGateway.Abstractions;
-using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 
@@ -30,15 +29,12 @@ internal sealed record McpGatewayResolvedToolRequest(
     string ToolId,
     string SourceId,
     string ToolName,
-    ToolTaskSupport TaskSupport,
     IMcpGatewayServerSource Source
 );
 
-internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFactory)
+internal sealed class McpGatewayMcpServerRequestResolver
 {
-    private readonly ILoggerFactory _loggerFactory = loggerFactory;
-
-    public async Task<McpGatewayResolvedToolRequest?> ResolveToolAsync(
+    public static async Task<McpGatewayResolvedToolRequest?> ResolveToolAsync(
         IMcpGatewayServerBinding binding,
         string toolNameOrId,
         CancellationToken cancellationToken
@@ -76,39 +72,6 @@ internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFa
                 $"Tool name '{requestedToolName}' is ambiguous across multiple sources. Use the exported gateway tool id instead."
             ),
         };
-    }
-
-    public async Task<IReadOnlyDictionary<string, ToolTaskSupport?>> LoadToolTaskSupportsAsync(
-        IMcpGatewayServerBinding binding,
-        CancellationToken cancellationToken
-    )
-    {
-        ArgumentNullException.ThrowIfNull(binding);
-
-        var descriptors = await binding.Gateway.ListToolsAsync(cancellationToken);
-        var supports = new Dictionary<string, ToolTaskSupport?>(
-            descriptors.Count,
-            StringComparer.OrdinalIgnoreCase
-        );
-
-        foreach (var descriptor in descriptors)
-        {
-            var source = await FindSourceAsync(binding, descriptor.SourceId, cancellationToken);
-            if (source is null)
-            {
-                continue;
-            }
-
-            var taskSupport = await source.GetToolTaskSupportAsync(
-                descriptor.ToolName,
-                _loggerFactory,
-                cancellationToken
-            );
-
-            supports[descriptor.ToolId] = taskSupport;
-        }
-
-        return supports;
     }
 
     public static async Task<McpGatewayResolvedPromptRequest?> ResolvePromptAsync(
@@ -377,7 +340,7 @@ internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFa
             );
     }
 
-    private async Task<McpGatewayResolvedToolRequest?> CreateResolvedToolRequestAsync(
+    private static async Task<McpGatewayResolvedToolRequest?> CreateResolvedToolRequestAsync(
         IMcpGatewayServerBinding binding,
         McpGatewayToolDescriptor descriptor,
         CancellationToken cancellationToken
@@ -389,18 +352,10 @@ internal sealed class McpGatewayMcpServerRequestResolver(ILoggerFactory loggerFa
             return null;
         }
 
-        var taskSupport =
-            await source.GetToolTaskSupportAsync(
-                descriptor.ToolName,
-                _loggerFactory,
-                cancellationToken
-            ) ?? ToolTaskSupport.Forbidden;
-
         return new McpGatewayResolvedToolRequest(
             descriptor.ToolId,
             descriptor.SourceId,
             descriptor.ToolName,
-            taskSupport,
             source
         );
     }

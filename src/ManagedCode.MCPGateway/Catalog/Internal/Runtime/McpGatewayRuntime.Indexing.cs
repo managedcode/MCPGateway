@@ -250,7 +250,8 @@ internal sealed partial class McpGatewayRuntime
                     loadedTool.Tool,
                     document,
                     searchTermIndex.SearchBoostTerms,
-                    searchTermIndex.ConfidenceTerms
+                    searchTermIndex.ConfidenceTerms,
+                    loadedTool.Client
                 )
             );
         }
@@ -669,76 +670,4 @@ internal sealed partial class McpGatewayRuntime
         }
     }
 
-    private sealed class BuildOperation(
-        Task<McpGatewayIndexBuildResult> task,
-        CancellationTokenSource cancellationSource,
-        CancellationToken cancellationToken
-    ) : IDisposable
-    {
-        private int _disposed;
-
-        public Task<McpGatewayIndexBuildResult> Task { get; } = task;
-
-        public CancellationTokenSource CancellationSource { get; } = cancellationSource;
-
-        public CancellationToken CancellationToken { get; } = cancellationToken;
-
-        public static BuildOperation Create(
-            Task<McpGatewayIndexBuildResult> task,
-            CancellationToken cancellationToken
-        )
-        {
-            var cancellationSource = CancellationTokenSource.CreateLinkedTokenSource(
-                cancellationToken
-            );
-            return new BuildOperation(task, cancellationSource, cancellationSource.Token);
-        }
-
-        public Task CancelAsync()
-        {
-            if (Volatile.Read(ref _disposed) != 0)
-            {
-                return System.Threading.Tasks.Task.CompletedTask;
-            }
-
-            try
-            {
-                return CancellationSource.CancelAsync();
-            }
-            catch (ObjectDisposedException)
-            {
-                return System.Threading.Tasks.Task.CompletedTask;
-            }
-        }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 0)
-            {
-                CancellationSource.Dispose();
-            }
-        }
-    }
-
-    private sealed record VectorizationOutcome(
-        int VectorizedToolCount,
-        bool IsVectorSearchEnabled,
-        VectorTokenUsage VectorTokenUsage
-    )
-    {
-        public static VectorizationOutcome Empty { get; } = new(0, false, VectorTokenUsage.Zero);
-    }
-
-    private sealed record EmbeddingGenerationOutcome(
-        int VectorizedToolCount,
-        VectorTokenUsage VectorTokenUsage
-    )
-    {
-        public static EmbeddingGenerationOutcome Empty { get; } = new(0, VectorTokenUsage.Zero);
-    }
-
-    private sealed record GeneratedEmbeddingsResult(
-        IReadOnlyList<McpGatewayToolEmbedding> GeneratedEmbeddings,
-        int VectorizedToolCount
-    );
 }

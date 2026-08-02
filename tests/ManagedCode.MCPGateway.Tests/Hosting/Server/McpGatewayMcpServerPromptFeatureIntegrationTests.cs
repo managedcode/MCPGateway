@@ -1,9 +1,12 @@
+using System.Text.Json;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
 {
+    private const string DefaultLocale = "en-US";
+
     [Test]
     public async Task GetPromptAsync_ExportsGatewayOwnedCompositePrompt()
     {
@@ -74,12 +77,21 @@ public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
             NotificationMethods.PromptListChangedNotification,
             (notification, _) =>
             {
-                changed.TrySetResult(new PromptListChangedNotificationParams());
+                var payload = notification.Params?.Deserialize<PromptListChangedNotificationParams>();
+                if (payload is not null)
+                {
+                    changed.TrySetResult(payload);
+                }
+
                 return ValueTask.CompletedTask;
             }
         );
 
         _ = await gatewayServer.Client.ListPromptsAsync();
+        await using var listener = await McpTestSubscriptionListener.ListenAsync(
+            gatewayServer.Client,
+            new SubscriptionsListenNotifications { PromptsListChanged = true }
+        );
         gatewayServer.Registry.AddPrompt(
             new McpGatewayPrompt("hotfix_review_bundle", BuildSimplePromptAsync)
             {
@@ -88,10 +100,12 @@ public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
             }
         );
 
-        _ = await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var payload = await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var prompts = await gatewayServer.Client.ListPromptsAsync();
 
         await Assert.That(gatewayServer.Client.ServerCapabilities.Prompts?.ListChanged).IsTrue();
+        await Assert.That(listener.Granted.PromptsListChanged).IsTrue();
+        await Assert.That(payload.Meta?[MetaKeys.SubscriptionId]).IsNotNull();
         await Assert
             .That(prompts.Any(static prompt => prompt.Name == "local_hotfix_review_bundle"))
             .IsTrue();
@@ -113,17 +127,28 @@ public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
             NotificationMethods.PromptListChangedNotification,
             (notification, _) =>
             {
-                changed.TrySetResult(new PromptListChangedNotificationParams());
+                var payload = notification.Params?.Deserialize<PromptListChangedNotificationParams>();
+                if (payload is not null)
+                {
+                    changed.TrySetResult(payload);
+                }
+
                 return ValueTask.CompletedTask;
             }
         );
 
         _ = await gatewayServer.Client.ListPromptsAsync();
+        await using var listener = await McpTestSubscriptionListener.ListenAsync(
+            gatewayServer.Client,
+            new SubscriptionsListenNotifications { PromptsListChanged = true }
+        );
         await upstreamServer.AddPromptAsync("deployment_review_prompt");
 
-        _ = await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var payload = await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var prompts = await gatewayServer.Client.ListPromptsAsync();
 
+        await Assert.That(listener.Granted.PromptsListChanged).IsTrue();
+        await Assert.That(payload.Meta?[MetaKeys.SubscriptionId]).IsNotNull();
         await Assert
             .That(prompts.Any(static prompt => prompt.Name == "source-a_deployment_review_prompt"))
             .IsTrue();
@@ -177,8 +202,8 @@ public sealed class McpGatewayMcpServerPromptFeatureIntegrationTests
         var repository = context.Arguments["repository"]?.ToString() ?? string.Empty;
         var environment = context.Arguments["environment"]?.ToString() ?? string.Empty;
         var locale = context.Arguments.TryGetValue("locale", out var rawLocale)
-            ? rawLocale?.ToString() ?? "en-US"
-            : "en-US";
+            ? rawLocale?.ToString() ?? DefaultLocale
+            : DefaultLocale;
 
         var repositoryPrompt =
             await context.GetPromptAsync(

@@ -11,7 +11,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
     {
         var alphaRegistration = new TestRegistration("alpha");
 
-        var (_, binding) = CreateResolverContext(
+        var binding = CreateResolverContext(
             promptDescriptors:
             [
                 CreatePromptDescriptor("alpha_release_review", "alpha", "release_review"),
@@ -70,7 +70,7 @@ public sealed partial class McpGatewayMcpServerRequestResolverTests
     {
         var alphaRegistration = new TestRegistration("alpha");
         var betaRegistration = new TestRegistration("beta");
-        var (resolver, binding) = CreateResolverContext(
+        var binding = CreateResolverContext(
             resourceDescriptors:
             [
                 CreateResourceDescriptor("alpha", "overview", "docs://overview"),

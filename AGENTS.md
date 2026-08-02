@@ -142,7 +142,7 @@ If no new rule is detected -> do not update the file.
 - Always keep package and project identity as `ManagedCode.MCPGateway`.
 - Treat the official `modelcontextprotocol/csharp-sdk` repository and shipped feature surface as the MCP baseline for this package, because `ManagedCode.MCPGateway` is built on top of that SDK rather than on a narrower custom protocol layer.
 - When the SDK already supports an MCP capability, prefer exposing and integrating that capability in `ManagedCode.MCPGateway` instead of assuming the missing surface is intentionally unsupported, unless the user explicitly excludes it.
-- HTTP MCP server registrations must preserve the `Http` source kind while using the official MCP C# SDK HTTP transport; default to Streamable HTTP for modern remote endpoints, expose SDK transport knobs through an options object for future host needs, and do not replace HTTP sources with custom-client workarounds, positional-overload sprawl, or hand-written JSON-RPC/SSE transport code.
+- HTTP MCP server registrations must preserve the `Http` source kind while using the official MCP C# SDK Streamable HTTP transport pinned to the repository's current MCP protocol baseline; expose only current-protocol transport knobs through an options object, and do not expose AutoDetect, SSE, session-resumption compatibility settings, custom-client workarounds, positional-overload sprawl, or hand-written JSON-RPC/SSE transport code.
 - When the user asks for parity with the official `modelcontextprotocol/csharp-sdk`, treat the entire SDK feature surface as in scope for `ManagedCode.MCPGateway`, including capabilities that the SDK currently marks experimental, unless the user explicitly narrows that scope.
 - Always use `Microsoft.Extensions.AI` and the official `ModelContextProtocol` .NET SDK as the integration foundation.
 - Never introduce Microsoft Agentic Framework into this repository unless the user explicitly re-opens that requirement.
@@ -272,6 +272,7 @@ If no new rule is detected -> do not update the file.
 
 - Follow `.editorconfig` and repository analyzers.
 - Keep warnings clean; repository builds treat warnings as errors.
+- Never leave semantic fallback, sentinel, metadata-key, method-name, MIME-type, or protocol-value strings as inline runtime literals; define them as named constants on the owning type or reuse the official SDK constant, because unnamed protocol and fallback strings obscure intent and drift during upstream upgrades.
 - Always treat local and CI builds as `WarningsAsErrors`; never rely on warnings being acceptable, because this repository expects zero-warning output as a hard quality gate.
 - Prefer simple, readable C# over clever abstractions.
 - Prefer modern C# 14 syntax when it improves clarity and keep replacing stale legacy syntax with current idiomatic language constructs instead of preserving older forms by inertia.
@@ -314,6 +315,7 @@ If no new rule is detected -> do not update the file.
 - Keep index-building and warmup control explicit and customizable; expose understandable extension points so consumers can choose how and when the catalog or graph index is built instead of being forced into one hidden lifecycle.
 - Do not add speculative public configuration options unless production runtime code consumes them and tests/docs prove the behavior; remove dead public options instead of expanding the package API surface.
 - Never keep legacy compatibility shims, obsolete paths, or lingering documentation references to removed implementations when a replacement is accepted, because this repository should converge on the current design instead of carrying dead historical baggage.
+- After adopting a new MCP SDK or protocol baseline, remove every gateway-owned older-protocol branch, initialize fallback, stateful/session/SSE setting, deprecated capability handler, obsolete model, test, and documentation reference; pin gateway-created clients and exported behavior to the current protocol and fail closed for older peers unless the user explicitly reauthorizes backward compatibility, because dual-era MCP code is forbidden.
 - Never leave `ManagedCode`-prefixed DI/setup extension method names such as `AddManagedCodeMcpGateway(...)` in the public API once concise `McpGateway` naming is available, because these branded leftovers make the package surface inconsistent and read like stale legacy.
 
 ### Critical (NEVER violate)

@@ -1,5 +1,3 @@
-#pragma warning disable MCPEXP001
-
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
@@ -17,7 +15,6 @@ internal static class McpGatewayProtocolTool
             InputSchema = CloneInputSchema(tool.InputSchema),
             OutputSchema = CloneOutputSchema(tool.OutputSchema),
             Annotations = CloneAnnotations(tool.Annotations),
-            Execution = CloneExecution(tool.Execution),
             Icons = CloneIcons(tool.Icons),
             Meta = CloneMeta(tool.Meta),
         };
@@ -55,11 +52,8 @@ internal static class McpGatewayProtocolTool
             return null;
         }
 
-        return McpGatewayProtocolSchema.IsToolObjectSchema(schemaValue) ? schemaValue.Clone() : null;
+        return schemaValue.Clone();
     }
-
-    private static ToolExecution? CloneExecution(ToolExecution? execution) =>
-        execution is null ? null : new ToolExecution { TaskSupport = execution.TaskSupport };
 
     private static IList<Icon>? CloneIcons(IList<Icon>? icons) =>
         icons?.Select(static icon => new Icon
@@ -70,5 +64,3 @@ internal static class McpGatewayProtocolTool
             Theme = icon.Theme,
         }).ToList();
 }
-
-#pragma warning restore MCPEXP001

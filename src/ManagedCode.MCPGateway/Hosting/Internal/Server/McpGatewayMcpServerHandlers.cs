@@ -1,5 +1,3 @@
-#pragma warning disable MCPEXP001
-
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -9,10 +7,6 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayMcpServerHandlers(
     McpGatewayMcpServerBindingManager bindingManager,
-    McpGatewayMcpServerRequestResolver requestResolver,
-    McpGatewayResourceSubscriptionManager subscriptionManager,
-    McpGatewayPromptListNotificationManager promptNotificationManager,
-    McpGatewayMcpServerTaskStore taskStore,
     IServiceProvider serviceProvider,
     ILoggerFactory loggerFactory
 )
@@ -30,22 +24,9 @@ internal sealed class McpGatewayMcpServerHandlers(
         );
 
         var descriptors = await binding.Binding.Gateway.ListToolsAsync(cancellationToken);
-        var taskSupports = await requestResolver.LoadToolTaskSupportsAsync(
-            binding.Binding,
-            cancellationToken
-        );
         return new ListToolsResult
         {
-            Tools = descriptors
-                .Select(descriptor =>
-                    McpGatewayMcpServerProtocolMapper.ToProtocolTool(
-                        descriptor,
-                        taskSupports.TryGetValue(descriptor.ToolId, out var taskSupport)
-                            ? taskSupport
-                            : null
-                    )
-                )
-                .ToList(),
+            Tools = descriptors.Select(McpGatewayMcpServerProtocolMapper.ToProtocolTool).ToList(),
         };
     }
 
@@ -69,7 +50,7 @@ internal sealed class McpGatewayMcpServerHandlers(
             cancellationToken
         );
 
-        var resolvedTool = await requestResolver.ResolveToolAsync(
+        var resolvedTool = await McpGatewayMcpServerRequestResolver.ResolveToolAsync(
             binding.Binding,
             toolId,
             cancellationToken
@@ -82,21 +63,6 @@ internal sealed class McpGatewayMcpServerHandlers(
         }
 
         var arguments = McpGatewayMcpServerProtocolMapper.ConvertArguments(request.Params?.Arguments);
-        if (request.Params?.Task is not null)
-        {
-            return await taskStore.CreateToolTaskAsync(
-                request,
-                resolvedTool,
-                arguments,
-                cancellationToken
-            );
-        }
-
-        if (resolvedTool.TaskSupport == ToolTaskSupport.Required)
-        {
-            throw new McpException($"Tool '{resolvedTool.ToolId}' requires task augmentation.");
-        }
-
         var invokeResult = await binding.Binding.Gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
                 ToolId: resolvedTool.ToolId,
@@ -113,12 +79,6 @@ internal sealed class McpGatewayMcpServerHandlers(
         CancellationToken cancellationToken
     )
     {
-        await promptNotificationManager.RegisterDownstreamServerAsync(
-            request.Services,
-            request.Server,
-            cancellationToken
-        );
-
         await using var binding = await bindingManager.AcquireAsync(
             request.Services,
             serviceProvider,
@@ -140,12 +100,6 @@ internal sealed class McpGatewayMcpServerHandlers(
         CancellationToken cancellationToken
     )
     {
-        await promptNotificationManager.RegisterDownstreamServerAsync(
-            request.Services,
-            request.Server,
-            cancellationToken
-        );
-
         var exportedPromptName = request.Params?.Name?.Trim();
         if (string.IsNullOrWhiteSpace(exportedPromptName))
         {
@@ -288,12 +242,6 @@ internal sealed class McpGatewayMcpServerHandlers(
         CancellationToken cancellationToken
     )
     {
-        await promptNotificationManager.RegisterDownstreamServerAsync(
-            request.Services,
-            request.Server,
-            cancellationToken
-        );
-
         var reference =
             request.Params?.Ref
             ?? throw new McpException(McpGatewayMcpProtocolConstants.InvalidCompletionReferenceMessage);
@@ -329,41 +277,4 @@ internal sealed class McpGatewayMcpServerHandlers(
             ?? McpGatewayMcpServerProtocolMapper.CreateEmptyCompletionResult();
     }
 
-    public async ValueTask<EmptyResult> SubscribeToResourceAsync(
-        RequestContext<SubscribeRequestParams> request,
-        CancellationToken cancellationToken
-    )
-    {
-        var requestedUri = request.Params?.Uri?.Trim();
-        if (string.IsNullOrWhiteSpace(requestedUri))
-        {
-            throw new McpException(McpGatewayMcpProtocolConstants.InvalidResourceUriMessage);
-        }
-
-        await subscriptionManager.SubscribeAsync(
-            request.Services,
-            request.Server,
-            requestedUri,
-            cancellationToken
-        );
-
-        return new EmptyResult();
-    }
-
-    public async ValueTask<EmptyResult> UnsubscribeFromResourceAsync(
-        RequestContext<UnsubscribeRequestParams> request,
-        CancellationToken cancellationToken
-    )
-    {
-        var requestedUri = request.Params?.Uri?.Trim();
-        if (string.IsNullOrWhiteSpace(requestedUri))
-        {
-            throw new McpException(McpGatewayMcpProtocolConstants.InvalidResourceUriMessage);
-        }
-
-        await subscriptionManager.UnsubscribeAsync(request.Server, requestedUri, cancellationToken);
-        return new EmptyResult();
-    }
 }
-
-#pragma warning restore MCPEXP001

@@ -2,6 +2,9 @@ namespace ManagedCode.MCPGateway;
 
 internal static class McpGatewayMcpProtocolConstants
 {
+    public const string CurrentProtocolVersion = "2026-07-28";
+    public const string MissingProtocolVersion = "(none)";
+    public const string CompleteResultType = "complete";
     public const string ToolIdMetaPropertyName = "toolId";
     public const string ToolNameMetaPropertyName = "toolName";
     public const string CategoriesMetaPropertyName = "categories";
@@ -17,6 +20,10 @@ internal static class McpGatewayMcpProtocolConstants
     public const string OriginalUriMetaPropertyName = "originalUri";
     public const string OriginalUriTemplateMetaPropertyName = "originalUriTemplate";
     public const string SourceIdMetaPropertyName = "sourceId";
+    public const string MetaEnvelopePropertyName = "_meta";
+    public const string McpAppUiMetaPropertyName = "ui";
+    public const string McpAppResourceUriPropertyName = "resourceUri";
+    public const string McpAppVisibilityPropertyName = "visibility";
     public const string InvalidToolNameMessage = "A tool name is required.";
     public const string InvalidPromptNameMessage = "A prompt name is required.";
     public const string InvalidResourceUriMessage = "A resource URI is required.";

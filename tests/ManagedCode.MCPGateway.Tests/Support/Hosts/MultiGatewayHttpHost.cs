@@ -133,6 +133,7 @@ internal sealed class MultiGatewayHttpHost(
                 transport,
                 new McpClientOptions
                 {
+                    ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
                     ClientInfo = new Implementation
                     {
                         Name = "managedcode-mcpgateway-http-tests",

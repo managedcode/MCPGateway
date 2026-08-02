@@ -28,7 +28,7 @@ dotnet_style_predefined_type_for_locals_parameters_members = true:warning
 # use int.MaxValue over Int32.MaxValue
 dotnet_style_predefined_type_for_member_access = true:warning
 
-# Allow Agent Framework approval content types (evaluation-only API usage required for HITL flow)
+# Allow Microsoft.Extensions.AI approval content types required for the HITL flow
 dotnet_diagnostic.MEAI001.severity = warning
 
 # Require var all the time (modern C#)

@@ -71,7 +71,7 @@ Cons:
 
 - creates three user-visible retrieval modes when the intended product choice is embeddings versus Markdown-LD graph
 - duplicates token-distance search already provided by `ManagedCode.MarkdownLd.Kb`
-- keeps legacy runtime code and test fixtures alive after graph search replaces them
+- keeps superseded runtime code and test fixtures alive after graph search replaces them
 
 ### Alternative 3: Improve search with hardcoded synonym or phrase lists
 

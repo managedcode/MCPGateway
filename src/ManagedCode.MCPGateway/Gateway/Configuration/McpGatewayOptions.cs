@@ -158,24 +158,6 @@ public sealed class McpGatewayOptions
             }
         );
 
-    public McpGatewayOptions AddHttpServer(
-        string sourceId,
-        Uri endpoint,
-        HttpTransportMode transportMode,
-        IReadOnlyDictionary<string, string>? headers = null,
-        string? displayName = null
-    ) =>
-        AddHttpServer(
-            new McpGatewayHttpServerOptions
-            {
-                SourceId = sourceId,
-                Endpoint = endpoint,
-                TransportMode = transportMode,
-                AdditionalHeaders = headers,
-                DisplayName = displayName,
-            }
-        );
-
     public McpGatewayOptions AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
         ConfigureRegistrations(registrations =>
             registrations.AddHttpServer(httpServer)
@@ -189,15 +171,21 @@ public sealed class McpGatewayOptions
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
         string? displayName = null
     ) =>
+        AddStdioServer(
+            new McpGatewayStdioServerOptions
+            {
+                SourceId = sourceId,
+                Command = command,
+                Arguments = arguments,
+                WorkingDirectory = workingDirectory,
+                EnvironmentVariables = environmentVariables,
+                DisplayName = displayName,
+            }
+        );
+
+    public McpGatewayOptions AddStdioServer(McpGatewayStdioServerOptions stdioServer) =>
         ConfigureRegistrations(registrations =>
-            registrations.AddStdioServer(
-                sourceId,
-                command,
-                arguments,
-                workingDirectory,
-                environmentVariables,
-                displayName
-            )
+            registrations.AddStdioServer(stdioServer)
         );
 
     public McpGatewayOptions AddMcpClient(

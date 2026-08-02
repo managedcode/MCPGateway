@@ -1,6 +1,7 @@
 #pragma warning disable MCPEXP001
 
 using Microsoft.Extensions.Options;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -8,7 +9,9 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayMcpServerOptionsSetup(
     McpGatewayMcpServerHandlers handlers,
-    McpGatewayMcpServerTaskStore taskStore
+    McpGatewayMcpServerSubscriptionCoordinator subscriptionCoordinator,
+    IMcpTaskStore taskStore,
+    IOptions<McpGatewayOptions> gatewayOptions
 )
     : IPostConfigureOptions<McpServerOptions>
 {
@@ -16,23 +19,19 @@ internal sealed class McpGatewayMcpServerOptionsSetup(
     {
         ArgumentNullException.ThrowIfNull(options);
 
+        if (taskStore is McpGatewayMcpServerTaskStore gatewayTaskStore)
+        {
+            gatewayTaskStore.Configure(gatewayOptions.Value.McpTaskStore);
+        }
+        options.ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion;
         options.Capabilities ??= new ServerCapabilities();
-        options.Capabilities.Logging ??= new LoggingCapability();
         options.Capabilities.Tools ??= new ToolsCapability();
         options.Capabilities.Prompts ??= new PromptsCapability();
         options.Capabilities.Prompts.ListChanged ??= true;
         options.Capabilities.Resources ??= new ResourcesCapability();
         options.Capabilities.Resources.Subscribe ??= true;
         options.Capabilities.Completions ??= new CompletionsCapability();
-        options.Capabilities.Tasks ??= new McpTasksCapability();
-        options.Capabilities.Tasks.Requests ??= new RequestMcpTasksCapability();
-        options.Capabilities.Tasks.Requests.Tools ??= new ToolsMcpTasksCapability();
-        options.Capabilities.Tasks.Requests.Tools.Call ??= new CallToolMcpTasksCapability();
-        options.Capabilities.Tasks.List ??= new ListMcpTasksCapability();
-        options.Capabilities.Tasks.Cancel ??= new CancelMcpTasksCapability();
         options.Handlers ??= new McpServerHandlers();
-        options.TaskStore ??= taskStore;
-        options.SendTaskStatusNotifications = true;
 
         options.Handlers.ListToolsHandler = handlers.ListToolsAsync;
         options.Handlers.CallToolHandler = handlers.CallToolAsync;
@@ -42,8 +41,12 @@ internal sealed class McpGatewayMcpServerOptionsSetup(
         options.Handlers.ListResourceTemplatesHandler = handlers.ListResourceTemplatesAsync;
         options.Handlers.ReadResourceHandler = handlers.ReadResourceAsync;
         options.Handlers.CompleteHandler = handlers.CompleteAsync;
-        options.Handlers.SubscribeToResourcesHandler = handlers.SubscribeToResourceAsync;
-        options.Handlers.UnsubscribeFromResourcesHandler = handlers.UnsubscribeFromResourceAsync;
+        options.Filters.Message.IncomingFilters.Add(
+            subscriptionCoordinator.CreateIncomingFilter()
+        );
+        options.Filters.Message.OutgoingFilters.Add(
+            subscriptionCoordinator.CreateOutgoingFilter()
+        );
     }
 }
 

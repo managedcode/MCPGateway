@@ -1,3 +1,4 @@
+using System.Text;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
@@ -270,5 +271,37 @@ public sealed partial class McpGatewaySearchTests
         await Assert.That(export.Turtle).Contains("story_item_search");
         await Assert.That(export.MermaidFlowchart).Contains("Story search");
         await Assert.That(export.DotGraph).Contains("Story search");
+    }
+
+    [TUnit.Core.Test]
+    public async Task McpGatewayMarkdownLdGraphFile_DeduplicatesRepeatedCatalogDocuments()
+    {
+        var descriptor = new McpGatewayToolDescriptor(
+            "catalog_search",
+            "catalog",
+            McpGatewaySourceKind.CustomMcpClient,
+            new Tool
+            {
+                Name = "catalog_search",
+                Title = "Catalog search",
+                Description = "Searches catalog records and related entities.",
+            },
+            ["query"]
+        )
+        {
+            Categories = ["catalog"],
+            Tags = ["search", "records"],
+            DataSources = ["catalog-api"],
+        };
+        var document = McpGatewayMarkdownLdGraphFile.CreateDocuments([descriptor]).Single();
+
+        var singleExport = await McpGatewayMarkdownLdGraphFile.ExportAsync([document]);
+        var repeatedExport = await McpGatewayMarkdownLdGraphFile.ExportAsync(
+            Enumerable.Repeat(document, 24)
+        );
+
+        await Assert.That(repeatedExport.NodeCount).IsEqualTo(singleExport.NodeCount);
+        await Assert.That(repeatedExport.EdgeCount).IsEqualTo(singleExport.EdgeCount);
+        await Assert.That(Encoding.UTF8.GetByteCount(repeatedExport.JsonLd)).IsLessThan(2_000_000);
     }
 }

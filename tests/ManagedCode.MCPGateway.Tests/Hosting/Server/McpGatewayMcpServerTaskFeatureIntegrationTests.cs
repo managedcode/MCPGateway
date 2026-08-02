@@ -1,10 +1,13 @@
-#pragma warning disable MCPEXP001
+#pragma warning disable MCPEXP003
 
 using System.Text.Json;
-using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
-using ModelContextProtocol;
+using Microsoft.Extensions.Options;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Extensions.Apps;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
 
 namespace ManagedCode.MCPGateway.Tests;
 
@@ -13,10 +16,9 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
     private const string LocalTaskToolName = "local_task_tool";
     private const string LocalCancellableTaskToolName = "local_cancellable_task_tool";
     private const string LocalFailingTaskToolName = "local_failing_task_tool";
-    private const string InstantCompletedTaskToolName = "instant_completed_task_tool";
 
     [Test]
-    public async Task ListToolsAsync_ExportsTaskSupportForUpstreamAndLocalTools()
+    public async Task ListToolsAsync_AdvertisesCurrentTasksAndAppsExtensions()
     {
         await using var upstreamServer = await TestMcpTaskFeatureServerHost.StartAsync();
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
@@ -34,218 +36,84 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         });
 
         var tools = await gatewayServer.Client.ListToolsAsync();
-        var requiredTool = tools.Single(tool =>
-            tool.Name == TestMcpTaskFeatureServerHost.RequiredToolName
-        );
-        var optionalTool = tools.Single(tool =>
-            tool.Name == TestMcpTaskFeatureServerHost.OptionalToolName
-        );
-        var localTool = tools.Single(tool => tool.Name == LocalTaskToolName);
 
-        await Assert.That(gatewayServer.Client.ServerCapabilities.Tasks).IsNotNull();
-        await Assert.That(gatewayServer.Client.ServerCapabilities.Tasks?.Requests?.Tools?.Call).IsNotNull();
-        await Assert.That(requiredTool.ProtocolTool.Execution?.TaskSupport).IsEqualTo(ToolTaskSupport.Required);
-        await Assert.That(optionalTool.ProtocolTool.Execution?.TaskSupport).IsEqualTo(ToolTaskSupport.Optional);
-        await Assert.That(localTool.ProtocolTool.Execution?.TaskSupport).IsEqualTo(ToolTaskSupport.Optional);
+        await Assert
+            .That(gatewayServer.Client.ServerCapabilities.Extensions)
+            .ContainsKey(TasksProtocol.ExtensionId);
+        await Assert
+            .That(gatewayServer.Client.ServerCapabilities.Extensions)
+            .ContainsKey(McpApps.ExtensionId);
+        await Assert
+            .That(gatewayServer.Client.NegotiatedProtocolVersion)
+            .IsEqualTo(McpGatewayMcpProtocolConstants.CurrentProtocolVersion);
+        await Assert
+            .That(tools.Select(static tool => tool.Name))
+            .Contains(TestMcpTaskFeatureServerHost.RequiredToolName);
+        await Assert.That(tools.Select(static tool => tool.Name)).Contains(LocalTaskToolName);
     }
 
     [Test]
-    public async Task CallToolAsTaskAsync_ProxiesUpstreamRequiredToolAndSupportsListGetAndResult()
+    public async Task WithMcpGatewayCatalog_UsesCallerProvidedTaskStore()
     {
-        await using var upstreamServer = await TestMcpTaskFeatureServerHost.StartAsync();
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
-        {
-            options.AddMcpClient("source-a", upstreamServer.Client, disposeClient: false);
-        });
+        var taskStore = new InMemoryMcpTaskStore();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddMcpGateway();
+        services.AddMcpServer().WithMcpGatewayCatalog(taskStore);
+        await using var serviceProvider = services.BuildServiceProvider();
 
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            TestMcpTaskFeatureServerHost.RequiredToolName,
-            new Dictionary<string, object?> { ["value"] = "alpha" }
-        );
+        var resolvedStore = serviceProvider.GetRequiredService<IMcpTaskStore>();
+        var serverOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
-        var listedTasks = await gatewayServer.Client.ListTasksAsync();
-        var listedTask = listedTasks.Single(candidate => candidate.TaskId == task.TaskId);
-        var trackedTask = await gatewayServer.Client.GetTaskAsync(task.TaskId);
-        var taskResult = DeserializeToolResult(
-            await gatewayServer.Client.GetTaskResultAsync(task.TaskId)
-        );
-        var completedTask = await gatewayServer.Client.GetTaskAsync(task.TaskId);
-
-        await Assert.That(task.TaskId).IsNotEmpty();
-        await Assert.That(listedTask.TaskId).IsEqualTo(task.TaskId);
-        await Assert.That(trackedTask).IsNotNull();
-        await Assert.That(completedTask?.Status).IsEqualTo(McpTaskStatus.Completed);
-        await Assert.That(GetSingleText(taskResult)).IsEqualTo("required:alpha");
+        await Assert.That(ReferenceEquals(resolvedStore, taskStore)).IsTrue();
+        await Assert
+            .That(serverOptions.Capabilities?.Extensions)
+            .ContainsKey(TasksProtocol.ExtensionId);
     }
 
     [Test]
-    public async Task CallToolAsync_WhenToolRequiresTask_ReturnsTaskRequirementError()
+    public async Task CallToolAsync_RetriesAnUpstreamRequiredTaskAndReturnsItsResult()
     {
         await using var upstreamServer = await TestMcpTaskFeatureServerHost.StartAsync();
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
-        {
-            options.AddMcpClient("source-a", upstreamServer.Client, disposeClient: false);
-        });
+            options.AddMcpClient("source-a", upstreamServer.Client, disposeClient: false)
+        );
 
         var result = await gatewayServer.Client.CallToolAsync(
             TestMcpTaskFeatureServerHost.RequiredToolName,
             new Dictionary<string, object?> { ["value"] = "alpha" }
         );
 
-        await Assert.That(result.IsError).IsTrue();
-        await Assert.That(GetSingleText(result)).Contains("requires task augmentation");
+        await Assert.That(result.IsError == true).IsFalse();
+        await Assert.That(GetSingleText(result)).IsEqualTo("required:alpha");
     }
 
     [Test]
-    public async Task TaskStatusNotification_IsForwardedForUpstreamTask()
+    public async Task CallToolAsTaskAsync_CompletesAnUpstreamRequiredToolThroughGatewayOwnedTaskState()
     {
         await using var upstreamServer = await TestMcpTaskFeatureServerHost.StartAsync();
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
-        {
-            options.AddMcpClient("source-a", upstreamServer.Client, disposeClient: false);
-        });
-
-        var completionNotification = new TaskCompletionSource<McpTaskStatusNotificationParams>(
-            TaskCreationOptions.RunContinuationsAsynchronously
+            options.AddMcpClient("source-a", upstreamServer.Client, disposeClient: false)
         );
 
-        await using var notificationRegistration = gatewayServer.Client.RegisterNotificationHandler(
-            NotificationMethods.TaskStatusNotification,
-            (notification, _) =>
-            {
-                var payload = notification.Params?.Deserialize<McpTaskStatusNotificationParams>();
-                if (payload?.Status == McpTaskStatus.Completed)
-                {
-                    completionNotification.TrySetResult(payload);
-                }
-
-                return ValueTask.CompletedTask;
-            }
+        var created = await StartTaskAsync(
+            gatewayServer.Client,
+            TestMcpTaskFeatureServerHost.RequiredToolName,
+            "beta"
         );
-
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            TestMcpTaskFeatureServerHost.OptionalToolName,
-            new Dictionary<string, object?> { ["value"] = "beta" }
+        var completed = await WaitForTaskAsync<CompletedTaskResult>(
+            gatewayServer.Client,
+            created.TaskId
         );
+        var result = DeserializeToolResult(completed.Result);
 
-        var payload = await completionNotification.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        await Assert.That(payload.TaskId).IsEqualTo(task.TaskId);
-        await Assert.That(payload.Status).IsEqualTo(McpTaskStatus.Completed);
+        await Assert.That(GetSingleText(result)).IsEqualTo("required:beta");
     }
 
     [Test]
-    public async Task TaskStatusNotification_CatchesUpWhenUpstreamTaskCompletesBeforeSubscription()
-    {
-        var source = new CompletedBeforeSubscriptionTaskSource("race-source");
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
-            static _ => { },
-            services =>
-                services.AddSingleton<IMcpGatewayServerBindingResolver>(serviceProvider =>
-                    new SingleSourceTaskBindingResolver(
-                        serviceProvider.GetRequiredService<IMcpGatewayFactory>(),
-                        source,
-                        InstantCompletedTaskToolName
-                    )
-                )
-        );
-        var completionNotification = new TaskCompletionSource<McpTaskStatusNotificationParams>(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
-
-        await using var notificationRegistration = gatewayServer.Client.RegisterNotificationHandler(
-            NotificationMethods.TaskStatusNotification,
-            (notification, _) =>
-            {
-                var payload = notification.Params?.Deserialize<McpTaskStatusNotificationParams>();
-                if (payload?.Status == McpTaskStatus.Completed)
-                {
-                    completionNotification.TrySetResult(payload);
-                }
-
-                return ValueTask.CompletedTask;
-            }
-        );
-
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            InstantCompletedTaskToolName,
-            new Dictionary<string, object?> { ["value"] = "race" }
-        );
-        var payload = await completionNotification.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        await Assert.That(source.SubscribeCount).IsEqualTo(1);
-        await Assert.That(payload.TaskId).IsEqualTo(task.TaskId);
-        await Assert.That(payload.Status).IsEqualTo(McpTaskStatus.Completed);
-    }
-
-    [Test]
-    public async Task GetTaskResultAsync_PropagatesUpstreamResultFailures()
-    {
-        var source = new FailingTaskResultSource("failing-result-source");
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
-            static _ => { },
-            services =>
-                services.AddSingleton<IMcpGatewayServerBindingResolver>(serviceProvider =>
-                    new SingleSourceTaskBindingResolver(
-                        serviceProvider.GetRequiredService<IMcpGatewayFactory>(),
-                        source,
-                        InstantCompletedTaskToolName
-                    )
-                )
-        );
-
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            InstantCompletedTaskToolName,
-            new Dictionary<string, object?> { ["value"] = "failure" }
-        );
-
-        Exception? exception = null;
-        try
-        {
-            _ = await gatewayServer.Client.GetTaskResultAsync(task.TaskId);
-        }
-        catch (Exception ex)
-        {
-            exception = ex;
-        }
-
-        await Assert.That(exception).IsNotNull();
-        await Assert.That(exception!.Message).Contains("upstream result failure");
-    }
-
-    [Test]
-    public async Task CallToolAsTaskAsync_CancelsGatewayManagedLocalTask()
+    public async Task CallToolWithPollingAsync_ReturnsTheCompletedLocalTaskResult()
     {
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
-        {
-            options.AddTool(
-                "local",
-                TestFunctionFactory.CreateFunction(
-                    (string value, CancellationToken cancellationToken) =>
-                        RunLocalCancellableTaskToolAsync(value, cancellationToken),
-                    LocalCancellableTaskToolName,
-                    "Runs a local cancellable task."
-                )
-            );
-        });
-
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            LocalCancellableTaskToolName,
-            new Dictionary<string, object?> { ["value"] = "gamma" }
-        );
-
-        var cancelledTask = await gatewayServer.Client.CancelTaskAsync(task.TaskId);
-        var trackedTask = await gatewayServer.Client.GetTaskAsync(task.TaskId);
-
-        await Assert.That(cancelledTask.Status).IsEqualTo(McpTaskStatus.Cancelled);
-        await Assert.That(trackedTask?.Status).IsEqualTo(McpTaskStatus.Cancelled);
-    }
-
-    [Test]
-    public async Task CallToolAsTaskAsync_WaitsForGatewayManagedLocalTaskResult()
-    {
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
-        {
             options.AddTool(
                 "local",
                 TestFunctionFactory.CreateFunction(
@@ -254,27 +122,49 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
                     LocalTaskToolName,
                     "Runs a local task-capable tool."
                 )
-            );
-        });
-
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            LocalTaskToolName,
-            new Dictionary<string, object?> { ["value"] = "delta" }
+            )
         );
-        var taskResult = DeserializeToolResult(
-            await gatewayServer.Client.GetTaskResultAsync(task.TaskId)
-        );
-        var trackedTask = await gatewayServer.Client.GetTaskAsync(task.TaskId);
 
-        await Assert.That(trackedTask?.Status).IsEqualTo(McpTaskStatus.Completed);
-        await Assert.That(GetSingleText(taskResult)).IsEqualTo("local:delta");
+        var result = await gatewayServer.Client.CallToolWithPollingAsync(
+            CreateTaskRequest(LocalTaskToolName, "gamma")
+        );
+
+        await Assert.That(GetSingleText(result)).IsEqualTo("local:gamma");
     }
 
     [Test]
-    public async Task CallToolAsTaskAsync_StoresFailedResultForGatewayManagedLocalTask()
+    public async Task CancelTaskAsync_CancelsAGatewayManagedLocalTask()
     {
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
-        {
+            options.AddTool(
+                "local",
+                TestFunctionFactory.CreateFunction(
+                    (string value, CancellationToken cancellationToken) =>
+                        RunLocalCancellableTaskToolAsync(value, cancellationToken),
+                    LocalCancellableTaskToolName,
+                    "Runs a local cancellable task."
+                )
+            )
+        );
+
+        var created = await StartTaskAsync(
+            gatewayServer.Client,
+            LocalCancellableTaskToolName,
+            "delta"
+        );
+        _ = await gatewayServer.Client.CancelTaskAsync(created.TaskId);
+        var cancelled = await WaitForTaskAsync<CancelledTaskResult>(
+            gatewayServer.Client,
+            created.TaskId
+        );
+
+        await Assert.That(cancelled.Status).IsEqualTo(McpTaskStatus.Cancelled);
+    }
+
+    [Test]
+    public async Task CallToolAsTaskAsync_StoresToolFailuresAsCompletedErrorResults()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
             options.AddTool(
                 "local",
                 TestFunctionFactory.CreateFunction(
@@ -282,42 +172,74 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
                     LocalFailingTaskToolName,
                     "Runs a local task that fails."
                 )
-            );
-        });
+            )
+        );
 
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
+        var created = await StartTaskAsync(
+            gatewayServer.Client,
             LocalFailingTaskToolName,
-            new Dictionary<string, object?> { ["value"] = "epsilon" }
+            "epsilon"
         );
-        var taskResult = DeserializeToolResult(
-            await gatewayServer.Client.GetTaskResultAsync(task.TaskId)
+        var completed = await WaitForTaskAsync<CompletedTaskResult>(
+            gatewayServer.Client,
+            created.TaskId
         );
-        var trackedTask = await gatewayServer.Client.GetTaskAsync(task.TaskId);
+        var result = DeserializeToolResult(completed.Result);
 
-        await Assert.That(trackedTask?.Status).IsEqualTo(McpTaskStatus.Completed);
-        await Assert.That(taskResult.IsError).IsTrue();
-        await Assert.That(GetSingleText(taskResult)).Contains("boom:epsilon");
+        await Assert.That(result.IsError).IsTrue();
+        await Assert.That(GetSingleText(result)).Contains("boom:epsilon");
     }
 
-    [Test]
-    public async Task CallToolAsTaskAsync_CancelsUpstreamProxyTask()
+    private static async Task<CreateTaskResult> StartTaskAsync(
+        McpClient client,
+        string toolName,
+        string value
+    )
     {
-        await using var upstreamServer = await TestMcpTaskFeatureServerHost.StartAsync();
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(options =>
+        var result = await client.CallToolAsTaskAsync(CreateTaskRequest(toolName, value));
+        if (!result.IsTask || result.TaskCreated is null)
         {
-            options.AddMcpClient("source-a", upstreamServer.Client, disposeClient: false);
-        });
+            throw new InvalidOperationException($"Tool '{toolName}' did not create an MCP task.");
+        }
 
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            TestMcpTaskFeatureServerHost.CancellableToolName,
-            new Dictionary<string, object?> { ["value"] = "zeta" }
+        return result.TaskCreated;
+    }
+
+    private static CallToolRequestParams CreateTaskRequest(string toolName, string value) =>
+        new()
+        {
+            Name = toolName,
+            Arguments = new Dictionary<string, JsonElement>
+            {
+                ["value"] = JsonSerializer.SerializeToElement(value),
+            },
+        };
+
+    private static async Task<TTask> WaitForTaskAsync<TTask>(McpClient client, string taskId)
+        where TTask : GetTaskResult
+    {
+        const int maximumAttempts = 200;
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
+        {
+            var task = await client.GetTaskAsync(taskId);
+            if (task is TTask expected)
+            {
+                return expected;
+            }
+
+            if (task is FailedTaskResult or CancelledTaskResult)
+            {
+                throw new InvalidOperationException(
+                    $"Task '{taskId}' reached unexpected status '{task.Status}'."
+                );
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(25));
+        }
+
+        throw new InvalidOperationException(
+            $"Task '{taskId}' did not reach '{typeof(TTask).Name}' in time."
         );
-
-        var cancelledTask = await gatewayServer.Client.CancelTaskAsync(task.TaskId);
-        var trackedTask = await gatewayServer.Client.GetTaskAsync(task.TaskId);
-
-        await Assert.That(cancelledTask.Status).IsEqualTo(McpTaskStatus.Cancelled);
-        await Assert.That(trackedTask?.Status).IsEqualTo(McpTaskStatus.Cancelled);
     }
 
     private static async Task<string> RunLocalTaskToolAsync(
@@ -342,11 +264,11 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         throw new InvalidOperationException($"boom:{value}");
 
     private static CallToolResult DeserializeToolResult(JsonElement result) =>
-        result.Deserialize<CallToolResult>(McpJsonUtilities.DefaultOptions)
+        result.Deserialize<CallToolResult>(McpGatewayJsonSerializer.Options)
         ?? throw new InvalidOperationException("Task result payload was not a CallToolResult.");
 
     private static string GetSingleText(CallToolResult result) =>
         ((TextContentBlock)result.Content.Single()).Text;
 }
 
-#pragma warning restore MCPEXP001
+#pragma warning restore MCPEXP003

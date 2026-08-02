@@ -1,8 +1,8 @@
-#pragma warning disable MCPEXP001
-
 using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using ModelContextProtocol.Client;
+using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway.Tests;
@@ -12,7 +12,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
     private const string LocalCancellableTaskToolName = "isolated_local_cancellable_task";
 
     [Test]
-    public async Task CallToolAsTaskAsync_CompletedUpstreamTaskReleasesIsolatedBindingAndKeepsResult()
+    public async Task CompletedTask_ReleasesItsIsolatedBindingAndKeepsTheResultPollable()
     {
         await using var upstreamServer = await TestMcpTaskFeatureServerHost.StartAsync();
         var disposeCount = 0;
@@ -23,35 +23,38 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
                     new TrackingTaskBindingResolver(
                         serviceProvider.GetRequiredService<IMcpGatewayFactory>(),
                         options =>
-                            options.AddMcpClient("isolated", upstreamServer.Client, disposeClient: false),
+                            options.AddMcpClient(
+                                "isolated",
+                                upstreamServer.Client,
+                                disposeClient: false
+                            ),
                         () => Interlocked.Increment(ref disposeCount)
                     )
                 )
         );
 
         var baselineDisposeCount = Volatile.Read(ref disposeCount);
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
-            TestMcpTaskFeatureServerHost.RequiredToolName,
-            new Dictionary<string, object?> { ["value"] = "alpha" }
-        );
-
-        var completedTask = await WaitForTaskAsync(
+        var created = await StartTaskAsync(
             gatewayServer.Client,
-            task.TaskId,
-            McpTaskStatus.Completed
+            TestMcpTaskFeatureServerHost.RequiredToolName,
+            "alpha"
         );
-        var taskResult = DeserializeToolResult(await gatewayServer.Client.GetTaskResultAsync(task.TaskId));
+        var completed = await WaitForTaskAsync<CompletedTaskResult>(
+            gatewayServer.Client,
+            created.TaskId
+        );
         await WaitForDisposeCountAsync(
             () => Volatile.Read(ref disposeCount),
             baselineDisposeCount + 1
         );
+        var polledAgain = await gatewayServer.Client.GetTaskAsync(created.TaskId);
 
-        await Assert.That(completedTask.Status).IsEqualTo(McpTaskStatus.Completed);
-        await Assert.That(GetSingleText(taskResult)).IsEqualTo("required:alpha");
+        await Assert.That(GetSingleText(DeserializeToolResult(completed.Result))).IsEqualTo("required:alpha");
+        await Assert.That(polledAgain).IsTypeOf<CompletedTaskResult>();
     }
 
     [Test]
-    public async Task CallToolAsTaskAsync_CancelledLocalTaskReleasesIsolatedBinding()
+    public async Task CancelledTask_ReleasesItsIsolatedBindingAndKeepsCancelledStatePollable()
     {
         var disposeCount = 0;
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
@@ -75,102 +78,82 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
                 )
         );
 
-        var task = await gatewayServer.Client.CallToolAsTaskAsync(
+        var created = await StartTaskAsync(
+            gatewayServer.Client,
             LocalCancellableTaskToolName,
-            new Dictionary<string, object?> { ["value"] = "beta" }
+            "beta"
         );
         var initialDisposeCount = Volatile.Read(ref disposeCount);
-
-        var cancelledTask = await gatewayServer.Client.CancelTaskAsync(task.TaskId);
+        _ = await gatewayServer.Client.CancelTaskAsync(created.TaskId);
+        var cancelled = await WaitForTaskAsync<CancelledTaskResult>(
+            gatewayServer.Client,
+            created.TaskId
+        );
         await WaitForDisposeCountAsync(
             () => Volatile.Read(ref disposeCount),
             initialDisposeCount + 1
         );
-        var trackedTask = await gatewayServer.Client.GetTaskAsync(task.TaskId);
 
-        await Assert.That(cancelledTask.Status).IsEqualTo(McpTaskStatus.Cancelled);
-        await Assert.That(trackedTask?.Status).IsEqualTo(McpTaskStatus.Cancelled);
+        await Assert.That(cancelled.Status).IsEqualTo(McpTaskStatus.Cancelled);
     }
 
-    [Test]
-    public async Task RemoveSessionAsync_CancelsActiveLocalTaskAndReleasesBinding()
-    {
-        var disposeCount = 0;
-        await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
-            static _ => { },
-            services =>
-                services.AddSingleton<IMcpGatewayServerBindingResolver>(serviceProvider =>
-                    new TrackingTaskBindingResolver(
-                        serviceProvider.GetRequiredService<IMcpGatewayFactory>(),
-                        options =>
-                            options.AddTool(
-                                "isolated",
-                                TestFunctionFactory.CreateFunction(
-                                    (string value, CancellationToken cancellationToken) =>
-                                        RunLocalCancellableTaskToolAsync(value, cancellationToken),
-                                    LocalCancellableTaskToolName,
-                                    "Runs a cancellable local task."
-                                )
-                            ),
-                        () => Interlocked.Increment(ref disposeCount)
-                    )
-                )
-        );
-
-        _ = await gatewayServer.Client.CallToolAsTaskAsync(
-            LocalCancellableTaskToolName,
-            new Dictionary<string, object?> { ["value"] = "gamma" }
-        );
-        var initialDisposeCount = Volatile.Read(ref disposeCount);
-        var taskStore = gatewayServer.GetRequiredService<McpGatewayMcpServerTaskStore>();
-
-        await taskStore
-            .RemoveSessionAsync(gatewayServer.Server.SessionId ?? string.Empty)
-            .AsTask()
-            .WaitAsync(TimeSpan.FromSeconds(5));
-
-        await WaitForDisposeCountAsync(
-            () => Volatile.Read(ref disposeCount),
-            initialDisposeCount + 1
-        );
-    }
-
-    private static async Task<McpTask> WaitForTaskAsync(
-        ModelContextProtocol.Client.McpClient client,
-        string taskId,
-        McpTaskStatus expectedStatus
+    private static async Task<CreateTaskResult> StartTaskAsync(
+        McpClient client,
+        string toolName,
+        string value
     )
     {
-        for (var attempt = 0; attempt < 40; attempt++)
+        var result = await client.CallToolAsTaskAsync(
+            new CallToolRequestParams
+            {
+                Name = toolName,
+                Arguments = new Dictionary<string, JsonElement>
+                {
+                    ["value"] = JsonSerializer.SerializeToElement(value),
+                },
+            }
+        );
+
+        return result.TaskCreated
+            ?? throw new InvalidOperationException($"Tool '{toolName}' did not create an MCP task.");
+    }
+
+    private static async Task<TTask> WaitForTaskAsync<TTask>(McpClient client, string taskId)
+        where TTask : GetTaskResult
+    {
+        const int maximumAttempts = 200;
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
         {
             var task = await client.GetTaskAsync(taskId);
-            if (task?.Status == expectedStatus)
+            if (task is TTask expected)
             {
-                return task;
+                return expected;
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(25));
         }
 
-        throw new InvalidOperationException($"Task '{taskId}' did not reach '{expectedStatus}'.");
+        throw new InvalidOperationException(
+            $"Task '{taskId}' did not reach '{typeof(TTask).Name}' in time."
+        );
     }
 
     private static async Task WaitForDisposeCountAsync(Func<int> getCount, int expectedCount)
     {
-        var actualCount = getCount();
-        for (var attempt = 0; attempt < 200; attempt++)
+        const int maximumAttempts = 200;
+        for (var attempt = 0; attempt < maximumAttempts; attempt++)
         {
+            var actualCount = getCount();
             if (actualCount >= expectedCount)
             {
                 return;
             }
 
-            actualCount = getCount();
             await Task.Delay(TimeSpan.FromMilliseconds(25));
         }
 
         throw new InvalidOperationException(
-            $"The expected dispose count was not reached in time. Expected at least '{expectedCount}', actual '{actualCount}'."
+            $"The expected dispose count was not reached. Expected at least '{expectedCount}', actual '{getCount()}'."
         );
     }
 
@@ -184,7 +167,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
     }
 
     private static CallToolResult DeserializeToolResult(JsonElement result) =>
-        JsonSerializer.Deserialize<CallToolResult>(result.GetRawText(), McpGatewayJsonSerializer.Options)
+        result.Deserialize<CallToolResult>(McpGatewayJsonSerializer.Options)
         ?? throw new InvalidOperationException("Task result payload was not a CallToolResult.");
 
     private static string GetSingleText(CallToolResult result) =>
@@ -222,5 +205,3 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
         }
     }
 }
-
-#pragma warning restore MCPEXP001

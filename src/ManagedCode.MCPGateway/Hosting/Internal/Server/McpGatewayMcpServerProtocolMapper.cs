@@ -1,5 +1,4 @@
-#pragma warning disable MCPEXP001
-
+using System.Net.Mime;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ModelContextProtocol;
@@ -9,17 +8,14 @@ namespace ManagedCode.MCPGateway;
 
 internal static class McpGatewayMcpServerProtocolMapper
 {
-    public static Tool ToProtocolTool(
-        McpGatewayToolDescriptor descriptor,
-        ToolTaskSupport? taskSupport = null
-    )
+    private const string ToolInvocationFailedMessage = "Tool invocation failed.";
+
+    public static Tool ToProtocolTool(McpGatewayToolDescriptor descriptor)
     {
         var tool = McpGatewayProtocolTool.Clone(descriptor.ProtocolTool);
         tool.Name = descriptor.ToolId;
         tool.Meta = MergeToolMeta(tool.Meta, descriptor);
-        tool.Execution = taskSupport is null
-            ? tool.Execution
-            : new ToolExecution { TaskSupport = taskSupport.Value };
+        RewriteAppResourceUri(tool.Meta, descriptor.SourceId);
 
         if (!string.IsNullOrWhiteSpace(tool.Title))
         {
@@ -124,7 +120,7 @@ internal static class McpGatewayMcpServerProtocolMapper
     {
         if (!invokeResult.IsSuccess)
         {
-            return CreateErrorToolResult(invokeResult.Error ?? "Tool invocation failed.");
+            return CreateErrorToolResult(invokeResult.Error ?? ToolInvocationFailedMessage);
         }
 
         if (invokeResult.Output is string textOutput)
@@ -201,7 +197,7 @@ internal static class McpGatewayMcpServerProtocolMapper
             var result = BlobResourceContents.FromBytes(
                 blobContent.DecodedData,
                 targetUri,
-                blobContent.MimeType ?? "application/octet-stream"
+                blobContent.MimeType ?? MediaTypeNames.Application.Octet
             );
             result.Meta = meta;
             return result;
@@ -320,6 +316,24 @@ internal static class McpGatewayMcpServerProtocolMapper
         );
     }
 
+    private static void RewriteAppResourceUri(JsonObject meta, string sourceId)
+    {
+        if (
+            meta[McpGatewayMcpProtocolConstants.McpAppUiMetaPropertyName] is not JsonObject ui
+            || ui[McpGatewayMcpProtocolConstants.McpAppResourceUriPropertyName]
+                is not JsonValue resourceUriValue
+            || !resourceUriValue.TryGetValue<string>(out var resourceUri)
+            || string.IsNullOrWhiteSpace(resourceUri)
+            || McpGatewayResourceUriCodec.TryDecodeGatewayUri(resourceUri, out _, out _)
+        )
+        {
+            return;
+        }
+
+        ui[McpGatewayMcpProtocolConstants.McpAppResourceUriPropertyName] =
+            McpGatewayResourceUriCodec.ToGatewayUri(sourceId, resourceUri);
+    }
+
     private static string CreateExportedResourceName(
         string sourceId,
         string resourceName,
@@ -342,5 +356,3 @@ internal static class McpGatewayMcpServerProtocolMapper
         return meta;
     }
 }
-
-#pragma warning restore MCPEXP001

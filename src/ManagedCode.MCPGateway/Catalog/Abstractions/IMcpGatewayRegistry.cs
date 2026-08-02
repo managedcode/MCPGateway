@@ -54,14 +54,6 @@ public interface IMcpGatewayRegistry
         string? displayName = null
     );
 
-    void AddHttpServer(
-        string sourceId,
-        Uri endpoint,
-        HttpTransportMode transportMode,
-        IReadOnlyDictionary<string, string>? headers = null,
-        string? displayName = null
-    );
-
     void AddHttpServer(McpGatewayHttpServerOptions httpServer);
 
     void AddStdioServer(
@@ -72,6 +64,8 @@ public interface IMcpGatewayRegistry
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
         string? displayName = null
     );
+
+    void AddStdioServer(McpGatewayStdioServerOptions stdioServer);
 
     void AddMcpClient(
         string sourceId,

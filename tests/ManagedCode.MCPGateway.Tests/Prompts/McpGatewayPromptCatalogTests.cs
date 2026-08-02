@@ -6,6 +6,8 @@ namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayPromptCatalogTests
 {
+    private const string DefaultLocale = "en-US";
+
     [TUnit.Core.Test]
     public async Task ListPromptsAsync_ReturnsPromptDescriptorsFromMcpSource()
     {
@@ -191,8 +193,8 @@ public sealed class McpGatewayPromptCatalogTests
         var repository = context.Arguments["repository"]?.ToString() ?? string.Empty;
         var environment = context.Arguments["environment"]?.ToString() ?? string.Empty;
         var locale = context.Arguments.TryGetValue("locale", out var rawLocale)
-            ? rawLocale?.ToString() ?? "en-US"
-            : "en-US";
+            ? rawLocale?.ToString() ?? DefaultLocale
+            : DefaultLocale;
 
         var repositoryPrompt =
             await context.GetPromptAsync(

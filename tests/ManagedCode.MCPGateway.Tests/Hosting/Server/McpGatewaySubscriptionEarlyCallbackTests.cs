@@ -8,8 +8,11 @@ namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewaySubscriptionEarlyCallbackTests
 {
+    private const string PromptListenerId = "listen:string:prompt-manager-test";
+    private const string PromptSubscriptionId = "prompt-manager-test";
+
     [Test]
-    public async Task SubscribeToResourceAsync_DoesNotDeadlockWhenSourceCallbackFailsDuringSubscribe()
+    public async Task ResourceListener_DoesNotDeadlockAndDisposesAfterCancellation()
     {
         var source = new EarlyResourceUpdateSource("source-a");
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
@@ -20,15 +23,20 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
                 )
         );
 
-        await gatewayServer.Client.SubscribeToResourceAsync("docs://overview").WaitAsync(
-            TimeSpan.FromSeconds(5)
+        var listener = await McpTestSubscriptionListener.ListenAsync(
+            gatewayServer.Client,
+            new SubscriptionsListenNotifications
+            {
+                ResourceSubscriptions = ["docs://overview"],
+            }
         );
 
+        await listener.DisposeAsync();
         await WaitUntilAsync(() => source.DisposedSubscriptionCount == 1);
     }
 
     [Test]
-    public async Task ListPromptsAsync_DisposesPromptSubscriptionReturnedAfterSessionRemoval()
+    public async Task PromptListener_DisposesEarlySubscriptionAfterCancellation()
     {
         var source = new EarlyPromptListChangeSource("source-a");
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
@@ -42,9 +50,12 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
                 )
         );
 
-        var listPromptsTask = gatewayServer.Client.ListPromptsAsync().AsTask();
-        _ = await listPromptsTask.WaitAsync(TimeSpan.FromSeconds(5));
+        var listener = await McpTestSubscriptionListener.ListenAsync(
+            gatewayServer.Client,
+            new SubscriptionsListenNotifications { PromptsListChanged = true }
+        );
 
+        await listener.DisposeAsync();
         await WaitUntilAsync(() => source.DisposedSubscriptionCount == 1);
     }
 
@@ -60,18 +71,9 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
             subscribeToPromptListChanges: static _ => new ThrowingDisposable(),
             onDisposed: () => Interlocked.Increment(ref bindingDisposeCount)
         );
-        var manager = new McpGatewayPromptListNotificationManager(
-            new McpGatewayMcpServerBindingManager(resolver),
-            serviceProvider,
-            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
-            NullLoggerFactory.Instance
-        );
+        var manager = CreatePromptManager(resolver, serviceProvider);
 
-        await manager.RegisterDownstreamServerAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            CancellationToken.None
-        );
+        await RegisterPromptListenerAsync(manager, gatewayServer.Server);
 
         Exception? exception = null;
         try
@@ -89,7 +91,7 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
     }
 
     [Test]
-    public async Task RemoveSessionAsync_ReleasesPromptSubscriptionAndBinding()
+    public async Task RemoveAsync_ReleasesPromptSubscriptionAndBinding()
     {
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
         await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
@@ -102,28 +104,19 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
                 new CountingDisposable(() => Interlocked.Increment(ref promptSubscriptionDisposeCount)),
             onDisposed: () => Interlocked.Increment(ref bindingDisposeCount)
         );
-        var manager = new McpGatewayPromptListNotificationManager(
-            new McpGatewayMcpServerBindingManager(resolver),
-            serviceProvider,
-            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
-            NullLoggerFactory.Instance
-        );
+        var manager = CreatePromptManager(resolver, serviceProvider);
 
-        await manager.RegisterDownstreamServerAsync(
-            requestServices: null,
-            gatewayServer.Server,
-            CancellationToken.None
-        );
+        await RegisterPromptListenerAsync(manager, gatewayServer.Server);
 
-        await manager.RemoveSessionAsync(McpGatewayMcpServerIdentity.GetKey(gatewayServer.Server));
+        await manager.RemoveAsync(gatewayServer.Server, PromptListenerId);
 
         await Assert.That(promptSubscriptionDisposeCount).IsEqualTo(1);
         await Assert.That(bindingDisposeCount).IsEqualTo(1);
-        await Assert.That(manager.SessionStateCount).IsEqualTo(0);
+        await Assert.That(manager.ListenerStateCount).IsEqualTo(0);
     }
 
     [Test]
-    public async Task RegisterDownstreamServerAsync_ReleasesBindingWhenInitialPromptSubscriptionFails()
+    public async Task RegisterAsync_ReleasesBindingWhenInitialPromptSubscriptionFails()
     {
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
         await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
@@ -133,21 +126,12 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
             new StaticMcpGatewayResourceCatalog([]),
             onDisposed: () => Interlocked.Increment(ref bindingDisposeCount)
         );
-        var manager = new McpGatewayPromptListNotificationManager(
-            new McpGatewayMcpServerBindingManager(resolver),
-            serviceProvider,
-            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
-            NullLoggerFactory.Instance
-        );
+        var manager = CreatePromptManager(resolver, serviceProvider);
 
         Exception? exception = null;
         try
         {
-            await manager.RegisterDownstreamServerAsync(
-                requestServices: null,
-                gatewayServer.Server,
-                CancellationToken.None
-            );
+            await RegisterPromptListenerAsync(manager, gatewayServer.Server);
         }
         catch (Exception ex)
         {
@@ -157,11 +141,11 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
         await Assert.That(exception).IsTypeOf<InvalidOperationException>();
         await Assert.That(exception!.Message).Contains("prompt upstream subscribe failure");
         await Assert.That(bindingDisposeCount).IsEqualTo(1);
-        await Assert.That(manager.SessionStateCount).IsEqualTo(0);
+        await Assert.That(manager.ListenerStateCount).IsEqualTo(0);
     }
 
     [Test]
-    public async Task RegisterDownstreamServerAsync_ThrowsAfterManagerIsDisposed()
+    public async Task RegisterAsync_ThrowsAfterManagerIsDisposed()
     {
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(static _ => { });
         await using var serviceProvider = new ServiceCollection().BuildServiceProvider();
@@ -169,24 +153,15 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
             new EmptySource("source-a"),
             new StaticMcpGatewayResourceCatalog([])
         );
-        var manager = new McpGatewayPromptListNotificationManager(
-            new McpGatewayMcpServerBindingManager(resolver),
-            serviceProvider,
-            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
-            NullLoggerFactory.Instance
-        );
+        var manager = CreatePromptManager(resolver, serviceProvider);
 
         await manager.DisposeAsync();
         var exception = await CaptureAsync(
-            manager.RegisterDownstreamServerAsync(
-                requestServices: null,
-                gatewayServer.Server,
-                CancellationToken.None
-            )
+            RegisterPromptListenerAsync(manager, gatewayServer.Server)
         );
 
         await Assert.That(exception).IsTypeOf<ObjectDisposedException>();
-        await Assert.That(manager.SessionStateCount).IsEqualTo(0);
+        await Assert.That(manager.ListenerStateCount).IsEqualTo(0);
     }
 
     private static StaticMcpGatewayResourceCatalog CreateResourceCatalog() =>
@@ -206,6 +181,38 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
                 ),
             ]
         );
+
+    private static McpGatewayPromptListNotificationManager CreatePromptManager(
+        IMcpGatewayServerBindingResolver resolver,
+        IServiceProvider serviceProvider
+    )
+    {
+        var bindingManager = new McpGatewayMcpServerBindingManager(resolver);
+        return new McpGatewayPromptListNotificationManager(
+            bindingManager,
+            new McpGatewayPromptNotificationStore(bindingManager),
+            serviceProvider,
+            NullLogger<McpGatewayPromptListNotificationManager>.Instance,
+            NullLoggerFactory.Instance
+        );
+    }
+
+    private static async Task RegisterPromptListenerAsync(
+        McpGatewayPromptListNotificationManager manager,
+        ModelContextProtocol.Server.McpServer server
+    )
+    {
+        var deliveryGate = new McpGatewaySubscriptionDeliveryGate();
+        await manager.RegisterAsync(
+            requestServices: null,
+            server,
+            PromptListenerId,
+            new RequestId(PromptSubscriptionId),
+            deliveryGate,
+            CancellationToken.None
+        );
+        await deliveryGate.OpenAsync(CancellationToken.None);
+    }
 
     private static async Task WaitUntilAsync(Func<bool> condition)
     {
@@ -241,7 +248,7 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
 
         public int DisposedSubscriptionCount => Volatile.Read(ref _disposedSubscriptionCount);
 
-        public override async Task<IAsyncDisposable?> SubscribeToResourceAsync(
+        public override async Task<IAsyncDisposable?> ListenForResourceUpdatesAsync(
             string resourceUri,
             Func<ResourceUpdatedNotificationParams, CancellationToken, ValueTask> onUpdated,
             ILoggerFactory loggerFactory,
@@ -271,7 +278,7 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
 
         public int DisposedSubscriptionCount => Volatile.Read(ref _disposedSubscriptionCount);
 
-        public override async Task<IAsyncDisposable?> SubscribeToPromptListChangesAsync(
+        public override async Task<IAsyncDisposable?> ListenForPromptListChangesAsync(
             Func<PromptListChangedNotificationParams, CancellationToken, ValueTask> onChanged,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken = default
@@ -323,7 +330,7 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
     private sealed class ThrowingPromptSubscriptionSource(string sourceId)
         : TestMcpGatewayServerSource(sourceId)
     {
-        public override Task<IAsyncDisposable?> SubscribeToPromptListChangesAsync(
+        public override Task<IAsyncDisposable?> ListenForPromptListChangesAsync(
             Func<PromptListChangedNotificationParams, CancellationToken, ValueTask> onChanged,
             ILoggerFactory loggerFactory,
             CancellationToken cancellationToken = default

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.IO.Pipelines;
+using System.Net.Mime;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
@@ -33,6 +34,21 @@ internal sealed class TestMcpServerHost(
                     .WithTools<TestMcpTools>()
                     .WithPrompts<TestMcpPrompts>()
                     .WithResources<TestMcpResources>(),
+            McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
+            cancellationToken
+        );
+
+    public static async Task<TestMcpServerHost> StartWithProtocolVersionAsync(
+        string protocolVersion,
+        CancellationToken cancellationToken = default
+    ) =>
+        await StartAsync(
+            static builder =>
+                builder
+                    .WithTools<TestMcpTools>()
+                    .WithPrompts<TestMcpPrompts>()
+                    .WithResources<TestMcpResources>(),
+            protocolVersion,
             cancellationToken
         );
 
@@ -45,6 +61,7 @@ internal sealed class TestMcpServerHost(
                     .WithTools<TestMcpGraphTools>()
                     .WithPrompts<TestMcpGraphPrompts>()
                     .WithResources<TestMcpGraphResources>(),
+            McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
             cancellationToken
         );
 
@@ -57,18 +74,22 @@ internal sealed class TestMcpServerHost(
                     .WithTools<TestMcpOperationsTools>()
                     .WithPrompts<TestMcpOperationsPrompts>()
                     .WithResources<TestMcpOperationsResources>(),
+            McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
             cancellationToken
         );
 
     private static async Task<TestMcpServerHost> StartAsync(
         Action<IMcpServerBuilder> configureTools,
+        string protocolVersion,
         CancellationToken cancellationToken
     )
     {
         var capturedMeta = new List<JsonObject>();
         var services = new ServiceCollection();
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
-        configureTools(services.AddMcpServer());
+        configureTools(
+            services.AddMcpServer(options => options.ProtocolVersion = protocolVersion)
+        );
 
         var serviceProvider = services.BuildServiceProvider();
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
@@ -122,6 +143,7 @@ internal sealed class TestMcpServerHost(
             clientTransport,
             new McpClientOptions
             {
+                ProtocolVersion = protocolVersion,
                 ClientInfo = new Implementation
                 {
                     Name = "managedcode-mcpgateway-tests",
@@ -370,14 +392,14 @@ internal sealed class TestMcpServerHost(
             UriTemplate = "docs://repository/archive",
             Name = "repository_archive",
             Title = "Repository archive",
-            MimeType = "application/octet-stream"
+            MimeType = MediaTypeNames.Application.Octet
         )]
         [Description("Returns a small binary repository archive sample.")]
         public static BlobResourceContents GetRepositoryArchive() =>
             BlobResourceContents.FromBytes(
                 new byte[] { 1, 2, 3, 4 },
                 "docs://repository/archive",
-                "application/octet-stream"
+                MediaTypeNames.Application.Octet
             );
 
         [McpServerResource(

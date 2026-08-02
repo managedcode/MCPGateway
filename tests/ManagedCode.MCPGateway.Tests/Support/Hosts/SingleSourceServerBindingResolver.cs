@@ -180,14 +180,6 @@ internal sealed class SingleSourceServerBindingResolver(
             string? displayName = null
         ) => throw new NotSupportedException();
 
-        public void AddHttpServer(
-            string sourceId,
-            Uri endpoint,
-            HttpTransportMode transportMode,
-            IReadOnlyDictionary<string, string>? headers = null,
-            string? displayName = null
-        ) => throw new NotSupportedException();
-
         public void AddHttpServer(McpGatewayHttpServerOptions httpServer) =>
             throw new NotSupportedException();
 
@@ -199,6 +191,9 @@ internal sealed class SingleSourceServerBindingResolver(
             IReadOnlyDictionary<string, string?>? environmentVariables = null,
             string? displayName = null
         ) => throw new NotSupportedException();
+
+        public void AddStdioServer(McpGatewayStdioServerOptions stdioServer) =>
+            throw new NotSupportedException();
 
         public void AddMcpClient(
             string sourceId,

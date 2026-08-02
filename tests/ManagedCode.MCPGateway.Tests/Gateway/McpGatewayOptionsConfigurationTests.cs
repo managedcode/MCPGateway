@@ -78,7 +78,7 @@ public sealed class McpGatewayOptionsConfigurationTests
                 ]
             );
         await Assert.That(loadedTools.Count).IsEqualTo(1);
-        await Assert.That(loadedTools[0].TaskSupport).IsEqualTo(ModelContextProtocol.Protocol.ToolTaskSupport.Optional);
+        await Assert.That(loadedTools[0].Tool.Name).IsEqualTo("local_lookup");
         await Assert.That(loadedPrompts.Count).IsEqualTo(1);
         await Assert.That(loadedPrompts[0].Name).IsEqualTo("release_review");
     }
@@ -93,7 +93,6 @@ public sealed class McpGatewayOptionsConfigurationTests
                 Endpoint = new Uri("https://example.com/mcp"),
                 DisplayName = "HTTP source",
                 ConnectionTimeout = TimeSpan.FromSeconds(10),
-                MaxReconnectionAttempts = 1,
             }
         );
 
@@ -102,6 +101,28 @@ public sealed class McpGatewayOptionsConfigurationTests
         await Assert.That(registration.Kind).IsEqualTo(McpGatewaySourceRegistrationKind.Http);
         await Assert.That(registration.SourceId).IsEqualTo("http-source");
         await Assert.That(registration.DisplayName).IsEqualTo("HTTP source");
+    }
+
+    [Test]
+    public async Task AddStdioServer_WithOptionsObject_AddsStdioSourceRegistration()
+    {
+        var options = new McpGatewayOptions().AddStdioServer(
+            new McpGatewayStdioServerOptions
+            {
+                SourceId = "stdio-source",
+                Command = "dotnet",
+                Arguments = ["run"],
+                DisplayName = "stdio source",
+                InheritEnvironmentVariables = false,
+                ShutdownTimeout = TimeSpan.FromSeconds(3),
+            }
+        );
+
+        var registration = options.SourceRegistrations.Single();
+
+        await Assert.That(registration.Kind).IsEqualTo(McpGatewaySourceRegistrationKind.Stdio);
+        await Assert.That(registration.SourceId).IsEqualTo("stdio-source");
+        await Assert.That(registration.DisplayName).IsEqualTo("stdio source");
     }
 
     [Test]

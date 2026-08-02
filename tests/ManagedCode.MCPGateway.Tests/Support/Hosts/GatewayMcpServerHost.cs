@@ -84,6 +84,7 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
             clientTransport,
             new McpClientOptions
             {
+                ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
                 ClientInfo = new Implementation
                 {
                     Name = "managedcode-mcpgateway-downstream-tests",

@@ -16,7 +16,6 @@ public sealed class McpGatewayHttpToolSourceRegistrationTests
         var transportOptions = McpGatewayHttpToolSourceRegistration.CreateTransportOptions(
             "docs",
             endpoint,
-            McpGatewayHttpToolSourceRegistration.DefaultTransportMode,
             new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["Authorization"] = "Bearer token",
@@ -35,20 +34,7 @@ public sealed class McpGatewayHttpToolSourceRegistrationTests
     }
 
     [Test]
-    public async Task CreateTransportOptions_UsesConfiguredTransportMode()
-    {
-        var transportOptions = McpGatewayHttpToolSourceRegistration.CreateTransportOptions(
-            "legacy",
-            new Uri("https://example.com/mcp"),
-            HttpTransportMode.AutoDetect,
-            headers: null
-        );
-
-        await Assert.That(transportOptions.TransportMode).IsEqualTo(HttpTransportMode.AutoDetect);
-    }
-
-    [Test]
-    public async Task CreateTransportOptions_UsesConfiguredHttpServerOptions()
+    public async Task CreateTransportOptions_UsesCurrentHttpServerOptions()
     {
         var oauth = new ClientOAuthOptions
         {
@@ -57,35 +43,24 @@ public sealed class McpGatewayHttpToolSourceRegistrationTests
         };
         var options = new McpGatewayHttpServerOptions
         {
-            SourceId = "sessioned",
+            SourceId = "current-http",
             Endpoint = new Uri("https://example.com/mcp"),
-            TransportMode = HttpTransportMode.Sse,
             AdditionalHeaders = new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["Authorization"] = "Bearer token",
             },
             ConnectionTimeout = TimeSpan.FromSeconds(7),
-            KnownSessionId = "session-1",
-            OwnsSession = false,
             OAuth = oauth,
-            MaxReconnectionAttempts = 9,
-            DefaultReconnectionInterval = TimeSpan.FromMilliseconds(250),
         };
 
         var transportOptions = McpGatewayHttpToolSourceRegistration.CreateTransportOptions(options);
 
         await Assert.That(transportOptions.Endpoint).IsEqualTo(options.Endpoint);
-        await Assert.That(transportOptions.Name).IsEqualTo("sessioned");
-        await Assert.That(transportOptions.TransportMode).IsEqualTo(HttpTransportMode.Sse);
+        await Assert.That(transportOptions.Name).IsEqualTo("current-http");
+        await Assert.That(transportOptions.TransportMode).IsEqualTo(HttpTransportMode.StreamableHttp);
         await Assert.That(transportOptions.AdditionalHeaders!["Authorization"]).IsEqualTo("Bearer token");
         await Assert.That(transportOptions.ConnectionTimeout).IsEqualTo(TimeSpan.FromSeconds(7));
-        await Assert.That(transportOptions.KnownSessionId).IsEqualTo("session-1");
-        await Assert.That(transportOptions.OwnsSession).IsFalse();
         await Assert.That(ReferenceEquals(transportOptions.OAuth, oauth)).IsTrue();
-        await Assert.That(transportOptions.MaxReconnectionAttempts).IsEqualTo(9);
-        await Assert
-            .That(transportOptions.DefaultReconnectionInterval)
-            .IsEqualTo(TimeSpan.FromMilliseconds(250));
     }
 
     [Test]
@@ -101,6 +76,8 @@ public sealed class McpGatewayHttpToolSourceRegistrationTests
         );
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
 
+        var build = await gateway.BuildIndexAsync();
+        await Assert.That(build.Diagnostics).IsEmpty();
         var tools = await gateway.ListToolsAsync();
         var tool = tools.Single(static descriptor =>
             descriptor.ToolId == "streamable_http_lookup"

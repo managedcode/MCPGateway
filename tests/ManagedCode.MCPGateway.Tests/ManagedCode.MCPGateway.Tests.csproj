@@ -10,13 +10,14 @@
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Include="Microsoft.Agents.AI" />
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="TUnit" />
     <PackageReference Include="Microsoft.Extensions.AI" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="ModelContextProtocol" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="ModelContextProtocol.Extensions.Apps" />
+    <PackageReference Include="ModelContextProtocol.Extensions.Tasks" />
   </ItemGroup>
 
   <ItemGroup>

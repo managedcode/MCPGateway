@@ -82,6 +82,7 @@ internal sealed class TestMcpPromptListFeatureServerHost : IAsyncDisposable
             clientTransport,
             new McpClientOptions
             {
+                ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
                 ClientInfo = new Implementation
                 {
                     Name = "managedcode-mcpgateway-prompt-list-tests",

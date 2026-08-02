@@ -49,6 +49,16 @@ public sealed class McpGatewayRegistrationCollectionTests
         var missingCommand = Capture(() =>
             collection.AddStdioServer("stdio", " ")
         );
+        var invalidShutdownTimeout = Capture(() =>
+            collection.AddStdioServer(
+                new McpGatewayStdioServerOptions
+                {
+                    SourceId = "stdio",
+                    Command = "dotnet",
+                    ShutdownTimeout = TimeSpan.Zero,
+                }
+            )
+        );
 
         await Assert.That(missingSourceId).IsNotNull();
         await Assert.That(missingSourceId!.Message).Contains("source id");
@@ -56,23 +66,15 @@ public sealed class McpGatewayRegistrationCollectionTests
         await Assert.That(missingEndpoint!.Message).Contains("endpoint");
         await Assert.That(missingCommand).IsNotNull();
         await Assert.That(missingCommand!.Message).Contains("command");
+        await Assert.That(invalidShutdownTimeout).IsNotNull();
+        await Assert.That(invalidShutdownTimeout!.ParamName).IsEqualTo("ShutdownTimeout");
     }
 
     [Test]
-    public async Task Validation_RejectsInvalidHttpTransportOptions()
+    public async Task Validation_RejectsInvalidHttpConnectionTimeout()
     {
         var collection = new McpGatewayRegistrationCollection();
 
-        var invalidTransportMode = Capture(() =>
-            collection.AddHttpServer(
-                new McpGatewayHttpServerOptions
-                {
-                    SourceId = "http-source",
-                    Endpoint = new Uri("https://example.com/mcp"),
-                    TransportMode = (ModelContextProtocol.Client.HttpTransportMode)999,
-                }
-            )
-        );
         var invalidTimeout = Capture(() =>
             collection.AddHttpServer(
                 new McpGatewayHttpServerOptions
@@ -83,35 +85,8 @@ public sealed class McpGatewayRegistrationCollectionTests
                 }
             )
         );
-        var invalidReconnectAttempts = Capture(() =>
-            collection.AddHttpServer(
-                new McpGatewayHttpServerOptions
-                {
-                    SourceId = "http-source",
-                    Endpoint = new Uri("https://example.com/mcp"),
-                    MaxReconnectionAttempts = -1,
-                }
-            )
-        );
-        var invalidReconnectInterval = Capture(() =>
-            collection.AddHttpServer(
-                new McpGatewayHttpServerOptions
-                {
-                    SourceId = "http-source",
-                    Endpoint = new Uri("https://example.com/mcp"),
-                    DefaultReconnectionInterval = TimeSpan.Zero,
-                }
-            )
-        );
-
-        await Assert.That(invalidTransportMode).IsNotNull();
-        await Assert.That(invalidTransportMode!.Message).Contains("transport mode");
         await Assert.That(invalidTimeout).IsNotNull();
         await Assert.That(invalidTimeout!.ParamName).IsEqualTo("ConnectionTimeout");
-        await Assert.That(invalidReconnectAttempts).IsNotNull();
-        await Assert.That(invalidReconnectAttempts!.ParamName).IsEqualTo("MaxReconnectionAttempts");
-        await Assert.That(invalidReconnectInterval).IsNotNull();
-        await Assert.That(invalidReconnectInterval!.ParamName).IsEqualTo("DefaultReconnectionInterval");
     }
 
     [Test]
