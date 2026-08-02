@@ -878,3 +878,4 @@ Tests/**/LocalModels/
 Apps/**/LocalModels/
 .markitdown
 .quickdup
+.junie
