@@ -21,12 +21,28 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
 
         await Assert
             .That(gatewayServer.Client.NegotiatedProtocolVersion)
-            .IsEqualTo(McpGatewayMcpProtocolConstants.CurrentProtocolVersion);
+            .IsEqualTo(TestMcpProtocolVersions.Current);
         await Assert
             .That(result.ResultType)
             .IsEqualTo(McpGatewayMcpProtocolConstants.CompleteResultType);
         await Assert.That(result.TimeToLive).IsEqualTo(TimeSpan.Zero);
         await Assert.That(result.CacheScope).IsEqualTo(CacheScope.Private);
+    }
+
+    [Test]
+    public async Task ListToolsAsync_AcceptsInitializeProtocolClient()
+    {
+        await using var gatewayServer = await GatewayMcpServerHost.StartWithProtocolVersionAsync(
+            static _ => { },
+            TestMcpProtocolVersions.Initialize
+        );
+
+        var tools = await gatewayServer.Client.ListToolsAsync();
+
+        await Assert
+            .That(gatewayServer.Client.NegotiatedProtocolVersion)
+            .IsEqualTo(TestMcpProtocolVersions.Initialize);
+        await Assert.That(tools).IsEmpty();
     }
 
     [Test]

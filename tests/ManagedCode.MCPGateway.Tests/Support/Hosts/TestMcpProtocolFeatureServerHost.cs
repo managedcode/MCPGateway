@@ -91,7 +91,7 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
             clientTransport,
             new McpClientOptions
             {
-                ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
+                ProtocolVersion = TestMcpProtocolVersions.Current,
                 ClientInfo = new Implementation
                 {
                     Name = "managedcode-mcpgateway-protocol-tests",

@@ -87,4 +87,24 @@ public sealed class McpGatewayHttpToolSourceRegistrationTests
         await Assert.That(tool.SourceId).IsEqualTo("http-upstream");
         await Assert.That(tool.ToolName).IsEqualTo("streamable_http_lookup");
     }
+
+    [Test]
+    public async Task AddHttpServer_AutoNegotiatesInitializeProtocolUpstream()
+    {
+        await using var upstreamServer = await HttpMcpServerHost.StartAsync(
+            protocolVersion: TestMcpProtocolVersions.Initialize
+        );
+        await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
+            options.AddHttpServer("initialize-upstream", upstreamServer.Endpoint)
+        );
+        var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+
+        var build = await gateway.BuildIndexAsync();
+        var tools = await gateway.ListToolsAsync();
+
+        await Assert.That(build.Diagnostics).IsEmpty();
+        await Assert
+            .That(tools.Any(static descriptor => descriptor.ToolId == "streamable_http_lookup"))
+            .IsTrue();
+    }
 }

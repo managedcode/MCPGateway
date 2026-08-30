@@ -16,12 +16,16 @@ internal sealed class HttpMcpServerHost(WebApplication application, Uri endpoint
 
     public static async Task<HttpMcpServerHost> StartAsync(
         IReadOnlyDictionary<string, string>? requiredHeaders = null,
+        string? protocolVersion = null,
         CancellationToken cancellationToken = default
     )
     {
         var builder = WebApplication.CreateBuilder();
         builder.WebHost.UseKestrel().UseUrls("http://127.0.0.1:0");
-        builder.Services.AddMcpServer().WithHttpTransport().WithTools<HttpMcpTools>();
+        builder
+            .Services.AddMcpServer(options => options.ProtocolVersion = protocolVersion)
+            .WithHttpTransport()
+            .WithTools<HttpMcpTools>();
 
         var application = builder.Build();
         if (requiredHeaders is { Count: > 0 })

@@ -490,26 +490,10 @@ internal abstract class McpGatewayClientToolSourceRegistration(
         CancellationToken cancellationToken
     )
     {
-        var client = await _clientLifetime.GetAsync(
+        return await _clientLifetime.GetAsync(
             CreateClientAsync,
             loggerFactory,
             cancellationToken
         );
-        if (
-            !string.Equals(
-                client.NegotiatedProtocolVersion,
-                McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
-                StringComparison.Ordinal
-            )
-        )
-        {
-            throw new UnsupportedProtocolVersionException(
-                client.NegotiatedProtocolVersion
-                    ?? McpGatewayMcpProtocolConstants.MissingProtocolVersion,
-                [McpGatewayMcpProtocolConstants.CurrentProtocolVersion]
-            );
-        }
-
-        return client;
     }
 }

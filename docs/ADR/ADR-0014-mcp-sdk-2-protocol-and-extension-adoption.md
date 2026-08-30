@@ -1,4 +1,4 @@
-# ADR-0014: Current MCP SDK 2 Protocol And Extensions
+# ADR-0014: MCP SDK 2 Protocol Negotiation And Extensions
 
 ## Status
 
@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`ManagedCode.MCPGateway` builds directly on the official MCP C# SDK `2.0.0`. Its package surface needs one unambiguous protocol contract across gateway-created upstream clients, caller-provided clients, and downstream server export.
+`ManagedCode.MCPGateway` builds directly on the official MCP C# SDK `2.2.0`. Its package surface needs one unambiguous protocol-negotiation contract across gateway-created upstream clients, caller-provided clients, and downstream server export.
 
 The selected protocol revision provides:
 
@@ -24,8 +24,8 @@ The selected protocol revision provides:
 
 ### Protocol And Transports
 
-- Pin every gateway-created `McpClientOptions` and exported `McpServerOptions` instance to `2026-07-28`.
-- Validate caller-provided clients after connection and reject any negotiated protocol other than `2026-07-28` with `UnsupportedProtocolVersionException`.
+- Leave `McpClientOptions.ProtocolVersion` and exported `McpServerOptions.ProtocolVersion` unset so the official SDK owns negotiation, unless the consuming application explicitly selects a version.
+- Accept gateway-created and caller-provided clients at any protocol version successfully negotiated by the official SDK; do not repeat protocol-version validation inside catalog registration.
 - Use only the official SDK Streamable HTTP client transport for HTTP sources.
 - Keep HTTP source configuration limited to endpoint, display name, headers, connection timeout, and OAuth.
 - Enforce `HttpServerTransportOptions.Stateless = true` on gateway server export.
@@ -43,7 +43,7 @@ The selected protocol revision provides:
 
 ### Tasks
 
-- Register `ModelContextProtocol.Extensions.Tasks` `2.0.0` through `WithTasks(...)`.
+- Register `ModelContextProtocol.Extensions.Tasks` `2.2.0` through `WithTasks(...)`.
 - Support `tasks/get`, `tasks/update`, and `tasks/cancel` through the SDK extension contracts.
 - Execute downstream task requests through the SDK alternate-result filter and `IMcpTaskStore`.
 - Provide a bounded default store with configurable TTL, poll interval, total task limit, and unchanged-poll limit.
@@ -65,9 +65,9 @@ The selected protocol revision provides:
 
 ## Consequences
 
-- The gateway has one current protocol and no gateway-owned compatibility branches.
+- The official SDK negotiates the protocol for gateway-created clients and exported servers; the gateway keeps no handshake implementation or post-handshake version gate.
 - HTTP sources and exports have one transport behavior.
-- Non-current peers fail immediately instead of silently selecting a different contract.
+- Gateway-created and caller-provided clients retain the official SDK's negotiated protocol contract without a contradictory post-handshake gateway rejection.
 - Listener and task state remains bounded and has deterministic cleanup.
 - Tasks and Apps use official SDK extension packages; experimental SDK annotations remain isolated to the integration boundary.
 - Caller-provided upstream clients remain responsible for their own MRTR input handlers because the public SDK resolves input-required results before returning from `McpClient`.
@@ -75,7 +75,9 @@ The selected protocol revision provides:
 ## Invariants
 
 - The gateway MUST use official SDK transports, protocol models, Tasks, and Apps packages.
-- Every MCP connection created or exported by the gateway MUST use `2026-07-28`.
+- Every MCP connection created or exported by the gateway MUST leave negotiation to the official SDK unless the consuming application explicitly selects a protocol version.
+- Every SDK client that completes negotiation MUST retain that negotiated version throughout gateway catalog use.
+- The gateway MUST NOT add a second negotiated-version gate after the SDK handshake succeeds.
 - The gateway MUST NOT implement alternative JSON-RPC protocol or transport paths.
 - Every listener MUST have bounded pending delivery state and deterministic cleanup.
 - Forwarded resource and App UI URIs MUST remain source-qualified gateway URIs.
@@ -85,8 +87,9 @@ The selected protocol revision provides:
 
 ## Verification
 
-- Gateway client and server options assert the exact protocol revision.
-- A real non-current SDK client is rejected before source use.
+- Gateway client and server options leave the protocol version unset for SDK-owned negotiation.
+- Real initialize-protocol SDK clients work through gateway-created HTTP sources and downstream server export.
+- A real initialize-protocol SDK client can load tools and resources after a successful SDK handshake.
 - Prompt and resource subscriptions exercise acknowledgement ordering, notification tagging, cancellation, and cleanup through real SDK client/server connections.
 - Tasks cover upstream retry, local and upstream execution, polling, cancellation, failures, bounded storage, and caller-provided stores.
 - MCP Apps cover extension capabilities and App UI resource URI rewriting.
@@ -97,7 +100,7 @@ The selected protocol revision provides:
 
 ## References
 
-- [MCP C# SDK v2.0.0](https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v2.0.0)
+- [MCP C# SDK v2.2.0](https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v2.2.0)
 - [SDK Tasks documentation](https://csharp.sdk.modelcontextprotocol.io/v2/concepts/tasks/tasks.html)
 - [SDK MCP Apps documentation](https://csharp.sdk.modelcontextprotocol.io/v2/concepts/apps/apps.html)
 - [ManagedCode.MarkdownLd.Kb v0.2.8](https://github.com/managedcode/markdown-ld-kb/releases/tag/v0.2.8)

@@ -9,7 +9,7 @@ namespace ManagedCode.MCPGateway.Tests;
 public sealed class McpGatewayClientFactoryTests
 {
     [Test]
-    public async Task CreateClientOptions_UsesAssemblyBuildVersionAndAppsCapability()
+    public async Task CreateClientOptions_UsesSdkNegotiationAssemblyBuildVersionAndAppsCapability()
     {
         var clientOptions = McpGatewayClientFactory.CreateClientOptions();
         var expectedVersion =
@@ -19,9 +19,7 @@ public sealed class McpGatewayClientFactoryTests
             ?? typeof(McpGatewayClientFactory).Assembly.GetName().Version?.ToString();
 
         await Assert.That(clientOptions.ClientInfo?.Version).IsEqualTo(expectedVersion);
-        await Assert
-            .That(clientOptions.ProtocolVersion)
-            .IsEqualTo(McpGatewayMcpProtocolConstants.CurrentProtocolVersion);
+        await Assert.That(clientOptions.ProtocolVersion).IsNull();
         var appsCapability = JsonSerializer
             .SerializeToElement(
                 clientOptions.Capabilities?.Extensions?[McpApps.ExtensionId],

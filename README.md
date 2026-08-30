@@ -13,7 +13,7 @@ It is built on:
 - `Microsoft.Extensions.AI`
 - the official `ModelContextProtocol` .NET SDK
 
-`ManagedCode.MCPGateway` treats the official [`modelcontextprotocol/csharp-sdk`](https://github.com/modelcontextprotocol/csharp-sdk) as its MCP protocol baseline. The package uses SDK `2.0.0` and pins every gateway-created client and exported server to protocol `2026-07-28`. Non-current peers are rejected. The shipped gateway surface includes aggregated MCP tools, prompts, and resources; per-request subscriptions; SDK Tasks and Apps extensions; cache-aware results; and task-backed tool execution.
+`ManagedCode.MCPGateway` treats the official [`modelcontextprotocol/csharp-sdk`](https://github.com/modelcontextprotocol/csharp-sdk) as its MCP protocol baseline. The package uses SDK `2.2.0` and leaves protocol negotiation to that SDK. Gateway-created and caller-provided clients remain usable at any protocol version the SDK successfully negotiates, and exported servers accept the protocol versions supported by the SDK unless the application explicitly configures one. The gateway does not apply a second version gate. The shipped gateway surface includes aggregated MCP tools, prompts, and resources; per-request subscriptions; SDK Tasks and Apps extensions; cache-aware results; and task-backed tool execution.
 
 ## Install
 
@@ -26,7 +26,7 @@ dotnet add package ManagedCode.MCPGateway
 - one gateway for local `AITool` instances and MCP tools
 - one prompt catalog for source-aware MCP prompts plus gateway-owned custom and composite prompts
 - one resource catalog for MCP resources and resource templates aggregated across registered MCP sources
-- one downstream MCP server export path over the aggregated tool, prompt, and resource catalogs with SDK 2.0 protocol support for completions, per-request notifications, resource subscriptions, Tasks, Apps, and cache hints
+- one downstream MCP server export path over the aggregated tool, prompt, and resource catalogs with SDK 2.2 protocol support for completions, per-request notifications, resource subscriptions, Tasks, Apps, and cache hints
 - one search API with default schema-aware Markdown-LD SPARQL graph ranking, opt-in vector ranking, and vector-first `Auto`
 - one graph search API for schema/profile inspection, schema-aware SPARQL search, explicit allowlisted federation, graph evidence, and graph export
 - one category-first routing API for advanced tool discovery flows
@@ -142,7 +142,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-`AddHttpServer(...)` uses the official MCP C# SDK Streamable HTTP transport, pins protocol `2026-07-28`, and keeps the source registered as an HTTP MCP source in gateway descriptors and downstream export metadata. `McpGatewayHttpServerOptions` exposes additional headers, connection timeout, and OAuth configuration. The package does not set a transport timeout by default; hosts can pass one explicitly or own deadline policy through cancellation tokens and hosting infrastructure.
+`AddHttpServer(...)` uses the official MCP C# SDK Streamable HTTP transport and SDK-owned protocol negotiation, and keeps the source registered as an HTTP MCP source in gateway descriptors and downstream export metadata. `McpGatewayHttpServerOptions` exposes additional headers, connection timeout, and OAuth configuration. The package does not set a transport timeout by default; hosts can pass one explicitly or own deadline policy through cancellation tokens and hosting infrastructure.
 
 `AddStdioServer(...)` inherits the host process environment by default, matching the official SDK. For a third-party or otherwise untrusted stdio server, use `McpGatewayStdioServerOptions` to disable inheritance and pass the SDK's curated startup environment explicitly:
 

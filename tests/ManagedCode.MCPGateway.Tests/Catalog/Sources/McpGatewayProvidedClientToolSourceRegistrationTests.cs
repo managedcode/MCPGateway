@@ -1,7 +1,6 @@
 #pragma warning disable MCPEXP001
 
 using Microsoft.Extensions.Logging.Abstractions;
-using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 
@@ -9,7 +8,7 @@ namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
 {
-    private const string RejectedProtocolVersion = "2025-11-25";
+    private const string InitializeProtocolVersion = "2025-11-25";
 
     [Test]
     public async Task PromptResourceAndCompletionMethods_ForwardToProvidedClient()
@@ -293,43 +292,30 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
     }
 
     [Test]
-    public async Task LoadToolsAsync_RejectsProvidedClientUsingNonCurrentProtocol()
+    public async Task CatalogMethods_AcceptProvidedClientUsingSdkNegotiatedInitializeProtocol()
     {
         await using var serverHost = await TestMcpServerHost.StartWithProtocolVersionAsync(
-            RejectedProtocolVersion
+            InitializeProtocolVersion
         );
         var registration = new McpGatewayProvidedClientToolSourceRegistration(
-            "rejected-protocol",
+            "initialize-protocol",
             _ => ValueTask.FromResult(serverHost.Client),
             disposeClient: false,
             displayName: null
         );
 
-        var exception = await CaptureAsync(
-            registration
-                .LoadToolsAsync(NullLoggerFactory.Instance, CancellationToken.None)
-                .AsTask()
+        var tools = await registration.LoadToolsAsync(
+            NullLoggerFactory.Instance,
+            CancellationToken.None
+        );
+        var resources = await registration.LoadResourcesAsync(
+            NullLoggerFactory.Instance,
+            CancellationToken.None
         );
 
-        await Assert.That(exception).IsTypeOf<UnsupportedProtocolVersionException>();
-        var protocolException = (UnsupportedProtocolVersionException)exception!;
-        await Assert.That(protocolException.Requested).IsEqualTo(RejectedProtocolVersion);
-        await Assert
-            .That(protocolException.Supported)
-            .IsEquivalentTo([McpGatewayMcpProtocolConstants.CurrentProtocolVersion]);
-    }
-
-    private static async Task<Exception?> CaptureAsync(Task action)
-    {
-        try
-        {
-            await action;
-            return null;
-        }
-        catch (Exception exception)
-        {
-            return exception;
-        }
+        await Assert.That(serverHost.Client.NegotiatedProtocolVersion).IsEqualTo(InitializeProtocolVersion);
+        await Assert.That(tools.Count).IsGreaterThanOrEqualTo(1);
+        await Assert.That(resources.Count).IsEqualTo(2);
     }
 
     private static async Task WaitForCachedClientAsync(

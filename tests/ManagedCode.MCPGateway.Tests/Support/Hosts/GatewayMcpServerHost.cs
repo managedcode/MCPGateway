@@ -44,6 +44,32 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
         Action<McpGatewayOptions> configureGateway,
         Action<IServiceCollection>? configureServices = null,
         CancellationToken cancellationToken = default
+    ) =>
+        await StartAsync(
+            configureGateway,
+            TestMcpProtocolVersions.Current,
+            configureServices,
+            cancellationToken
+        );
+
+    public static async Task<GatewayMcpServerHost> StartWithProtocolVersionAsync(
+        Action<McpGatewayOptions> configureGateway,
+        string protocolVersion,
+        Action<IServiceCollection>? configureServices = null,
+        CancellationToken cancellationToken = default
+    ) =>
+        await StartAsync(
+            configureGateway,
+            protocolVersion,
+            configureServices,
+            cancellationToken
+        );
+
+    private static async Task<GatewayMcpServerHost> StartAsync(
+        Action<McpGatewayOptions> configureGateway,
+        string protocolVersion,
+        Action<IServiceCollection>? configureServices,
+        CancellationToken cancellationToken
     )
     {
         ArgumentNullException.ThrowIfNull(configureGateway);
@@ -84,7 +110,7 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
             clientTransport,
             new McpClientOptions
             {
-                ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
+                ProtocolVersion = protocolVersion,
                 ClientInfo = new Implementation
                 {
                     Name = "managedcode-mcpgateway-downstream-tests",

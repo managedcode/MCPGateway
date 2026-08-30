@@ -34,7 +34,7 @@ internal sealed class TestMcpServerHost(
                     .WithTools<TestMcpTools>()
                     .WithPrompts<TestMcpPrompts>()
                     .WithResources<TestMcpResources>(),
-            McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
+            TestMcpProtocolVersions.Current,
             cancellationToken
         );
 
@@ -61,7 +61,7 @@ internal sealed class TestMcpServerHost(
                     .WithTools<TestMcpGraphTools>()
                     .WithPrompts<TestMcpGraphPrompts>()
                     .WithResources<TestMcpGraphResources>(),
-            McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
+            TestMcpProtocolVersions.Current,
             cancellationToken
         );
 
@@ -74,7 +74,7 @@ internal sealed class TestMcpServerHost(
                     .WithTools<TestMcpOperationsTools>()
                     .WithPrompts<TestMcpOperationsPrompts>()
                     .WithResources<TestMcpOperationsResources>(),
-            McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
+            TestMcpProtocolVersions.Current,
             cancellationToken
         );
 

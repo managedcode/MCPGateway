@@ -2,8 +2,6 @@ namespace ManagedCode.MCPGateway;
 
 internal static class McpGatewayMcpProtocolConstants
 {
-    public const string CurrentProtocolVersion = "2026-07-28";
-    public const string MissingProtocolVersion = "(none)";
     public const string CompleteResultType = "complete";
     public const string ToolIdMetaPropertyName = "toolId";
     public const string ToolNameMetaPropertyName = "toolName";

@@ -93,7 +93,7 @@ public sealed class McpGatewayMcpServerHttpTransportIntegrationTests
     }
 
     [Test]
-    public async Task WithMcpGatewayCatalog_EnforcesCurrentProtocolAndStatelessHttp()
+    public async Task WithMcpGatewayCatalog_UsesSdkProtocolNegotiationAndStatelessHttp()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -110,9 +110,7 @@ public sealed class McpGatewayMcpServerHttpTransportIntegrationTests
         var serverOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
 
         await Assert.That(transportOptions.Stateless).IsTrue();
-        await Assert
-            .That(serverOptions.ProtocolVersion)
-            .IsEqualTo(McpGatewayMcpProtocolConstants.CurrentProtocolVersion);
+        await Assert.That(serverOptions.ProtocolVersion).IsNull();
     }
 
     private static async Task<GatewayExerciseResult> ExerciseGatewayAsync(

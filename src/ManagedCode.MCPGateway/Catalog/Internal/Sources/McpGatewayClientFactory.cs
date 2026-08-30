@@ -18,7 +18,6 @@ internal static class McpGatewayClientFactory
         new()
         {
             ClientInfo = new Implementation { Name = ClientName, Version = ClientVersion },
-            ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion,
             Capabilities = new ClientCapabilities
             {
                 Extensions = new Dictionary<string, object>(StringComparer.Ordinal)

@@ -23,7 +23,6 @@ internal sealed class McpGatewayMcpServerOptionsSetup(
         {
             gatewayTaskStore.Configure(gatewayOptions.Value.McpTaskStore);
         }
-        options.ProtocolVersion = McpGatewayMcpProtocolConstants.CurrentProtocolVersion;
         options.Capabilities ??= new ServerCapabilities();
         options.Capabilities.Tools ??= new ToolsCapability();
         options.Capabilities.Prompts ??= new PromptsCapability();

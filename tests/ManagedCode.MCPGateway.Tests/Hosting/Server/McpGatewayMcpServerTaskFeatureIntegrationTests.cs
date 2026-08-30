@@ -45,7 +45,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
             .ContainsKey(McpApps.ExtensionId);
         await Assert
             .That(gatewayServer.Client.NegotiatedProtocolVersion)
-            .IsEqualTo(McpGatewayMcpProtocolConstants.CurrentProtocolVersion);
+            .IsEqualTo(TestMcpProtocolVersions.Current);
         await Assert
             .That(tools.Select(static tool => tool.Name))
             .Contains(TestMcpTaskFeatureServerHost.RequiredToolName);
