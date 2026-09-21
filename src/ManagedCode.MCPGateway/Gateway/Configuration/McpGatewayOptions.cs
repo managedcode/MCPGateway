@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 
@@ -5,6 +6,8 @@ namespace ManagedCode.MCPGateway;
 
 public sealed class McpGatewayOptions
 {
+    private const string MissingJsonLdResourceMessage = "JSON-LD graph resource was not found.";
+
     /// <summary>Default number of search matches returned when the caller does not request a size.</summary>
     public const int DefaultSearchLimitValue = 5;
 
@@ -35,6 +38,8 @@ public sealed class McpGatewayOptions
         McpGatewayMarkdownLdGraphSource.GeneratedToolGraph;
 
     public string? MarkdownLdGraphPath { get; set; }
+
+    internal Func<CancellationToken, ValueTask<string>>? JsonLdGraphLoader { get; private set; }
 
     public Func<
         IReadOnlyList<McpGatewayToolDescriptor>,
@@ -210,6 +215,7 @@ public sealed class McpGatewayOptions
 
     public McpGatewayOptions UseGeneratedMarkdownLdGraph()
     {
+        JsonLdGraphLoader = null;
         MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.GeneratedToolGraph;
         MarkdownLdGraphPath = null;
         MarkdownLdGraphDocumentFactory = null;
@@ -249,10 +255,29 @@ public sealed class McpGatewayOptions
         return this;
     }
 
+    /// <summary>Load a JSON-LD graph from an embedded assembly resource without creating a filesystem copy.</summary>
+    public McpGatewayOptions UseJsonLdGraphResource(Assembly assembly, string resourceName)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+        ArgumentException.ThrowIfNullOrWhiteSpace(resourceName);
+        MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.EmbeddedResource;
+        MarkdownLdGraphPath = null;
+        MarkdownLdGraphDocumentFactory = null;
+        JsonLdGraphLoader = async cancellationToken =>
+        {
+            using var stream = assembly.GetManifestResourceStream(resourceName)
+                ?? throw new FileNotFoundException(MissingJsonLdResourceMessage, resourceName);
+            using var reader = new StreamReader(stream);
+            return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+        };
+        return this;
+    }
+
     public McpGatewayOptions UseMarkdownLdGraphFile(string graphPath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(graphPath);
 
+        JsonLdGraphLoader = null;
         MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.FileSystem;
         MarkdownLdGraphPath = graphPath;
         MarkdownLdGraphDocumentFactory = null;
@@ -269,6 +294,7 @@ public sealed class McpGatewayOptions
     {
         ArgumentNullException.ThrowIfNull(documentFactory);
 
+        JsonLdGraphLoader = null;
         MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.CustomDocuments;
         MarkdownLdGraphPath = null;
         MarkdownLdGraphDocumentFactory = documentFactory;

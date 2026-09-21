@@ -457,6 +457,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     >? _markdownLdGraphDocumentFactory;
     private readonly McpGatewaySearchQueryNormalization _searchQueryNormalization;
     private readonly string? _markdownLdGraphPath;
+    private readonly Func<CancellationToken, ValueTask<string>>? _jsonLdGraphLoader;
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
@@ -494,6 +495,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         _markdownLdGraphDocumentFactory = resolvedOptions.MarkdownLdGraphDocumentFactory;
         _searchQueryNormalization = resolvedOptions.SearchQueryNormalization;
         _markdownLdGraphPath = resolvedOptions.MarkdownLdGraphPath;
+        _jsonLdGraphLoader = resolvedOptions.JsonLdGraphLoader;
         _defaultSearchLimit = ValidateMinimum(
             resolvedOptions.DefaultSearchLimit,
             nameof(McpGatewayOptions.DefaultSearchLimit),

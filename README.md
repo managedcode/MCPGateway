@@ -742,6 +742,14 @@ services.AddMcpGateway(options =>
 
 Both file formats remain supported. The `.json` bundle stores source documents and builds their graph during initialization; `.jsonld` loads the exported graph directly. Select one source per gateway instance.
 
+For a JSON-LD graph embedded as an assembly resource, load it directly without extracting a filesystem copy:
+
+```csharp
+options.UseJsonLdGraphResource(typeof(Program).Assembly, "MyApp.tools.graph.jsonld");
+```
+
+Include that file as an `EmbeddedResource` with the matching `LogicalName`. Missing or invalid resources produce graph-index diagnostics; they are never replaced with a generated graph. Both `.json` source-document bundles and `.jsonld` graphs remain supported file inputs.
+
 To author a JSON source-document bundle through the package:
 
 ```csharp

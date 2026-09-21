@@ -1,0 +1,7 @@
+{
+  "@context": {"schema":"https://schema.org/", "kb":"urn:managedcode:markdown-ld-kb:vocab:"},
+  "@graph": [
+    {"@id":"https://managedcode.com/mcpgateway/knowledge/tools/local/github_search_issues/", "@type":["schema:Article","kb:MarkdownDocument"], "schema:name":"github_search_issues", "schema:description":"Find repository issues and pull requests. Resource-owned aurora metadata."},
+    {"@id":"https://managedcode.com/mcpgateway/knowledge/tools/local/weather_search_forecast/", "@type":["schema:Article","kb:MarkdownDocument"], "schema:name":"weather_search_forecast", "schema:description":"Get city temperature forecasts."}
+  ]
+}

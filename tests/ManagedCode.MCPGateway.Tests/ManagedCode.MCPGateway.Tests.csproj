@@ -30,4 +30,7 @@
     <Using Include="TUnit.Core" />
     <Using Include="TUnit.Core.HookType" Static="True" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Search/Graph/embedded-tools.jsonld" LogicalName="embedded-tools.jsonld" />
+  </ItemGroup>
 </Project>

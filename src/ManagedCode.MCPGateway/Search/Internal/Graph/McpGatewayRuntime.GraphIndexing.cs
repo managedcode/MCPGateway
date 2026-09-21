@@ -4,6 +4,7 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
+    private const string MissingJsonLdResourceLoaderMessage = "JSON-LD graph resource loader is not configured.";
     private const string JsonLdGraphExtension = ".jsonld";
     private const string MissingJsonLdToolNodesMessage = "JSON-LD graph is missing registered tool nodes.";
     private static bool IsGraphSearchStrategy(McpGatewaySearchStrategy strategy) =>
@@ -43,11 +44,14 @@ internal sealed partial class McpGatewayRuntime
         CancellationToken cancellationToken
     )
     {
-        if (_markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.FileSystem
-            && string.Equals(Path.GetExtension(_markdownLdGraphPath), JsonLdGraphExtension, StringComparison.OrdinalIgnoreCase))
+        if (_markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.EmbeddedResource
+            || (_markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.FileSystem
+                && string.Equals(Path.GetExtension(_markdownLdGraphPath), JsonLdGraphExtension, StringComparison.OrdinalIgnoreCase)))
         {
-            var graph = await KnowledgeGraph.LoadJsonLdFromFileAsync(_markdownLdGraphPath!, cancellationToken)
-                .ConfigureAwait(false);
+            var graph = _markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.EmbeddedResource
+                ? KnowledgeGraph.LoadJsonLd(await (_jsonLdGraphLoader
+                    ?? throw new InvalidOperationException(MissingJsonLdResourceLoaderMessage))(cancellationToken).ConfigureAwait(false))
+                : await KnowledgeGraph.LoadJsonLdFromFileAsync(_markdownLdGraphPath!, cancellationToken).ConfigureAwait(false);
             var bindings = CreateEntriesByGraphNodeId(entries, []);
             var nodeIds = graph.ToSnapshot().Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
             if (bindings.Keys.Any(nodeId => !nodeIds.Contains(nodeId)))

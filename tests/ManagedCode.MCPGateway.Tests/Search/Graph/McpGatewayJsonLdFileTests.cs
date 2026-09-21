@@ -6,6 +6,36 @@ namespace ManagedCode.MCPGateway.Tests;
 public sealed partial class McpGatewaySearchTests
 {
     [TUnit.Core.Test]
+    public async Task Embedded_jsonld_resource_is_loaded_and_searched_without_a_file()
+    {
+        await using var provider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            ConfigureSearchTools(options);
+            options.UseJsonLdGraphResource(typeof(McpGatewaySearchTests).Assembly, "embedded-tools.jsonld");
+        });
+        var gateway = provider.GetRequiredService<IMcpGateway>();
+        var built = await gateway.BuildIndexAsync();
+        await Assert.That(built.IsGraphSearchEnabled).IsTrue();
+        var exported = await provider.GetRequiredService<IMcpGatewayGraphSearch>().ExportMarkdownLdGraphAsync();
+        await Assert.That(exported.JsonLd).Contains("Resource-owned aurora metadata.");
+        var search = await gateway.SearchAsync("temperature forecast by city", maxResults: 1);
+        await Assert.That(search.Matches[0].ToolId).IsEqualTo("weather_search_forecast");
+    }
+
+    [TUnit.Core.Test]
+    public async Task Missing_embedded_resource_does_not_regenerate()
+    {
+        await using var provider = GatewayTestServiceProviderFactory.Create(options =>
+        {
+            ConfigureSearchTools(options);
+            options.UseJsonLdGraphResource(typeof(McpGatewaySearchTests).Assembly, "missing.jsonld");
+        });
+        var built = await provider.GetRequiredService<IMcpGateway>().BuildIndexAsync();
+        await Assert.That(built.IsGraphSearchEnabled).IsFalse();
+        await Assert.That(built.Diagnostics.Count).IsGreaterThan(0);
+    }
+
+    [TUnit.Core.Test]
     public async Task JsonLd_file_roundtrip_preserves_graph_and_search()
     {
         var graphFile = Path.ChangeExtension(CreateTemporaryGraphFilePath(), ".jsonld");
