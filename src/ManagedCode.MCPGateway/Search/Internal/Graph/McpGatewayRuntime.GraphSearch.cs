@@ -206,6 +206,7 @@ internal sealed partial class McpGatewayRuntime
                 graphIndex,
                 schemaQuery,
                 profile,
+                query,
                 cancellationToken
             )
             .ConfigureAwait(false);

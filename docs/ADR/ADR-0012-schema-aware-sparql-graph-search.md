@@ -36,6 +36,8 @@ Constraints:
 
 Markdown-LD graph search in `ManagedCode.MCPGateway` will be schema-aware SPARQL-first when graph mode is hybrid or schema-aware.
 
+Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes form the candidate graph for real schema-aware SPARQL, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Related and next-step evidence still comes from the complete graph.
+
 Key points:
 
 - `ManagedCode.MarkdownLd.Kb` `SearchBySchemaAsync(...)` is the primary graph retrieval call for `McpGatewaySearchStrategy.Graph`.

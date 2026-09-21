@@ -8,10 +8,15 @@ internal sealed partial class McpGatewayRuntime
         ToolGraphSearchIndex graphIndex,
         string schemaQuery,
         KnowledgeGraphSchemaSearchProfile profile,
+        string toolQuery,
         CancellationToken cancellationToken
     )
     {
-        if (!ShouldUseCandidateSchemaSearch(graphIndex))
+        var exactNodeIds = graphIndex.EntriesByNodeId
+            .Where(entry => string.Equals(entry.Value.Descriptor.ToolId, toolQuery, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(entry.Value.Descriptor.ToolName, toolQuery, StringComparison.OrdinalIgnoreCase))
+            .Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
+        if (exactNodeIds.Count == 0 && !ShouldUseCandidateSchemaSearch(graphIndex))
         {
             var result = await graphIndex
                     .Graph.SearchBySchemaAsync(schemaQuery, profile, cancellationToken)
@@ -19,7 +24,7 @@ internal sealed partial class McpGatewayRuntime
             return new SchemaGraphSearch(result, UsedCandidateGraph: false);
         }
 
-        var candidateNodeIds = SelectSchemaCandidateNodeIds(
+        var candidateNodeIds = exactNodeIds.Count > 0 ? exactNodeIds : SelectSchemaCandidateNodeIds(
             graphIndex,
             schemaQuery,
             profile.MaxResults,
