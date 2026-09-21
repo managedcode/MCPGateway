@@ -6,11 +6,13 @@ namespace ManagedCode.MCPGateway.Tests;
 public sealed class McpGatewayExactGraphSearchTests
 {
     [Test]
-    [Arguments(8)]
-    [Arguments(40)]
-    public async Task Exact_tool_identity_survives_common_prefixes_and_action_word_normalization(int siblingCount)
+    [Arguments(8, "create")]
+    [Arguments(40, "create")]
+    [Arguments(8, "read")]
+    [Arguments(40, "read")]
+    public async Task Exact_tool_identity_survives_common_prefixes_and_action_word_normalization(int siblingCount, string action)
     {
-        const string targetName = "catalog_files_create";
+        var targetName = $"catalog_files_{action}";
         await using var provider = GatewayTestServiceProviderFactory.Create(options =>
         {
             for (var index = 0; index < siblingCount; index++)
@@ -25,6 +27,9 @@ public sealed class McpGatewayExactGraphSearchTests
         });
         var toolSet = new McpGatewayToolSet(provider.GetRequiredService<IMcpGateway>(),
             provider.GetRequiredService<IMcpGatewayGraphSearch>());
+        var search = await provider.GetRequiredService<IMcpGateway>().SearchAsync(targetName, maxResults: 1);
+        await Assert.That(search.Matches).HasSingleItem();
+        await Assert.That(search.Matches[0].ToolId).IsEqualTo(targetName);
         var result = await toolSet.SchemaGraphSearchAsync(targetName, maxResults: 1);
         await Assert.That(result.Matches).HasSingleItem();
         await Assert.That(result.Matches[0].ToolMatch?.ToolId).IsEqualTo(targetName);
