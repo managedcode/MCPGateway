@@ -732,11 +732,17 @@ You can also point the runtime at an exported JSON-LD graph (`.jsonld`), a previ
 services.AddMcpGateway(options =>
 {
     options.SearchStrategy = McpGatewaySearchStrategy.Graph;
+    // Exported JSON-LD / RDF graph:
     options.UseMarkdownLdGraphFile("artifacts/mcp-tools.graph.jsonld");
+
+    // Alternatively, the supported JSON bundle of Markdown-LD source documents:
+    // options.UseMarkdownLdGraphFile("artifacts/mcp-tools.graph.json");
 });
 ```
 
-To author a bundle through the package:
+Both file formats remain supported. The `.json` bundle stores source documents and builds their graph during initialization; `.jsonld` loads the exported graph directly. Select one source per gateway instance.
+
+To author a JSON source-document bundle through the package:
 
 ```csharp
 await using var serviceProvider = services.BuildServiceProvider();
