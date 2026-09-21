@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using ModelContextProtocol.Protocol;
+
 namespace ManagedCode.MCPGateway;
 
 public sealed record McpGatewayInvokeResult(
@@ -7,4 +10,9 @@ public sealed record McpGatewayInvokeResult(
     string ToolName,
     object? Output,
     string? Error = null
-);
+)
+{
+    /// <summary>The complete upstream MCP result, when the invoked source is MCP.</summary>
+    [JsonIgnore]
+    public CallToolResult? McpResult { get; init; }
+}

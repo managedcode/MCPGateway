@@ -34,6 +34,8 @@ Out of scope:
 
 File-backed graph initialization accepts exported `.jsonld` graphs through the Markdown-LD KnowledgeGraph loader, preserving RDF nodes and edges and binding canonical tool document URIs to the live callable catalog. Missing tool nodes fail initialization rather than silently regenerating the graph.
 
+Embedded JSON-LD resources may also provide an explicit descriptor-to-node URI binding through `UseJsonLdGraphResource`. This preserves a host-owned graph's canonical URIs while the gateway retains tool identity, search, and invocation ownership. Relative, duplicate, and absent tool node bindings fail graph initialization; changing graph sources clears the binding.
+
 Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes form the candidate graph for real schema-aware SPARQL, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Related and next-step evidence still comes from the complete graph.
 
 Graph-specific search and indexing operations deliberately sit on `IMcpGatewayGraphSearch` and built-in graph tools instead of expanding the MCP-facing `IMcpGateway` contract. That surface exposes schema/profile inspection, generated SPARQL, graph evidence, explicit allowlisted federated SPARQL, mapped gateway tool matches, and runtime graph export while normal gateway search still returns the stable `McpGatewaySearchResult` and invocation still uses the same `ToolId` path. Non-federated direct graph tool search reuses the same candidate-backed schema path as normal graph search so agents cannot bypass the large-catalog optimization by calling `gateway_graph_schema_search`.

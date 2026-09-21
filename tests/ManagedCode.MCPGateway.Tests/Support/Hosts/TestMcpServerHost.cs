@@ -25,6 +25,20 @@ internal sealed class TestMcpServerHost(
 
     public IReadOnlyList<JsonObject> CapturedMeta { get; } = capturedMeta;
 
+    public static Task<TestMcpServerHost> StartResultAsync(CallToolResult result) =>
+        StartAsync(builder => builder
+            .WithListToolsHandler((_, _) => ValueTask.FromResult(new ListToolsResult
+            {
+                Tools = [new Tool
+                {
+                    Name = "result_probe",
+                    Description = "Read a protocol result.",
+                    InputSchema = JsonSerializer.SerializeToElement(new { type = "object" })
+                }]
+            }))
+            .WithCallToolHandler((_, _) => ValueTask.FromResult(result)),
+            TestMcpProtocolVersions.Current, default);
+
     public static async Task<TestMcpServerHost> StartAsync(
         CancellationToken cancellationToken = default
     ) =>

@@ -525,6 +525,7 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
 - `ToolName`
 - `Output`
 - `Error`
+- `McpResult`: the complete upstream `CallToolResult` for MCP sources, preserving all content blocks, structured content, metadata, and `IsError`. `Output` remains the normalized convenience view. A successfully completed protocol call can contain a tool-level error; protocol bridges should forward `McpResult`.
 
 ## Search Hints
 
@@ -747,6 +748,17 @@ For a JSON-LD graph embedded as an assembly resource, load it directly without e
 ```csharp
 options.UseJsonLdGraphResource(typeof(Program).Assembly, "MyApp.tools.graph.jsonld");
 ```
+
+If the resource owns its canonical node URIs, bind each registered tool explicitly without rewriting the graph:
+
+```csharp
+options.UseJsonLdGraphResource(
+    typeof(Program).Assembly,
+    "MyApp.tools.graph.jsonld",
+    tool => new Uri($"https://catalog.example.com/tools/{Uri.EscapeDataString(tool.ToolName)}/"));
+```
+
+Bindings must be absolute, unique URIs present in the resource. Invalid or missing bindings produce graph-index diagnostics; the original graph is not regenerated. Selecting another graph source clears this binding configuration.
 
 Include that file as an `EmbeddedResource` with the matching `LogicalName`. Missing or invalid resources produce graph-index diagnostics; they are never replaced with a generated graph. Both `.json` source-document bundles and `.jsonld` graphs remain supported file inputs.
 

@@ -4,7 +4,9 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
-    private static IReadOnlyDictionary<string, ToolCatalogEntry> CreateEntriesByGraphNodeId(
+    private const string InvalidJsonLdToolUriMessage = "JSON-LD tool node URIs must be absolute and unique.";
+
+    private IReadOnlyDictionary<string, ToolCatalogEntry> CreateEntriesByGraphNodeId(
         IReadOnlyList<ToolCatalogEntry> entries,
         IReadOnlyList<MarkdownDocument> documents
     )
@@ -18,8 +20,14 @@ internal sealed partial class McpGatewayRuntime
 
         foreach (var entry in entries)
         {
-            var expectedUri = CreateToolGraphDocumentUri(entry.Descriptor).AbsoluteUri;
-            entriesByExpectedUri[expectedUri] = entry;
+            var uri = _jsonLdToolUriResolver is null
+                ? CreateToolGraphDocumentUri(entry.Descriptor)
+                : _jsonLdToolUriResolver(entry.Descriptor);
+            if (uri is null || !uri.IsAbsoluteUri || !entriesByExpectedUri.TryAdd(uri.AbsoluteUri, entry))
+            {
+                throw new InvalidDataException(InvalidJsonLdToolUriMessage);
+            }
+            var expectedUri = uri.AbsoluteUri;
             entriesByNodeId[expectedUri] = entry;
             entriesBySourcePath[CreateToolGraphSourcePath(entry.Descriptor)] = entry;
         }

@@ -1,0 +1,7 @@
+{
+  "@context": {"catalog":"https://catalog.example.com/vocab#", "name":"catalog:name", "description":"catalog:description"},
+  "@graph": [
+    {"@id":"https://catalog.example.com/tools/github_search_issues/", "@type":"catalog:Tool", "name":"github_search_issues", "description":"Find repository issues and pull requests. Resource-owned aurora metadata."},
+    {"@id":"https://catalog.example.com/tools/weather_search_forecast/", "@type":"catalog:Tool", "name":"weather_search_forecast", "description":"Get city temperature forecasts."}
+  ]
+}

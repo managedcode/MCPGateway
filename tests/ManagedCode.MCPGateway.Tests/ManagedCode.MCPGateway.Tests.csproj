@@ -32,5 +32,6 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Search/Graph/embedded-tools.jsonld" LogicalName="embedded-tools.jsonld" />
+    <EmbeddedResource Include="Search/Graph/owned-tools.jsonld" LogicalName="owned-tools.jsonld" />
   </ItemGroup>
 </Project>

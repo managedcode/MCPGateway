@@ -41,6 +41,8 @@ public sealed class McpGatewayOptions
 
     internal Func<CancellationToken, ValueTask<string>>? JsonLdGraphLoader { get; private set; }
 
+    internal Func<McpGatewayToolDescriptor, Uri>? JsonLdToolUriResolver { get; private set; }
+
     public Func<
         IReadOnlyList<McpGatewayToolDescriptor>,
         CancellationToken,
@@ -216,6 +218,7 @@ public sealed class McpGatewayOptions
     public McpGatewayOptions UseGeneratedMarkdownLdGraph()
     {
         JsonLdGraphLoader = null;
+        JsonLdToolUriResolver = null;
         MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.GeneratedToolGraph;
         MarkdownLdGraphPath = null;
         MarkdownLdGraphDocumentFactory = null;
@@ -256,13 +259,30 @@ public sealed class McpGatewayOptions
     }
 
     /// <summary>Load a JSON-LD graph from an embedded assembly resource without creating a filesystem copy.</summary>
-    public McpGatewayOptions UseJsonLdGraphResource(Assembly assembly, string resourceName)
+    public McpGatewayOptions UseJsonLdGraphResource(Assembly assembly, string resourceName) =>
+        UseJsonLdGraphResourceCore(assembly, resourceName, null);
+
+    /// <summary>Load an owned JSON-LD resource and bind tools to its existing canonical node URIs.</summary>
+    public McpGatewayOptions UseJsonLdGraphResource(
+        Assembly assembly,
+        string resourceName,
+        Func<McpGatewayToolDescriptor, Uri> toolUriResolver)
+    {
+        ArgumentNullException.ThrowIfNull(toolUriResolver);
+        return UseJsonLdGraphResourceCore(assembly, resourceName, toolUriResolver);
+    }
+
+    private McpGatewayOptions UseJsonLdGraphResourceCore(
+        Assembly assembly,
+        string resourceName,
+        Func<McpGatewayToolDescriptor, Uri>? toolUriResolver)
     {
         ArgumentNullException.ThrowIfNull(assembly);
         ArgumentException.ThrowIfNullOrWhiteSpace(resourceName);
         MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.EmbeddedResource;
         MarkdownLdGraphPath = null;
         MarkdownLdGraphDocumentFactory = null;
+        JsonLdToolUriResolver = toolUriResolver;
         JsonLdGraphLoader = async cancellationToken =>
         {
             using var stream = assembly.GetManifestResourceStream(resourceName)
@@ -278,6 +298,7 @@ public sealed class McpGatewayOptions
         ArgumentException.ThrowIfNullOrWhiteSpace(graphPath);
 
         JsonLdGraphLoader = null;
+        JsonLdToolUriResolver = null;
         MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.FileSystem;
         MarkdownLdGraphPath = graphPath;
         MarkdownLdGraphDocumentFactory = null;
@@ -295,6 +316,7 @@ public sealed class McpGatewayOptions
         ArgumentNullException.ThrowIfNull(documentFactory);
 
         JsonLdGraphLoader = null;
+        JsonLdToolUriResolver = null;
         MarkdownLdGraphSource = McpGatewayMarkdownLdGraphSource.CustomDocuments;
         MarkdownLdGraphPath = null;
         MarkdownLdGraphDocumentFactory = documentFactory;

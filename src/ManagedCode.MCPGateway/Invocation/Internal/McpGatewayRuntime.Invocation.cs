@@ -159,7 +159,8 @@ internal sealed partial class McpGatewayRuntime
             entry.Descriptor.SourceId,
             entry.Descriptor.ToolName,
             ExtractMcpOutput(result)
-        );
+        )
+        { McpResult = result };
     }
 
     private static bool RequiresTasksCapability(
