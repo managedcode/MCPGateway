@@ -20,17 +20,17 @@ public sealed class McpGatewayExactGraphSearchTests
                 options.AddTool("local", TestFunctionFactory.CreateFunction(
                     (string path) => path,
                     $"catalog_files_inspect_{index}",
-                    "Inspect a catalog file; create it first with catalog_files_create."));
+                    $"Read a catalog file; use {targetName} for complete content."));
             }
             options.AddTool("local", TestFunctionFactory.CreateFunction(
-                (string path) => path, targetName, "Create a new catalog file at the supplied path."));
+                (string path) => path, targetName, action == "create" ? "Create a new catalog file at the supplied path." : "Read the complete file exactly, or an explicit one-based inclusive line range for text. Omitting both line numbers returns the full content without truncation. UTF8 decoding is strict; use base64 for binary files. Metadata always describes the complete file."));
         });
         var toolSet = new McpGatewayToolSet(provider.GetRequiredService<IMcpGateway>(),
             provider.GetRequiredService<IMcpGatewayGraphSearch>());
-        var search = await provider.GetRequiredService<IMcpGateway>().SearchAsync(targetName, maxResults: 1);
+        var search = await provider.GetRequiredService<IMcpGateway>().SearchAsync(targetName, maxResults: 5);
         await Assert.That(search.Matches).HasSingleItem();
         await Assert.That(search.Matches[0].ToolId).IsEqualTo(targetName);
-        var result = await toolSet.SchemaGraphSearchAsync(targetName, maxResults: 1);
+        var result = await toolSet.SchemaGraphSearchAsync(targetName, maxResults: 5);
         await Assert.That(result.Matches).HasSingleItem();
         await Assert.That(result.Matches[0].ToolMatch?.ToolId).IsEqualTo(targetName);
         await Assert.That(result.GeneratedSparql).Contains("SELECT");

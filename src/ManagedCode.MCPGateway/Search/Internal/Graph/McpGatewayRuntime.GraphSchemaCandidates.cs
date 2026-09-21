@@ -35,7 +35,7 @@ internal sealed partial class McpGatewayRuntime
         var candidateResult = await candidateGraph
                 .SearchBySchemaAsync(schemaQuery, profile, cancellationToken)
                 .ConfigureAwait(false);
-        return new SchemaGraphSearch(candidateResult, UsedCandidateGraph: true);
+        return new SchemaGraphSearch(candidateResult, UsedCandidateGraph: true, UsedExactIdentity: exactNodeIds.Count > 0);
     }
 
     private static FocusedGraphSearch CreateFocusedGraphSearchFromSchema(

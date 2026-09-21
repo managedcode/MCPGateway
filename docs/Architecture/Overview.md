@@ -255,3 +255,5 @@ flowchart LR
 - [`tests/ManagedCode.MCPGateway.Tests/AGENTS.md`](../../tests/ManagedCode.MCPGateway.Tests/AGENTS.md)
 
 JSON-LD graph sources can be filesystem exports or embedded assembly resources (`UseJsonLdGraphResource`). Both load the persisted graph directly and validate tool bindings; resource loading never extracts a file or regenerates a missing graph. JSON document bundles continue through the existing document pipeline.
+
+Hybrid search retains exact tool identity matches from schema search before considering lexical candidate ranking, so a broader candidate cannot evict a requested tool name.

@@ -1129,3 +1129,5 @@ Benchmarks:
 ```bash
 dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*"
 ```
+
+Exact tool names and tool IDs retain their schema-backed graph match in hybrid discovery; unrelated ranked candidates cannot displace an exact identity. Natural-language queries continue to use hybrid ranking.
