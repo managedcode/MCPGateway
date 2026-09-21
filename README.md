@@ -726,13 +726,13 @@ services.AddMcpGateway(options =>
 });
 ```
 
-You can also point the runtime at a previously written graph bundle, a Markdown-LD file, or a directory:
+You can also point the runtime at an exported JSON-LD graph (`.jsonld`), a previously written graph bundle (`.json`), a Markdown-LD file, or a directory:
 
 ```csharp
 services.AddMcpGateway(options =>
 {
     options.SearchStrategy = McpGatewaySearchStrategy.Graph;
-    options.UseMarkdownLdGraphFile("artifacts/mcp-tools.graph.json");
+    options.UseMarkdownLdGraphFile("artifacts/mcp-tools.graph.jsonld");
 });
 ```
 

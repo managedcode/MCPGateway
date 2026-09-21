@@ -4,6 +4,8 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
+    private const string JsonLdGraphExtension = ".jsonld";
+    private const string MissingJsonLdToolNodesMessage = "JSON-LD graph is missing registered tool nodes.";
     private static bool IsGraphSearchStrategy(McpGatewaySearchStrategy strategy) =>
         strategy
             is McpGatewaySearchStrategy.Auto
@@ -41,6 +43,21 @@ internal sealed partial class McpGatewayRuntime
         CancellationToken cancellationToken
     )
     {
+        if (_markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.FileSystem
+            && string.Equals(Path.GetExtension(_markdownLdGraphPath), JsonLdGraphExtension, StringComparison.OrdinalIgnoreCase))
+        {
+            var graph = await KnowledgeGraph.LoadJsonLdFromFileAsync(_markdownLdGraphPath!, cancellationToken)
+                .ConfigureAwait(false);
+            var bindings = CreateEntriesByGraphNodeId(entries, []);
+            var nodeIds = graph.ToSnapshot().Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
+            if (bindings.Keys.Any(nodeId => !nodeIds.Contains(nodeId)))
+            {
+                throw new InvalidDataException(MissingJsonLdToolNodesMessage);
+            }
+
+            return CreateToolGraphSearchIndex(graph, bindings);
+        }
+
         var documents = _markdownLdGraphSource switch
         {
             McpGatewayMarkdownLdGraphSource.FileSystem =>
@@ -63,8 +80,15 @@ internal sealed partial class McpGatewayRuntime
 
         var pipeline = CreateToolGraphPipeline();
         var result = await pipeline.BuildAsync(documents, cancellationToken).ConfigureAwait(false);
-        var snapshot = result.Graph.ToSnapshot();
-        var entriesByNodeId = CreateEntriesByGraphNodeId(entries, result.Documents);
+        return CreateToolGraphSearchIndex(result.Graph, CreateEntriesByGraphNodeId(entries, result.Documents));
+    }
+
+    private ToolGraphSearchIndex CreateToolGraphSearchIndex(
+        KnowledgeGraph graph,
+        IReadOnlyDictionary<string, ToolCatalogEntry> entriesByNodeId
+    )
+    {
+        var snapshot = graph.ToSnapshot();
         var searchableNodeIds = new HashSet<string>(entriesByNodeId.Count, StringComparer.Ordinal);
         foreach (var nodeId in entriesByNodeId.Keys)
         {
@@ -74,7 +98,7 @@ internal sealed partial class McpGatewayRuntime
         var nodesById = CreateRankedGraphNodesById(snapshot.Nodes);
         var navigation = CreateGraphNavigationIndex(snapshot, searchableNodeIds);
         var schemaDiagnostics = CreateSchemaProfileDiagnostics(
-            result.Graph,
+            graph,
             CreateToolGraphSchemaSearchProfile(
                 _defaultSearchLimit,
                 GraphFocusedRelatedResultsLimit,
@@ -82,7 +106,7 @@ internal sealed partial class McpGatewayRuntime
             )
         );
         return new ToolGraphSearchIndex(
-            result.Graph,
+            graph,
             snapshot,
             entriesByNodeId,
             searchableNodeIds,
