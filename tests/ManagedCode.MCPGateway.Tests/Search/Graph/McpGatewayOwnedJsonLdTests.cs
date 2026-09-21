@@ -1,3 +1,4 @@
+using ManagedCode.MarkdownLd.Kb.Pipeline;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -9,18 +10,31 @@ public sealed partial class McpGatewaySearchTests
     private const string OwnedGraphResource = "owned-tools.jsonld";
 
     [TUnit.Core.Test]
-    public async Task Owned_jsonld_node_uris_preserve_graph_search_and_exact_invocation()
+    [TUnit.Core.Arguments("temperature forecast by city", "weather_search_forecast", "weather:Paris")]
+    [TUnit.Core.Arguments("weather_search_forecast", "weather_search_forecast", "weather:Paris")]
+    [TUnit.Core.Arguments("aurora", "github_search_issues", "github:Paris")]
+    public async Task Owned_jsonld_node_uris_preserve_graph_search_and_exact_invocation(
+        string query, string expectedTool, string expectedOutput)
     {
         await using var provider = GatewayTestServiceProviderFactory.Create(options =>
         {
             ConfigureSearchTools(options);
             options.UseJsonLdGraphResource(typeof(McpGatewaySearchTests).Assembly,
                 OwnedGraphResource, descriptor => new Uri(OwnedToolUriPrefix + descriptor.ToolName + "/"));
+            options.MarkdownLdGraphSchemaSearchProfile = new KnowledgeGraphSchemaSearchProfile
+            {
+                Prefixes = new Dictionary<string, string> { ["catalog"] = "https://catalog.example.com/vocab#" },
+                TypeFilters = ["catalog:Tool"],
+                TextPredicates = [new("catalog:name"), new("catalog:description")],
+                RelationshipPredicates = [],
+                ExpansionPredicates = [],
+                TermMode = KnowledgeGraphSchemaSearchTermMode.AnyTerm
+            };
         });
         var gateway = provider.GetRequiredService<IMcpGateway>();
 
         var built = await gateway.BuildIndexAsync();
-        var search = await gateway.SearchAsync("temperature forecast by city", maxResults: 1);
+        var search = await gateway.SearchAsync(query, maxResults: 1);
         var invocation = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
             ToolId: search.Matches.Single().ToolId,
             Arguments: new Dictionary<string, object?> { ["query"] = "Paris" }));
@@ -28,9 +42,11 @@ public sealed partial class McpGatewaySearchTests
 
         await Assert.That(built.IsGraphSearchEnabled).IsTrue();
         await Assert.That(search.RankingMode).IsEqualTo("graph");
-        await Assert.That(search.Matches.Single().ToolName).IsEqualTo("weather_search_forecast");
+        await Assert.That(search.Matches.Single().ToolName).IsEqualTo(expectedTool);
+        await Assert.That(search.Diagnostics.Select(static diagnostic => diagnostic.Code))
+            .DoesNotContain("graph_schema_profile_invalid");
         await Assert.That(invocation.IsSuccess).IsTrue();
-        await Assert.That(invocation.Output).IsEqualTo("weather:Paris");
+        await Assert.That(invocation.Output).IsEqualTo(expectedOutput);
         await Assert.That(exported.JsonLd).Contains(OwnedToolUriPrefix);
         await Assert.That(exported.JsonLd).Contains("Resource-owned aurora metadata.");
     }

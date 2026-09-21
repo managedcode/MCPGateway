@@ -760,6 +760,22 @@ options.UseJsonLdGraphResource(
 
 Bindings must be absolute, unique URIs present in the resource. Invalid or missing bindings produce graph-index diagnostics; the original graph is not regenerated. Selecting another graph source clears this binding configuration.
 
+For a graph with its own vocabulary, configure `MarkdownLdGraphSchemaSearchProfile` with its actual tool types and searchable predicates. URI bindings identify callable nodes; the schema profile tells SPARQL which literals to search. The default profile targets the generated schema.org/Markdown-LD vocabulary.
+
+```csharp
+options.MarkdownLdGraphSchemaSearchProfile = new KnowledgeGraphSchemaSearchProfile
+{
+    Prefixes = new Dictionary<string, string> { ["catalog"] = "https://catalog.example.com/vocab#" },
+    TypeFilters = ["catalog:Tool"],
+    TextPredicates = [new("catalog:name"), new("catalog:description")],
+    RelationshipPredicates = [],
+    ExpansionPredicates = [],
+    TermMode = KnowledgeGraphSchemaSearchTermMode.AnyTerm
+};
+```
+
+The profile type comes from `ManagedCode.MarkdownLd.Kb.Pipeline`. Per-request result limits remain gateway-owned. Schema description, validation, and search use the same configured profile.
+
 Include that file as an `EmbeddedResource` with the matching `LogicalName`. Missing or invalid resources produce graph-index diagnostics; they are never replaced with a generated graph. Both `.json` source-document bundles and `.jsonld` graphs remain supported file inputs.
 
 To author a JSON source-document bundle through the package:

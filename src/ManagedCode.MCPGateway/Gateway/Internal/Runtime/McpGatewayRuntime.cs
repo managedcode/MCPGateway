@@ -1,4 +1,5 @@
 using System.Text;
+using ManagedCode.MarkdownLd.Kb.Pipeline;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -459,6 +460,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private readonly string? _markdownLdGraphPath;
     private readonly Func<CancellationToken, ValueTask<string>>? _jsonLdGraphLoader;
     private readonly Func<McpGatewayToolDescriptor, Uri>? _jsonLdToolUriResolver;
+    private readonly KnowledgeGraphSchemaSearchProfile? _graphSchemaSearchProfile;
     private readonly int _defaultSearchLimit;
     private readonly int _maxSearchResults;
     private readonly int _maxDescriptorLength;
@@ -497,6 +499,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         _searchQueryNormalization = resolvedOptions.SearchQueryNormalization;
         _markdownLdGraphPath = resolvedOptions.MarkdownLdGraphPath;
         _jsonLdGraphLoader = resolvedOptions.JsonLdGraphLoader;
+        _graphSchemaSearchProfile = resolvedOptions.MarkdownLdGraphSchemaSearchProfile;
         _jsonLdToolUriResolver = _markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.EmbeddedResource
             ? resolvedOptions.JsonLdToolUriResolver
             : null;

@@ -1,4 +1,5 @@
 using System.Reflection;
+using ManagedCode.MarkdownLd.Kb.Pipeline;
 using Microsoft.Extensions.AI;
 using ModelContextProtocol.Client;
 
@@ -42,6 +43,9 @@ public sealed class McpGatewayOptions
     internal Func<CancellationToken, ValueTask<string>>? JsonLdGraphLoader { get; private set; }
 
     internal Func<McpGatewayToolDescriptor, Uri>? JsonLdToolUriResolver { get; private set; }
+
+    /// <summary>Optional schema search vocabulary for an application-owned graph.</summary>
+    public KnowledgeGraphSchemaSearchProfile? MarkdownLdGraphSchemaSearchProfile { get; set; }
 
     public Func<
         IReadOnlyList<McpGatewayToolDescriptor>,

@@ -29,13 +29,21 @@ internal sealed partial class McpGatewayRuntime
         return MapGraphSchemaResult(null, profile, diagnostics);
     }
 
-    private static KnowledgeGraphSchemaSearchProfile CreateToolGraphSchemaSearchProfile(
+    private KnowledgeGraphSchemaSearchProfile CreateToolGraphSchemaSearchProfile(
         int primaryLimit,
         int relatedLimit,
         int nextStepLimit,
         IReadOnlyList<Uri>? serviceEndpoints = null
     ) =>
-        new()
+        _graphSchemaSearchProfile is { } configured
+        ? configured with
+        {
+            MaxResults = primaryLimit,
+            MaxRelatedResults = relatedLimit,
+            MaxNextStepResults = nextStepLimit,
+            FederatedServiceEndpoints = serviceEndpoints ?? configured.FederatedServiceEndpoints
+        }
+        : new()
         {
             Prefixes = CreateToolGraphSchemaPrefixes(),
             TextPredicates =
