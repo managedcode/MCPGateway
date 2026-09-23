@@ -36,6 +36,8 @@ File-backed graph initialization accepts exported `.jsonld` graphs through the M
 
 Embedded JSON-LD resources may also provide an explicit descriptor-to-node URI binding through `UseJsonLdGraphResource`. This preserves a host-owned graph's canonical URIs while the gateway retains tool identity, search, and invocation ownership. Relative, duplicate, and absent tool node bindings fail graph initialization; changing graph sources clears the binding.
 
+`McpInMemorySession` is a Hosting utility for an SDK MCP server and client in one process. It owns the paired transports, server run task, cancellation, and disposal. The host still supplies its own `McpServerOptions`, service provider, authorization filters, and tool handlers. Product-specific graph vocabularies, tool selection, and authorization remain in the host.
+
 Application-owned vocabularies configure `MarkdownLdGraphSchemaSearchProfile` for their actual tool types, text predicates, relationships, and facets. Runtime schema validation, schema description, and SPARQL search share that profile while retaining request-bounded result limits; a custom URI binding does not imply schema.org metadata.
 
 Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes form the candidate graph for real schema-aware SPARQL, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Related and next-step evidence still comes from the complete graph.

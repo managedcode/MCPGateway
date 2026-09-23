@@ -174,6 +174,8 @@ You can also register:
 - existing `McpClient` instances through `AddMcpClient(...)`
 - deferred `McpClient` factories through `AddMcpClientFactory(...)`
 
+When a host already has SDK MCP server handlers and needs a local client for a gateway catalog, `McpInMemorySession.CreateAsync(options, services, loggerFactory, cancellationToken)` runs both ends in process. Add `session.Client` through `AddMcpClient(..., disposeClient: false)` and dispose the session after the gateway instance. The host owns its handler and authorization configuration.
+
 If you need to add tools or sources after the container is built, use `IMcpGatewayRegistry`:
 
 ```csharp
