@@ -294,23 +294,19 @@ internal sealed partial class McpGatewayRuntime
                 ),
             };
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             if (addFailureDiagnostics)
             {
                 diagnostics.Add(
                     new McpGatewayDiagnostic(
                         VectorSearchFailedDiagnosticCode,
-                        string.Format(
-                            CultureInfo.InvariantCulture,
-                            VectorSearchFailedMessageFormat,
-                            ex.GetBaseException().Message
-                        )
+                    VectorSearchFailedMessage
                     )
                 );
             }
 
-            _logger.LogWarning(ex, GatewayVectorSearchFailedLogMessage);
+            _logger.LogWarning(GatewayVectorSearchFailedLogMessage);
             return null;
         }
     }

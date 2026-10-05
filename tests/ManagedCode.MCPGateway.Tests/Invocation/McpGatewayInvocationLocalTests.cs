@@ -418,6 +418,6 @@ public sealed partial class McpGatewayInvocationTests
         );
 
         await Assert.That(invokeResult.IsSuccess).IsFalse();
-        await Assert.That(invokeResult.Error).IsEqualTo("boom");
+        await Assert.That(invokeResult.Error).IsEqualTo("Tool invocation failed.");
     }
 }

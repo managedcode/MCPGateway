@@ -187,7 +187,7 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
         var result = DeserializeToolResult(completed.Result);
 
         await Assert.That(result.IsError).IsTrue();
-        await Assert.That(GetSingleText(result)).Contains("boom:epsilon");
+        await Assert.That(GetSingleText(result)).IsEqualTo("Tool invocation failed.");
     }
 
     private static async Task<CreateTaskResult> StartTaskAsync(

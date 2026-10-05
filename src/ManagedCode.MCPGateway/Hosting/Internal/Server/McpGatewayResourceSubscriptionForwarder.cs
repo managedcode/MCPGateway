@@ -10,6 +10,11 @@ internal sealed class McpGatewayResourceSubscriptionForwarder(
     ILogger<McpGatewayResourceSubscriptionManager> logger
 )
 {
+    private const string ResourceNotificationDeliveryFailedLogMessage =
+        "Failed to forward an MCP resource update. Removing its listener.";
+    private const string ResourceNotificationCleanupFailedLogMessage =
+        "Failed to clean up an MCP resource listener.";
+
     public async ValueTask ForwardUpdateAsync(
         McpGatewayResourceSubscriptionKey key,
         ModelContextProtocol.Server.McpServer downstreamServer,
@@ -36,15 +41,9 @@ internal sealed class McpGatewayResourceSubscriptionForwarder(
                 cancellationToken
             );
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            logger.LogDebug(
-                exception,
-                "Failed to forward MCP resource update notification for listener '{ServerId}:{ListenerId}:{Uri}'. Removing it.",
-                key.ServerId,
-                key.ListenerId,
-                key.ExposedUri
-            );
+            logger.LogDebug(ResourceNotificationDeliveryFailedLogMessage);
 
             attempt.TrySetResult();
             _ = RemoveFailedSubscriptionAsync(key, attempt);
@@ -105,15 +104,9 @@ internal sealed class McpGatewayResourceSubscriptionForwarder(
             );
             McpGatewayResourceSubscriptionCleanup.ThrowIfFailed(cleanupExceptions);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            logger.LogDebug(
-                exception,
-                "Failed to clean up MCP resource listener '{ServerId}:{ListenerId}:{Uri}' after notification forwarding failed.",
-                key.ServerId,
-                key.ListenerId,
-                key.ExposedUri
-            );
+            logger.LogDebug(ResourceNotificationCleanupFailedLogMessage);
         }
     }
 }

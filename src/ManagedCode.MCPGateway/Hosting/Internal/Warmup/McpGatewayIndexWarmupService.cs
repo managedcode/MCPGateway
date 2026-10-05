@@ -62,9 +62,9 @@ internal sealed class McpGatewayIndexWarmupService(
         {
             return;
         }
-        catch (Exception ex)
+        catch (Exception exception) when (!McpGatewayRuntimeFailureClassifier.HasFatalFailure(exception))
         {
-            logger.LogWarning(ex, WarmupFailedLogMessage);
+            logger.LogWarning(WarmupFailedLogMessage);
         }
     }
 }

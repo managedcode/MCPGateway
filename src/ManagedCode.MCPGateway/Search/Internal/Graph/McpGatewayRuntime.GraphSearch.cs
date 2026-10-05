@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using ManagedCode.MarkdownLd.Kb.Pipeline;
 using Microsoft.Extensions.Logging;
 
@@ -91,23 +90,19 @@ internal sealed partial class McpGatewayRuntime
                 ),
             };
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             if (addFailureDiagnostics)
             {
                 diagnostics.Add(
                     new McpGatewayDiagnostic(
                         GraphSearchFailedDiagnosticCode,
-                        string.Format(
-                            CultureInfo.InvariantCulture,
-                            GraphSearchFailedMessageFormat,
-                            ex.GetBaseException().Message
-                        )
+                        GraphSearchFailedMessage
                     )
                 );
             }
 
-            _logger.LogWarning(ex, GatewayGraphSearchFailedLogMessage);
+            _logger.LogWarning(GatewayGraphSearchFailedLogMessage);
             return null;
         }
     }

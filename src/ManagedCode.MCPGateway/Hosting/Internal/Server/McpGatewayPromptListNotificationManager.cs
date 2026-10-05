@@ -13,6 +13,10 @@ internal sealed class McpGatewayPromptListNotificationManager(
 ) : IAsyncDisposable
 {
     private const string PromptListChangedDeliveryKey = "prompts:list_changed";
+    private const string PromptNotificationDeliveryFailedLogMessage =
+        "Failed to send an MCP prompt notification. Removing its listener.";
+    private const string PromptNotificationCleanupFailedLogMessage =
+        "Failed to clean up an MCP prompt notification listener.";
 
     internal int ListenerStateCount => store.Count;
 
@@ -233,14 +237,9 @@ internal sealed class McpGatewayPromptListNotificationManager(
                 cancellationToken
             );
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            logger.LogDebug(
-                exception,
-                "Failed to send MCP prompt list changed notification to listener '{ServerId}:{ListenerId}'. Removing it.",
-                key.ServerId,
-                key.ListenerId
-            );
+            logger.LogDebug(PromptNotificationDeliveryFailedLogMessage);
 
             if (store.TryRemove(key, out var removedState))
             {
@@ -248,12 +247,7 @@ internal sealed class McpGatewayPromptListNotificationManager(
                 await store.DisposeStateAsync(removedState, cleanupExceptions);
                 if (cleanupExceptions.Count > 0)
                 {
-                    logger.LogDebug(
-                        new AggregateException(cleanupExceptions),
-                        "Failed to clean up MCP prompt list notification listener '{ServerId}:{ListenerId}' after forwarding failed.",
-                        key.ServerId,
-                        key.ListenerId
-                    );
+                    logger.LogDebug(PromptNotificationCleanupFailedLogMessage);
                 }
             }
         }

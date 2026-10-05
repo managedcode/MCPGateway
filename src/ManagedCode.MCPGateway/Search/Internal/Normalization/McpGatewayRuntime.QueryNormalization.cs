@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -90,19 +89,15 @@ internal sealed partial class McpGatewayRuntime
             );
             return normalizedQuery;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             diagnostics.Add(
                 new McpGatewayDiagnostic(
                     QueryNormalizationFailedDiagnosticCode,
-                    string.Format(
-                        CultureInfo.InvariantCulture,
-                        QueryNormalizationFailedMessageFormat,
-                        ex.GetBaseException().Message
-                    )
+                    QueryNormalizationFailedMessage
                 )
             );
-            _logger.LogWarning(ex, GatewayQueryNormalizationFailedLogMessage);
+            _logger.LogWarning(GatewayQueryNormalizationFailedLogMessage);
             return null;
         }
     }

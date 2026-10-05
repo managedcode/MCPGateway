@@ -38,14 +38,14 @@ internal sealed partial class McpGatewayRuntime
         {
             return await InvokeResolvedToolAsync(entry, request, arguments, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
-            _logger.LogError(ex, GatewayInvocationFailedLogMessage, entry.Descriptor.ToolId);
+            _logger.LogError(GatewayInvocationFailedLogMessage);
             return CreateInvocationFailure(
                 entry.Descriptor.ToolId,
                 entry.Descriptor.SourceId,
                 entry.Descriptor.ToolName,
-                ex.GetBaseException().Message
+                InvocationFailedMessage
             );
         }
     }

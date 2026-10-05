@@ -178,20 +178,15 @@ internal sealed partial class McpGatewayRuntime
         {
             return await registration.LoadToolsAsync(_loggerFactory, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             diagnostics.Add(
                 new McpGatewayDiagnostic(
                     SourceLoadFailedDiagnosticCode,
-                    string.Format(
-                        CultureInfo.InvariantCulture,
-                        SourceLoadFailedMessageFormat,
-                        registration.SourceId,
-                        ex.GetBaseException().Message
-                    )
+                    SourceLoadFailedMessage
                 )
             );
-            _logger.LogWarning(ex, FailedToLoadGatewaySourceLogMessage, registration.SourceId);
+            _logger.LogWarning(FailedToLoadGatewaySourceLogMessage);
             return [];
         }
     }
@@ -413,19 +408,15 @@ internal sealed partial class McpGatewayRuntime
 
             return vectorizedToolCount;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             diagnostics.Add(
                 new McpGatewayDiagnostic(
                     EmbeddingStoreLoadFailedDiagnosticCode,
-                    string.Format(
-                        CultureInfo.InvariantCulture,
-                        EmbeddingStoreLoadFailedMessageFormat,
-                        ex.GetBaseException().Message
-                    )
+                    EmbeddingStoreLoadFailedMessage
                 )
             );
-            _logger.LogWarning(ex, EmbeddingStoreLoadFailedLogMessage);
+            _logger.LogWarning(EmbeddingStoreLoadFailedLogMessage);
             return 0;
         }
     }
@@ -497,19 +488,15 @@ internal sealed partial class McpGatewayRuntime
                 vectorTokenUsage
             );
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             diagnostics.Add(
                 new McpGatewayDiagnostic(
                     EmbeddingFailedDiagnosticCode,
-                    string.Format(
-                        CultureInfo.InvariantCulture,
-                        EmbeddingFailedMessageFormat,
-                        ex.GetBaseException().Message
-                    )
+                    EmbeddingFailedMessage
                 )
             );
-            _logger.LogWarning(ex, EmbeddingGenerationFailedLogMessage);
+            _logger.LogWarning(EmbeddingGenerationFailedLogMessage);
             return EmbeddingGenerationOutcome.Empty;
         }
     }
@@ -560,19 +547,15 @@ internal sealed partial class McpGatewayRuntime
         {
             await embeddingStore.UpsertAsync(generatedEmbeddings, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             diagnostics.Add(
                 new McpGatewayDiagnostic(
                     EmbeddingStoreSaveFailedDiagnosticCode,
-                    string.Format(
-                        CultureInfo.InvariantCulture,
-                        EmbeddingStoreSaveFailedMessageFormat,
-                        ex.GetBaseException().Message
-                    )
+                    EmbeddingStoreSaveFailedMessage
                 )
             );
-            _logger.LogWarning(ex, EmbeddingStoreSaveFailedLogMessage);
+            _logger.LogWarning(EmbeddingStoreSaveFailedLogMessage);
         }
     }
 
@@ -591,19 +574,15 @@ internal sealed partial class McpGatewayRuntime
         {
             return await BuildToolGraphSearchIndexAsync(entries, diagnostics, cancellationToken);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             diagnostics.Add(
                 new McpGatewayDiagnostic(
                     GraphBuildFailedDiagnosticCode,
-                    string.Format(
-                        CultureInfo.InvariantCulture,
-                        GraphBuildFailedMessageFormat,
-                        ex.GetBaseException().Message
-                    )
+                    GraphBuildFailedMessage
                 )
             );
-            _logger.LogWarning(ex, GatewayGraphBuildFailedLogMessage);
+            _logger.LogWarning(GatewayGraphBuildFailedLogMessage);
             return null;
         }
     }

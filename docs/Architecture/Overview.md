@@ -223,6 +223,7 @@ flowchart LR
 - Markdown-LD graph sources may be generated from the live catalog at index build time, loaded from a file-system path, or provided through a host-supplied document factory configured in `McpGatewayOptions`. All modes must still map graph documents back to the current catalog before returning matches.
 - Tool metadata used for search enrichment must stay explicit and developer-controlled through registration hints or tool annotations; multilingual improvement should come from metadata plus scoring, not from one-off hardcoded phrase rules in runtime code.
 - Warmup remains optional. The package must work correctly with lazy indexing and must not require manual initialization for every host.
+- Recoverable runtime failures use fixed package-owned diagnostic categories. Exception objects, exception/provider messages, caller queries/arguments, and endpoint text MUST NOT be exposed through gateway results, diagnostics, or logs; caller cancellation keeps its existing propagation behavior.
 
 ## Key Decisions (ADRs)
 
@@ -238,6 +239,7 @@ flowchart LR
 - [`docs/ADR/ADR-0011-gateway-owned-prompt-composition-and-list-change-forwarding.md`](../ADR/ADR-0011-gateway-owned-prompt-composition-and-list-change-forwarding.md): documents explicit gateway-owned prompt composition, prompt overlays, prompt argument completion, and forwarded prompt list-change notifications.
 - [`docs/ADR/ADR-0012-schema-aware-sparql-graph-search.md`](../ADR/ADR-0012-schema-aware-sparql-graph-search.md): documents schema-aware SPARQL as the primary Markdown-LD graph retrieval path, schema/profile and index-build tooling, explicit federated graph search, graph export, and the `IMcpGatewayGraphSearch` boundary.
 - [`docs/ADR/ADR-0014-mcp-sdk-2-protocol-and-extension-adoption.md`](../ADR/ADR-0014-mcp-sdk-2-protocol-and-extension-adoption.md): documents SDK-owned protocol negotiation, Streamable HTTP, per-request subscriptions, Tasks, MCP Apps, arbitrary output schemas, and Markdown-LD `0.2.8` adoption.
+- [`docs/ADR/ADR-0016-safe-runtime-diagnostics.md`](../ADR/ADR-0016-safe-runtime-diagnostics.md): documents closed, fixed diagnostics for recoverable failures and the prohibition on exposing exception or request/provider text.
 
 ## Related Docs
 
@@ -255,6 +257,7 @@ flowchart LR
 - [`docs/ADR/ADR-0014-mcp-sdk-2-protocol-and-extension-adoption.md`](../ADR/ADR-0014-mcp-sdk-2-protocol-and-extension-adoption.md)
 - [`docs/ADR/ADR-0012-schema-aware-sparql-graph-search.md`](../ADR/ADR-0012-schema-aware-sparql-graph-search.md)
 - [`docs/Features/SearchQueryNormalizationAndRanking.md`](../Features/SearchQueryNormalizationAndRanking.md)
+- [`docs/Features/SafeRuntimeDiagnostics.md`](../Features/SafeRuntimeDiagnostics.md)
 - [`docs/Features/AutoVectorFirstSearchAndPerformance.md`](../Features/AutoVectorFirstSearchAndPerformance.md)
 - [`AGENTS.md`](../../AGENTS.md)
 - [`src/ManagedCode.MCPGateway/AGENTS.md`](../../src/ManagedCode.MCPGateway/AGENTS.md)

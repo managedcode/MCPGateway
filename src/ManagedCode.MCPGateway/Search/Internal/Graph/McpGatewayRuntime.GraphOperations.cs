@@ -1,4 +1,3 @@
-using System.Globalization;
 using ManagedCode.MarkdownLd.Kb.Pipeline;
 using Microsoft.Extensions.Logging;
 
@@ -84,19 +83,15 @@ internal sealed partial class McpGatewayRuntime
                 scoreContext
             );
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             diagnostics.Add(
                 new McpGatewayDiagnostic(
                     GraphSearchFailedDiagnosticCode,
-                    string.Format(
-                        CultureInfo.InvariantCulture,
-                        GraphSearchFailedMessageFormat,
-                        ex.GetBaseException().Message
-                    )
+                    GraphSearchFailedMessage
                 )
             );
-            _logger.LogWarning(ex, GatewayGraphSearchFailedLogMessage);
+            _logger.LogWarning(GatewayGraphSearchFailedLogMessage);
             return new McpGatewayGraphSearchResult([], [], [], diagnostics, request.UseFederation);
         }
     }
@@ -173,11 +168,7 @@ internal sealed partial class McpGatewayRuntime
                 diagnostics.Add(
                     new McpGatewayDiagnostic(
                         GraphFederationEndpointInvalidDiagnosticCode,
-                        string.Format(
-                            CultureInfo.InvariantCulture,
-                            GraphFederationEndpointInvalidMessageFormat,
-                            endpointText
-                        )
+                        GraphFederationEndpointInvalidMessage
                     )
                 );
                 continue;
@@ -188,11 +179,7 @@ internal sealed partial class McpGatewayRuntime
                 diagnostics.Add(
                     new McpGatewayDiagnostic(
                         GraphFederationEndpointBlockedDiagnosticCode,
-                        string.Format(
-                            CultureInfo.InvariantCulture,
-                            GraphFederationEndpointBlockedMessageFormat,
-                            endpoint.AbsoluteUri
-                        )
+                        GraphFederationEndpointBlockedMessage
                     )
                 );
                 continue;

@@ -46,12 +46,10 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         "markdown_ld_graph_path_missing";
     private const string MarkdownLdGraphDocumentFactoryMissingDiagnosticCode =
         "markdown_ld_graph_document_factory_missing";
-    private const string SourceLoadFailedMessageTemplate =
-        "Failed to load tools from source '{0}': {1}";
+    private const string SourceLoadFailedMessage = "A registered tool source failed to load.";
     private const string DuplicateToolIdMessageTemplate =
         "Resolved duplicate canonical tool id base '{0}' with a source-qualified id.";
-    private const string GraphBuildFailedMessageTemplate =
-        "Building the Markdown-LD tool graph failed: {0}";
+    private const string GraphBuildFailedMessage = "Building the Markdown-LD tool graph failed.";
     private const string GraphFallbackMessage =
         "Vector search was unavailable or unusable. Markdown-LD graph ranking was used.";
     private const string LowConfidenceResultsMessage =
@@ -59,51 +57,49 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const string HybridVectorMergeMessage =
         "Vector-first ranking was supplemented with Markdown-LD graph expansion.";
     private const string GraphUnavailableMessage = "Markdown-LD graph ranking is unavailable.";
-    private const string GraphSearchFailedMessageTemplate = "Markdown-LD graph ranking failed: {0}";
+    private const string GraphSearchFailedMessage = "Markdown-LD graph ranking failed.";
     private const string GraphSchemaFallbackMessage =
         "Markdown-LD schema-aware ranking found no mapped gateway tools. Ranked graph candidate search with fuzzy token matching was used.";
     private const string GraphSchemaTokenDistanceFallbackMessage =
         "Markdown-LD schema-aware ranking found no mapped gateway tools. Token-distance graph ranking was used.";
     private const string GraphSchemaNoSupplementMessage =
         "Markdown-LD schema-aware ranking found no mapped gateway tools. No graph supplement was added.";
-    private const string GraphSchemaValidationMessageTemplate =
-        "Markdown-LD schema search profile is invalid: {0}";
-    private const string GraphFederationEndpointBlockedMessageTemplate =
-        "Markdown-LD federated service endpoint '{0}' is not configured in the gateway allowlist.";
-    private const string GraphFederationEndpointInvalidMessageTemplate =
-        "Markdown-LD federated service endpoint '{0}' is not an absolute URI.";
+    private const string GraphSchemaValidationMessage =
+        "Markdown-LD schema search profile validation failed.";
+    private const string GraphFederationEndpointBlockedMessage =
+        "A requested federated service endpoint is not configured in the gateway allowlist.";
+    private const string GraphFederationEndpointInvalidMessage =
+        "A requested federated service endpoint is not an absolute URI.";
     private const string EmbeddingCountMismatchMessageTemplate =
         "Embedding generation returned {0} vectors for {1} tools.";
     private const string QueryEmbeddingCountMismatchMessageTemplate =
         "Embedding generation returned {0} vectors for {1} search query.";
     private const string EmbeddingGeneratorMissingMessage =
         "No keyed or unkeyed IEmbeddingGenerator<string, Embedding<float>> is registered. Stored tool embeddings may be reused, but search falls back to Markdown-LD graph ranking without a query embedding generator.";
-    private const string EmbeddingFailedMessageTemplate = "Embedding generation failed: {0}";
-    private const string EmbeddingStoreLoadFailedMessageTemplate =
-        "Loading stored tool embeddings failed: {0}";
-    private const string EmbeddingStoreSaveFailedMessageTemplate =
-        "Persisting generated tool embeddings failed: {0}";
+    private const string EmbeddingFailedMessage = "Embedding generation failed.";
+    private const string EmbeddingStoreLoadFailedMessage = "Loading stored tool embeddings failed.";
+    private const string EmbeddingStoreSaveFailedMessage = "Persisting generated tool embeddings failed.";
     private const string QueryVectorEmptyMessage =
         "Embedding generator returned an empty query vector.";
     private const string QueryNormalizedMessage =
         "Search query was normalized to English before ranking.";
-    private const string QueryNormalizationFailedMessageTemplate =
-        "Search query normalization failed and the original query was used: {0}";
-    private const string VectorSearchFailedMessageTemplate =
-        "Vector ranking failed and Markdown-LD graph fallback was used: {0}";
+    private const string QueryNormalizationFailedMessage =
+        "Search query normalization failed and the original query was used.";
+    private const string VectorSearchFailedMessage =
+        "Vector ranking failed and Markdown-LD graph fallback was used.";
     private const string MarkdownLdGraphPathMissingMessage =
         "Markdown-LD graph file mode requires MarkdownLdGraphPath to point to a graph bundle file, Markdown source file, or directory.";
     private const string MarkdownLdGraphDocumentFactoryMissingMessage =
         "Markdown-LD custom document mode requires MarkdownLdGraphDocumentFactory to be configured.";
     private const string ToolNotInvokableMessageTemplate = "Tool '{0}' is not invokable.";
+    private const string InvocationFailedMessage = "Tool invocation failed.";
     private const string ToolIdOrToolNameRequiredMessage = "Either ToolId or ToolName is required.";
     private const string ToolIdNotFoundMessageTemplate = "Tool '{0}' was not found.";
     private const string ToolNameAmbiguousMessageTemplate =
         "Tool '{0}' is ambiguous. Use ToolId or specify SourceId explicitly.";
     private const string CatalogSourceMissingMessage =
         "ManagedCode.MCPGateway requires IMcpGatewayRegistry to be registered in the service provider. Use AddMcpGateway(...) to wire the package services.";
-    private const string FailedToLoadGatewaySourceLogMessage =
-        "Failed to load gateway source {SourceId}.";
+    private const string FailedToLoadGatewaySourceLogMessage = "A registered gateway source failed to load.";
     private const string GatewayGraphBuildFailedLogMessage =
         "Gateway Markdown-LD graph build failed.";
     private const string GatewayGraphSearchFailedLogMessage =
@@ -114,8 +110,9 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount} GraphNodes={GraphNodeCount} GraphEdges={GraphEdgeCount}.";
     private const string GatewayVectorSearchFailedLogMessage =
         "Gateway vector search failed. Falling back to Markdown-LD graph ranking.";
-    private const string GatewayInvocationFailedLogMessage =
-        "Gateway invocation failed for {ToolId}.";
+    private const string GatewayInvocationFailedLogMessage = "Gateway tool invocation failed.";
+    private const string RuntimeDisposeBuildFailureLogMessage =
+        "Ignoring failed MCP gateway index build while disposing the runtime.";
     private const string EmbeddingStoreLoadFailedLogMessage =
         "Loading stored tool embeddings failed. Falling back to generator-backed indexing.";
     private const string EmbeddingStoreSaveFailedLogMessage =
@@ -401,40 +398,13 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const double RouteCategorizedToolScoreBoost = 0.01d;
     private const double RouteUsageExampleScoreBoost = 0.01d;
 
-    private static readonly CompositeFormat SourceLoadFailedMessageFormat = CompositeFormat.Parse(
-        SourceLoadFailedMessageTemplate
-    );
     private static readonly CompositeFormat DuplicateToolIdMessageFormat = CompositeFormat.Parse(
         DuplicateToolIdMessageTemplate
     );
-    private static readonly CompositeFormat GraphBuildFailedMessageFormat = CompositeFormat.Parse(
-        GraphBuildFailedMessageTemplate
-    );
-    private static readonly CompositeFormat GraphSearchFailedMessageFormat = CompositeFormat.Parse(
-        GraphSearchFailedMessageTemplate
-    );
-    private static readonly CompositeFormat GraphSchemaValidationMessageFormat =
-        CompositeFormat.Parse(GraphSchemaValidationMessageTemplate);
-    private static readonly CompositeFormat GraphFederationEndpointBlockedMessageFormat =
-        CompositeFormat.Parse(GraphFederationEndpointBlockedMessageTemplate);
-    private static readonly CompositeFormat GraphFederationEndpointInvalidMessageFormat =
-        CompositeFormat.Parse(GraphFederationEndpointInvalidMessageTemplate);
     private static readonly CompositeFormat EmbeddingCountMismatchMessageFormat =
         CompositeFormat.Parse(EmbeddingCountMismatchMessageTemplate);
     private static readonly CompositeFormat QueryEmbeddingCountMismatchMessageFormat =
         CompositeFormat.Parse(QueryEmbeddingCountMismatchMessageTemplate);
-    private static readonly CompositeFormat EmbeddingFailedMessageFormat = CompositeFormat.Parse(
-        EmbeddingFailedMessageTemplate
-    );
-    private static readonly CompositeFormat EmbeddingStoreLoadFailedMessageFormat =
-        CompositeFormat.Parse(EmbeddingStoreLoadFailedMessageTemplate);
-    private static readonly CompositeFormat EmbeddingStoreSaveFailedMessageFormat =
-        CompositeFormat.Parse(EmbeddingStoreSaveFailedMessageTemplate);
-    private static readonly CompositeFormat QueryNormalizationFailedMessageFormat =
-        CompositeFormat.Parse(QueryNormalizationFailedMessageTemplate);
-    private static readonly CompositeFormat VectorSearchFailedMessageFormat = CompositeFormat.Parse(
-        VectorSearchFailedMessageTemplate
-    );
     private static readonly CompositeFormat ToolNotInvokableMessageFormat = CompositeFormat.Parse(
         ToolNotInvokableMessageTemplate
     );
@@ -579,12 +549,9 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         {
             return;
         }
-        catch (Exception exception)
+        catch (Exception exception) when (!McpGatewayRuntimeFailureClassifier.HasFatalFailure(exception))
         {
-            _logger.LogDebug(
-                exception,
-                "Ignoring failed MCP gateway index build while disposing the runtime."
-            );
+            _logger.LogDebug(RuntimeDisposeBuildFailureLogMessage);
         }
     }
 

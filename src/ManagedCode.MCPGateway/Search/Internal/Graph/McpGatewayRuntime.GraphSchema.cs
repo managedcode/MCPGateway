@@ -1,4 +1,3 @@
-using System.Globalization;
 using ManagedCode.MarkdownLd.Kb.Pipeline;
 
 namespace ManagedCode.MCPGateway;
@@ -332,11 +331,7 @@ internal sealed partial class McpGatewayRuntime
         [
             new(
                 GraphSchemaValidationDiagnosticCode,
-                string.Format(
-                    CultureInfo.InvariantCulture,
-                    GraphSchemaValidationMessageFormat,
-                    string.Join("; ", validation.Issues)
-                )
+                GraphSchemaValidationMessage
             ),
         ];
     }
