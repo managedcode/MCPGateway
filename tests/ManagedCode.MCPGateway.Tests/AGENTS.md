@@ -73,3 +73,16 @@ For this .NET project:
 - Prefer deterministic local fakes and test helpers over network-dependent or timing-fragile assertions.
 - Do not weaken parallel isolation to hide shared-state bugs; fix the shared state instead.
 - When a production change affects search or invocation semantics, add or update the corresponding test coverage in the matching test area.
+
+### Existing test file size exceptions (2026-10-10 dependency audit)
+
+The required `cloc --vcs=git --include-lang=C# --by-file` audit found four pre-existing files above the local 400 code-line limit. They are unchanged in this dependency release. Retaining their existing integration scenarios avoids mixing test-organization refactors into dependency compatibility verification. This exception permits no further growth.
+
+| File relative to this project | C# code lines |
+| --- | ---: |
+| `Catalog/Indexing/McpGatewaySearchBuildTests.cs` | 628 |
+| `Search/Graph/McpGatewaySearchMarkdownLdTests.cs` | 495 |
+| `Support/Hosts/TestMcpServerHost.cs` | 492 |
+| `Hosting/Server/McpGatewayMcpServerProtocolFeatureIntegrationTests.cs` | 408 |
+
+Removal path: split the search-build and Markdown-LD cases into focused partial test files, separate the protocol feature scenarios by capability, and extract host lifecycle/setup helpers from `TestMcpServerHost.cs`. Keep TUnit discovery, per-test isolation, and all real MCP/graph assertions intact; verify the full suite and coverage after each split.

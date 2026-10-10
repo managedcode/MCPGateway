@@ -98,10 +98,17 @@ public sealed partial class McpGatewaySearchTests
             await Assert.That(built.IsGraphSearchEnabled).IsFalse();
             await Assert.That(built.GraphNodeCount).IsEqualTo(0);
             await Assert.That(built.Diagnostics.Count).IsGreaterThan(0);
+            if (content is null)
+            {
+                await Assert.That(File.Exists(graphFile)).IsFalse();
+            }
         }
         finally
         {
-            File.Delete(graphFile);
+            if (File.Exists(graphFile))
+            {
+                File.Delete(graphFile);
+            }
         }
     }
 }
