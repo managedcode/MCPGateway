@@ -3,8 +3,9 @@
 [![CI](https://github.com/managedcode/MCPGateway/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/managedcode/MCPGateway/actions/workflows/ci.yml)
 [![Release](https://github.com/managedcode/MCPGateway/actions/workflows/release.yml/badge.svg?branch=main)](https://github.com/managedcode/MCPGateway/actions/workflows/release.yml)
 [![CodeQL](https://github.com/managedcode/MCPGateway/actions/workflows/codeql.yml/badge.svg?branch=main)](https://github.com/managedcode/MCPGateway/actions/workflows/codeql.yml)
-[![NuGet](https://img.shields.io/nuget/v/ManagedCode.MCPGateway.svg)](https://www.nuget.org/packages/ManagedCode.MCPGateway)
+[![NuGet](https://img.shields.io/nuget/v/ManagedCode.MCPGateway.svg?style=flat-square&logo=nuget)](https://www.nuget.org/packages/ManagedCode.MCPGateway)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Downloads](https://img.shields.io/nuget/dt/ManagedCode.MCPGateway.svg?style=flat-square&logo=nuget)](https://www.nuget.org/packages/ManagedCode.MCPGateway)
 
 `ManagedCode.MCPGateway` is a .NET 10 library that turns local `AITool` instances and remote MCP servers into one searchable and invokable execution surface for `Microsoft.Extensions.AI`.
 
@@ -16,6 +17,8 @@ It is built on:
 `ManagedCode.MCPGateway` treats the official [`modelcontextprotocol/csharp-sdk`](https://github.com/modelcontextprotocol/csharp-sdk) as its MCP protocol baseline. The package uses SDK `2.2.0` and leaves protocol negotiation to that SDK. Gateway-created and caller-provided clients remain usable at any protocol version the SDK successfully negotiates, and exported servers accept the protocol versions supported by the SDK unless the application explicitly configures one. The gateway does not apply a second version gate. The shipped gateway surface includes aggregated MCP tools, prompts, and resources; per-request subscriptions; SDK Tasks and Apps extensions; cache-aware results; and task-backed tool execution.
 
 ## Install
+
+Install the latest stable release from [NuGet](https://www.nuget.org/packages/ManagedCode.MCPGateway):
 
 ```bash
 dotnet add package ManagedCode.MCPGateway
@@ -599,7 +602,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges gateway-ranked graph candidate results as supporting evidence. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in that candidate fallback so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Large catalogs use a bounded candidate-backed schema path instead of an unbounded full-graph SPARQL pass. The `0.2.8` graph engine deduplicates repeated catalog documents, symmetric related edges, topics, entities, and assertions while keeping confidence values bounded, so repeated file/custom-document inputs do not inflate the graph or exported JSON-LD.
+Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges gateway-ranked graph candidate results as supporting evidence. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in that candidate fallback so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Large catalogs use a bounded candidate-backed schema path instead of an unbounded full-graph SPARQL pass. The graph engine deduplicates repeated catalog documents, symmetric related edges, topics, entities, and assertions while keeping confidence values bounded, so repeated file/custom-document inputs do not inflate the graph or exported JSON-LD.
 
 ```csharp
 services.AddMcpGateway(options =>
