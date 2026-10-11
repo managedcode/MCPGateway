@@ -1164,3 +1164,18 @@ dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/Man
 ```
 
 Exact tool names and tool IDs retain their schema-backed graph match in hybrid discovery; unrelated ranked candidates cannot displace an exact identity. Natural-language queries continue to use hybrid ranking.
+
+
+## CLI
+
+Install the separate NuGet .NET tool:
+
+```bash
+dotnet tool install --global mcpgateway
+mcpgateway --help
+mcpgateway tools search "weather forecast" --endpoint https://gateway.example.com/mcp
+mcpgateway tools schema weather_lookup --endpoint https://gateway.example.com/mcp
+mcpgateway tools call weather_lookup --arguments-file request.json --output result.json
+```
+
+Set `MCPGATEWAY_ENDPOINT` to omit `--endpoint`; authenticated endpoints use the bearer token from `MCPGATEWAY_TOKEN`. The server enforces its own gateway policy. Output is JSON, diagnostics use stderr, existing output files are never overwritten, and cancellation exits with code 130. Tool errors exit with code 2; connection, input, or file errors exit with code 1. CLI publication is independent through `publish-cli.yml`.

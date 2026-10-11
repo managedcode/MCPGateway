@@ -1,0 +1,25 @@
+name: Publish MCPGateway CLI
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'cli-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Pack NuGet CLI
+        run: dotnet pack src/ManagedCode.MCPGateway.Cli/ManagedCode.MCPGateway.Cli.csproj -c Release -o artifacts/cli
+      - name: Publish NuGet CLI
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: dotnet nuget push artifacts/cli/mcpgateway.*.nupkg --source https://api.nuget.org/v3/index.json --api-key "$NUGET_API_KEY" --skip-duplicate

@@ -31,6 +31,14 @@
     <EnablePackageValidation>true</EnablePackageValidation>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(MSBuildProjectName)' == 'ManagedCode.MCPGateway.Cli'">
+    <Version>0.1.0</Version>
+    <PackageVersion>$(Version)</PackageVersion>
+    <PackageId>mcpgateway</PackageId>
+    <Description>Command-line MCP gateway discovery, schema inspection, and invocation using the official MCP .NET SDK.</Description>
+    <PackageTags>mcp;mcpgateway;dotnet-tool;cli;model-context-protocol</PackageTags>
+  </PropertyGroup>
+
   <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true' or '$(CI)' == 'true' or '$(TF_BUILD)' == 'true'">
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
   </PropertyGroup>

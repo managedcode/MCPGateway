@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/ManagedCode.MCPGateway/ManagedCode.MCPGateway.csproj" />
+    <Project Path="src/ManagedCode.MCPGateway.Cli/ManagedCode.MCPGateway.Cli.csproj" />
   </Folder>
   <Folder Name="/benchmarks/">
     <Project Path="benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj" />
