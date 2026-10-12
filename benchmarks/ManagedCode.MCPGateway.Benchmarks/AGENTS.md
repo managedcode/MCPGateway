@@ -17,6 +17,7 @@ Parent: `../../AGENTS.md`
 - `McpGatewayIndexBuildBenchmarks.cs`
 - `McpGatewaySearchBenchmarks.cs`
 - `McpGatewayToolSetBenchmarks.cs`
+- `McpGatewayProfilingWorkload.cs` (`--profile`, real benchmark catalog with bounded stdin phases)
 
 ## Boundaries
 

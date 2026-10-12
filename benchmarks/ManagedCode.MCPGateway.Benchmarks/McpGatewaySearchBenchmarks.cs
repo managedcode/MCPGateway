@@ -57,4 +57,25 @@ public class McpGatewaySearchBenchmarks
         );
         return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
     }
+    [Benchmark]
+    public async Task<int> SearchExactIdentityGraph()
+    {
+        var result = await _host.Gateway.SearchAsync(BenchmarkCatalog.ExactQuery, maxResults: 5);
+        return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
+    }
+
+    [Benchmark]
+    public async Task<int> SearchNoMatchGraph()
+    {
+        var result = await _host.Gateway.SearchAsync(BenchmarkCatalog.MissingQuery, maxResults: 5);
+        return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
+    }
+
+    [Benchmark]
+    public async Task<int> SearchNoMatchGraphTool()
+    {
+        var result = await _host.ToolSet.SchemaGraphSearchAsync(BenchmarkCatalog.MissingQuery, maxResults: 5);
+        return result.Matches.Count + result.RelatedMatches.Count + result.NextStepMatches.Count;
+    }
+
 }

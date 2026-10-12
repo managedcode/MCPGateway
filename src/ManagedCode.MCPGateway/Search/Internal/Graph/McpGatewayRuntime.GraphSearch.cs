@@ -205,9 +205,10 @@ internal sealed partial class McpGatewayRuntime
                 cancellationToken
             )
             .ConfigureAwait(false);
-        var schemaFocusedSearch = CreateFocusedGraphSearchFromSchema(graphIndex, schemaSearch);
+        var schemaFocusedSearch = new FocusedGraphSearch(schemaSearch.Result, usedSchemaSearch: true);
 
         if (schemaSearch.UsedExactIdentity
+            || _graphSchemaSearchProfile?.CandidateNodeIds is not null
             || _markdownLdGraphSearchMode == McpGatewayMarkdownLdGraphSearchMode.SchemaAware)
         {
             return schemaFocusedSearch;
@@ -472,7 +473,6 @@ internal sealed partial class McpGatewayRuntime
 
     private sealed record SchemaGraphSearch(
         KnowledgeGraphSchemaSearchResult Result,
-        bool UsedCandidateGraph,
         bool UsedExactIdentity = false
     );
 

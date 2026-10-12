@@ -78,11 +78,17 @@ internal static class Program
     private static async Task<int> RunAsync(string[] args, CancellationToken cancellationToken)
     {
         if (args.Length < 3 || args[0] != ToolsCommand || args[1] is not (SearchCommand or SchemaCommand or CallCommand))
+        {
             throw new ArgumentException(InvalidCommandMessage);
+        }
+
         var options = ParseOptions(args);
         var endpointText = options.GetValueOrDefault(EndpointOption) ?? Environment.GetEnvironmentVariable(EndpointEnvironment);
         if (!Uri.TryCreate(endpointText, UriKind.Absolute, out var endpoint) || (endpoint.Scheme != Uri.UriSchemeHttps && endpoint.Scheme != Uri.UriSchemeHttp))
+        {
             throw new ArgumentException(InvalidEndpointMessage);
+        }
+
         var token = Environment.GetEnvironmentVariable(TokenEnvironment);
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
@@ -103,7 +109,11 @@ internal static class Program
             await using var writer = new StreamWriter(stream);
             await writer.WriteAsync(json.AsMemory(), cancellationToken);
         }
-        else await Console.Out.WriteLineAsync(json);
+        else
+        {
+            await Console.Out.WriteLineAsync(json);
+        }
+
         return output is CallToolResult { IsError: true } ? 2 : 0;
     }
 
@@ -113,7 +123,9 @@ internal static class Program
         for (var index = 3; index < args.Length; index += 2)
         {
             if (index + 1 >= args.Length || args[index] is not (EndpointOption or ArgumentsFileOption or OutputOption) || !options.TryAdd(args[index], args[index + 1]))
+            {
                 throw new ArgumentException(InvalidCommandMessage);
+            }
         }
         return options;
     }
@@ -123,7 +135,10 @@ internal static class Program
         var tools = await client.ListToolsAsync(cancellationToken: cancellationToken);
         var schemaTool = tools.FirstOrDefault(tool => tool.Name == SchemaTool);
         if (schemaTool is not null)
+        {
             return await schemaTool.CallAsync(new Dictionary<string, object?> { [ToolIdArgument] = toolId }, cancellationToken: cancellationToken);
+        }
+
         return tools.FirstOrDefault(tool => string.Equals(tool.Name, toolId, StringComparison.OrdinalIgnoreCase))?.ProtocolTool
             ?? throw new ArgumentException(InvalidCommandMessage);
     }
@@ -138,7 +153,8 @@ internal static class Program
         }
         return await client.CallToolAsync(InvokeTool, new Dictionary<string, object?>
         {
-            [ToolIdArgument] = toolId, [ArgumentsArgument] = arguments,
+            [ToolIdArgument] = toolId,
+            [ArgumentsArgument] = arguments,
         }, cancellationToken: cancellationToken);
     }
 }

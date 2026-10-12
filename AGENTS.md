@@ -108,6 +108,17 @@ If no new rule is detected -> do not update the file.
 - If a local rule appears weaker than the root policy, stop and clarify it before editing code.
 - Record justified exceptions in the nearest durable doc such as a local `AGENTS.md`, ADR, or feature doc.
 
+### ManagedCode Dependency Ownership and Delivery
+
+- Treat `ManagedCode.*` projects and packages as owned dependencies: locate the sibling source repository, read its `AGENTS.md`, and repair defects there instead of duplicating implementation or hiding defects with consumer workarounds.
+- Carry dependency repairs through focused regression tests, required owner checks, the canonical patch-version mechanism, a scoped commit and push, successful GitHub release, and verification of the published NuGet version before updating the consumer and running consumer regressions. These scoped dependency delivery actions have standing user authorization; preserve unrelated work and never force-push or bypass protections.
+- Report the exact blocker when dependency source, credentials, permissions, or publication infrastructure are unavailable; unpublished local packages and temporary project references do not constitute delivery.
+
+### Git Workflow
+
+- Never run `git stash` or enable automatic stashing; keep working-tree changes visible.
+- When asked to commit all current changes, commit the full requested scope on the checked-out branch without silently omitting changes or moving them to another branch.
+
 ### Project AGENTS Policy
 
 - Keep one root `AGENTS.md` plus one local `AGENTS.md` in each project or module root that needs tighter scope.
@@ -137,6 +148,8 @@ If no new rule is detected -> do not update the file.
 
 ### Task Delivery (ALL TASKS)
 
+- Keep official dotNetRDF packages as the RDF/SPARQL foundation; report confirmed engine defects upstream with a reproducible issue, and implement performance fixes in our owning library instead of forking or replacing dotNetRDF.
+- Keep profiling workloads and artifacts in the owning repository directories; never create temporary directories, worktrees, or scratch checkouts for this work, because the user requires visible work in the current checkout.
 - Start from `docs/Architecture/Overview.md` and the nearest project-local `AGENTS.md` for every non-trivial task.
 - Treat `docs/Architecture/Overview.md` as the architecture map for this solution; if it becomes stale for the changed area, update it in the same task.
 - Always keep package and project identity as `ManagedCode.MCPGateway`.

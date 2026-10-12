@@ -78,9 +78,10 @@ internal sealed partial class McpGatewayRuntime
                 .ConfigureAwait(false);
             return MapGraphSearchResult(
                 graphIndex,
-                schemaSearch,
+                schemaSearch.Result,
                 diagnostics,
-                scoreContext
+                scoreContext,
+                isFederated: false
             );
         }
         catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
@@ -236,42 +237,6 @@ internal sealed partial class McpGatewayRuntime
 
     private static McpGatewayGraphSearchResult MapGraphSearchResult(
         ToolGraphSearchIndex graphIndex,
-        SchemaGraphSearch schemaSearch,
-        IReadOnlyList<McpGatewayDiagnostic> diagnostics,
-        SearchScoreContext scoreContext
-    )
-    {
-        if (!schemaSearch.UsedCandidateGraph)
-        {
-            return MapGraphSearchResult(
-                graphIndex,
-                schemaSearch.Result,
-                diagnostics,
-                scoreContext,
-                isFederated: false
-            );
-        }
-
-        var focusedSearch = CreateFocusedGraphSearchFromSchema(graphIndex, schemaSearch);
-        var result = schemaSearch.Result;
-        return new McpGatewayGraphSearchResult(
-            MapGraphSearchMatches(graphIndex, result.Matches, scoreContext),
-            MapFocusedGraphSearchMatches(graphIndex, focusedSearch.RelatedMatches, scoreContext),
-            MapFocusedGraphSearchMatches(graphIndex, focusedSearch.NextStepMatches, scoreContext),
-            diagnostics,
-            IsFederated: false
-        )
-        {
-            GeneratedSparql = result.GeneratedSparql,
-            GeneratedExpansionSparql = result.GeneratedExpansionSparql,
-            ServiceEndpointSpecifiers = result.ServiceEndpointSpecifiers,
-            FocusedGraphNodeCount = focusedSearch.FocusedGraph.Nodes.Count,
-            FocusedGraphEdgeCount = focusedSearch.FocusedGraph.Edges.Count,
-        };
-    }
-
-    private static McpGatewayGraphSearchResult MapGraphSearchResult(
-        ToolGraphSearchIndex graphIndex,
         KnowledgeGraphSchemaSearchResult result,
         IReadOnlyList<McpGatewayDiagnostic> diagnostics,
         SearchScoreContext scoreContext,
@@ -308,22 +273,6 @@ internal sealed partial class McpGatewayRuntime
         return mappedMatches.ToArray();
     }
 
-    private static IReadOnlyList<McpGatewayGraphSearchMatch> MapFocusedGraphSearchMatches(
-        ToolGraphSearchIndex graphIndex,
-        IEnumerable<KnowledgeGraphFocusedSearchMatch> matches,
-        SearchScoreContext scoreContext
-    )
-    {
-        var mappedMatches = new List<McpGatewayGraphSearchMatch>();
-        foreach (var match in matches)
-        {
-            mappedMatches.Add(MapFocusedGraphSearchMatch(graphIndex, match, scoreContext));
-        }
-
-        mappedMatches.Sort(CompareGraphSearchMatches);
-        return mappedMatches.ToArray();
-    }
-
     private static int CompareGraphSearchMatches(
         McpGatewayGraphSearchMatch left,
         McpGatewayGraphSearchMatch right
@@ -335,27 +284,6 @@ internal sealed partial class McpGatewayRuntime
         return scoreComparison != 0
             ? scoreComparison
             : string.Compare(left.Label, right.Label, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static McpGatewayGraphSearchMatch MapFocusedGraphSearchMatch(
-        ToolGraphSearchIndex graphIndex,
-        KnowledgeGraphFocusedSearchMatch match,
-        SearchScoreContext scoreContext
-    )
-    {
-        var toolMatch = TryCreateFocusedGraphToolSearchMatch(graphIndex, match, scoreContext);
-        return new McpGatewayGraphSearchMatch(
-            match.NodeId,
-            match.Label,
-            match.Role.ToString(),
-            Math.Clamp(match.Score, SearchScoreMinimum, SearchScoreMaximum),
-            [],
-            []
-        )
-        {
-            SourceNodeId = match.SourceNodeId,
-            ToolMatch = toolMatch,
-        };
     }
 
     private static McpGatewayGraphSearchMatch MapGraphSearchMatch(
@@ -433,29 +361,6 @@ internal sealed partial class McpGatewayRuntime
     )
     {
         if (!TryResolveGraphToolEntry(graphIndex, match, out var entry))
-        {
-            return null;
-        }
-
-        var score = CalibrateGraphConfidence(
-            entry,
-            scoreContext,
-            ApplySearchBoosts(
-                entry,
-                scoreContext,
-                Math.Clamp(match.Score, SearchScoreMinimum, SearchScoreMaximum)
-            )
-        );
-        return ToSearchMatch(entry, score);
-    }
-
-    private static McpGatewaySearchMatch? TryCreateFocusedGraphToolSearchMatch(
-        ToolGraphSearchIndex graphIndex,
-        KnowledgeGraphFocusedSearchMatch match,
-        SearchScoreContext scoreContext
-    )
-    {
-        if (!graphIndex.EntriesByNodeId.TryGetValue(match.NodeId, out var entry))
         {
             return null;
         }

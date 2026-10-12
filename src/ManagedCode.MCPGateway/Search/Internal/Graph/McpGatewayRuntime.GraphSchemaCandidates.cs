@@ -16,43 +16,25 @@ internal sealed partial class McpGatewayRuntime
             .Where(entry => string.Equals(entry.Value.Descriptor.ToolId, toolQuery, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(entry.Value.Descriptor.ToolName, toolQuery, StringComparison.OrdinalIgnoreCase))
             .Select(entry => entry.Key).ToHashSet(StringComparer.Ordinal);
-        if (exactNodeIds.Count == 0 && !ShouldUseCandidateSchemaSearch(graphIndex))
+        if (profile.CandidateNodeIds is null)
         {
-            var result = await graphIndex
-                    .Graph.SearchBySchemaAsync(schemaQuery, profile, cancellationToken)
-                    .ConfigureAwait(false);
-            return new SchemaGraphSearch(result, UsedCandidateGraph: false);
+            if (exactNodeIds.Count > 0)
+            {
+                profile = profile with { CandidateNodeIds = exactNodeIds };
+            }
+            else if (ShouldUseCandidateSchemaSearch(graphIndex))
+            {
+                profile = profile with
+                {
+                    CandidateNodeIds = SelectSchemaCandidateNodeIds(graphIndex, schemaQuery, profile.MaxResults, cancellationToken)
+                };
+            }
         }
 
-        var candidateNodeIds = exactNodeIds.Count > 0 ? exactNodeIds : SelectSchemaCandidateNodeIds(
-            graphIndex,
-            schemaQuery,
-            profile.MaxResults,
-            cancellationToken
-        );
-        var candidateSnapshot = BuildSchemaCandidateGraphSnapshot(graphIndex, candidateNodeIds);
-        using var candidateGraph = KnowledgeGraph.FromSnapshot(candidateSnapshot);
-        var candidateResult = await candidateGraph
+        var result = await graphIndex.Graph
                 .SearchBySchemaAsync(schemaQuery, profile, cancellationToken)
                 .ConfigureAwait(false);
-        return new SchemaGraphSearch(candidateResult, UsedCandidateGraph: true, UsedExactIdentity: exactNodeIds.Count > 0);
-    }
-
-    private static FocusedGraphSearch CreateFocusedGraphSearchFromSchema(
-        ToolGraphSearchIndex graphIndex,
-        SchemaGraphSearch schemaSearch
-    )
-    {
-        if (!schemaSearch.UsedCandidateGraph)
-        {
-            return new FocusedGraphSearch(schemaSearch.Result, usedSchemaSearch: true);
-        }
-
-        var primary = ToFocusedGraphMatches(schemaSearch.Result.Matches);
-        var related = ResolveRankedRelatedMatches(graphIndex, primary);
-        var nextSteps = ResolveRankedNextStepMatches(graphIndex, primary);
-        var focusedGraph = BuildRankedFocusedGraph(graphIndex, primary, related, nextSteps);
-        return new FocusedGraphSearch(primary, related, nextSteps, focusedGraph, true);
+        return new SchemaGraphSearch(result, UsedExactIdentity: exactNodeIds.Count > 0);
     }
 
     private static bool ShouldUseCandidateSchemaSearch(ToolGraphSearchIndex graphIndex) =>
@@ -91,77 +73,6 @@ internal sealed partial class McpGatewayRuntime
 
     private static int CalculateSchemaCandidateLimit(int limit, int rankedCount) =>
         Math.Min(rankedCount, Math.Max(limit, GraphSchemaCandidateMinimumWindow));
-
-    private static KnowledgeGraphSnapshot BuildSchemaCandidateGraphSnapshot(
-        ToolGraphSearchIndex graphIndex,
-        IReadOnlySet<string> candidateNodeIds
-    )
-    {
-        if (candidateNodeIds.Count == 0)
-        {
-            return KnowledgeGraphSnapshot.Empty;
-        }
-
-        var subjectIds = new HashSet<string>(candidateNodeIds, StringComparer.Ordinal);
-        foreach (var candidateNodeId in candidateNodeIds)
-        {
-            if (
-                !graphIndex.Navigation.EdgesBySubject.TryGetValue(
-                    candidateNodeId,
-                    out var candidateEdges
-                )
-            )
-            {
-                continue;
-            }
-
-            foreach (var edge in candidateEdges)
-            {
-                if (!graphIndex.SearchableNodeIds.Contains(edge.ObjectId))
-                {
-                    subjectIds.Add(edge.ObjectId);
-                }
-            }
-        }
-
-        var edges = new List<KnowledgeGraphEdge>();
-        foreach (var subjectId in subjectIds)
-        {
-            if (!graphIndex.Navigation.EdgesBySubject.TryGetValue(subjectId, out var subjectEdges))
-            {
-                continue;
-            }
-
-            foreach (var edge in subjectEdges)
-            {
-                if (
-                    !graphIndex.SearchableNodeIds.Contains(edge.ObjectId)
-                    || candidateNodeIds.Contains(edge.ObjectId)
-                )
-                {
-                    edges.Add(edge);
-                }
-            }
-        }
-
-        var nodeIds = new HashSet<string>(subjectIds, StringComparer.Ordinal);
-        foreach (var edge in edges)
-        {
-            nodeIds.Add(edge.SubjectId);
-            nodeIds.Add(edge.ObjectId);
-        }
-
-        var nodes = new List<KnowledgeGraphNode>(nodeIds.Count);
-        foreach (var nodeId in nodeIds)
-        {
-            if (graphIndex.NodesById.TryGetValue(nodeId, out var node))
-            {
-                nodes.Add(node);
-            }
-        }
-
-        return new KnowledgeGraphSnapshot(nodes, edges);
-    }
 
     private static bool CanUseRankedCandidateGraphSearch(ToolGraphSearchIndex graphIndex) =>
         graphIndex.CandidateSearch.Entries.Count > 0;

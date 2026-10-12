@@ -8,6 +8,8 @@ namespace ManagedCode.MCPGateway.Benchmarks;
 internal static class BenchmarkCatalog
 {
     public const int ToolCount = 120;
+    public const string MissingQuery = "satellite coffee roasting";
+    public const string ExactQuery = "weather_dispatch_specialist";
     public const string WeatherQuery = "umbrella planning for region seven";
     public const string PortfolioQuery = "brokerage holdings snapshot for acme";
     public const string ArchiveQuery = "genealogy record archive lookup";

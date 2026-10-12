@@ -1,0 +1,235 @@
+diff --git a/src/ManagedCode.MCPGateway/Discovery/McpGatewayToolSet.cs b/src/ManagedCode.MCPGateway/Discovery/McpGatewayToolSet.cs
+index 7f5d2b4..43da12c 100644
+--- a/src/ManagedCode.MCPGateway/Discovery/McpGatewayToolSet.cs
++++ b/src/ManagedCode.MCPGateway/Discovery/McpGatewayToolSet.cs
+@@ -161,6 +161,16 @@ public sealed class McpGatewayToolSet
+         IReadOnlyCollection<string>? reservedToolNames = null,
+         int? maxTools = null
+     )
++    {
++        return CreateDiscoveredTools(matches, McpGatewayDiscoveredToolMode.ArgumentEnvelope, reservedToolNames, maxTools);
++    }
++
++    public IReadOnlyList<AITool> CreateDiscoveredTools(
++        IEnumerable<McpGatewaySearchMatch> matches,
++        McpGatewayDiscoveredToolMode mode,
++        IReadOnlyCollection<string>? reservedToolNames = null,
++        int? maxTools = null
++    )
+     {
+         ArgumentNullException.ThrowIfNull(matches);
+
+@@ -193,7 +203,9 @@ public sealed class McpGatewayToolSet
+             }
+
+             var functionName = McpGatewayDiscoveredToolNaming.CreateName(match, reservedNames);
+-            discoveredTools.Add(CreateDiscoveredTool(match, functionName));
++            discoveredTools.Add(mode == McpGatewayDiscoveredToolMode.Schema
++                ? new McpGatewaySchemaFunction(_gateway, match, functionName)
++                : CreateDiscoveredTool(match, functionName));
+         }
+
+         return discoveredTools;
+diff --git a/src/ManagedCode.MCPGateway/Gateway/Registration/McpGatewayServiceCollectionExtensions.cs b/src/ManagedCode.MCPGateway/Gateway/Registration/McpGatewayServiceCollectionExtensions.cs
+index 5848c7e..7cfcb50 100644
+--- a/src/ManagedCode.MCPGateway/Gateway/Registration/McpGatewayServiceCollectionExtensions.cs
++++ b/src/ManagedCode.MCPGateway/Gateway/Registration/McpGatewayServiceCollectionExtensions.cs
+@@ -42,6 +42,7 @@ public static class McpGatewayServiceCollectionExtensions
+         services.TryAddSingleton<IMcpGatewayPromptCatalog, McpGatewayPromptCatalog>();
+         services.TryAddSingleton<IMcpGatewayResourceCatalog, McpGatewayResourceCatalog>();
+         services.TryAddSingleton<IMcpGatewayFactory, McpGatewayFactory>();
++        services.TryAddSingleton<McpGatewayDiscovery>();
+         services.TryAddSingleton(static serviceProvider =>
+         {
+             var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
+diff --git a/src/ManagedCode.MCPGateway/Catalog/Internal/Descriptors/McpGatewayDefinitionFingerprint.cs b/src/ManagedCode.MCPGateway/Catalog/Internal/Descriptors/McpGatewayDefinitionFingerprint.cs
+new file mode 100644
+--- /dev/null
++++ b/src/ManagedCode.MCPGateway/Catalog/Internal/Descriptors/McpGatewayDefinitionFingerprint.cs
+@@ -0,0 +1,35 @@
++using System.Security.Cryptography;
++using System.Text;
++using System.Text.Json;
++using System.Text.Json.Nodes;
++
++namespace ManagedCode.MCPGateway;
++
++public static class McpGatewayDefinitionFingerprint
++{
++    private const string UnserializableDefinitionMessage = "Catalog definition cannot be serialized.";
++    public static string Compute(object definition)
++    {
++        ArgumentNullException.ThrowIfNull(definition);
++        var node = McpGatewayJsonSerializer.TrySerializeToNode(definition) ?? throw new JsonException(UnserializableDefinitionMessage);
++        var canonical = Canonicalize(node);
++        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical.ToJsonString(McpGatewayJsonSerializer.Options))));
++    }
++
++    private static JsonNode Canonicalize(JsonNode node)
++    {
++        if (node is JsonObject obj)
++        {
++            var sorted = new JsonObject();
++            foreach (var pair in obj.OrderBy(static item => item.Key, StringComparer.Ordinal)) sorted[pair.Key] = pair.Value is null ? null : Canonicalize(pair.Value);
++            return sorted;
++        }
++        if (node is JsonArray array)
++        {
++            var result = new JsonArray();
++            foreach (var item in array) result.Add(item is null ? null : Canonicalize(item));
++            return result;
++        }
++        return node.DeepClone();
++    }
++}
+diff --git a/src/ManagedCode.MCPGateway/Discovery/Internal/McpGatewaySchemaFunction.cs b/src/ManagedCode.MCPGateway/Discovery/Internal/McpGatewaySchemaFunction.cs
+new file mode 100644
+--- /dev/null
++++ b/src/ManagedCode.MCPGateway/Discovery/Internal/McpGatewaySchemaFunction.cs
+@@ -0,0 +1,26 @@
++using System.Text.Json;
++using ManagedCode.MCPGateway.Abstractions;
++using Microsoft.Extensions.AI;
++
++namespace ManagedCode.MCPGateway;
++
++internal sealed class McpGatewaySchemaFunction(IMcpGateway gateway, McpGatewaySearchMatch match, string functionName) : AIFunction
++{
++    private const string MissingSchemaMessage = "A schema-preserving discovered tool requires an input schema.";
++    private readonly JsonElement _schema = match.InputSchema?.Clone() ?? throw new InvalidOperationException(MissingSchemaMessage);
++    public override string Name => functionName;
++    public override string Description => match.Description;
++    public override JsonElement JsonSchema => _schema;
++    public override JsonSerializerOptions JsonSerializerOptions => McpGatewayJsonSerializer.Options;
++    public override IReadOnlyDictionary<string, object?> AdditionalProperties { get; } = new Dictionary<string, object?>
++    {
++        [McpGatewayToolSet.DiscoveredToolIdPropertyName] = match.ToolId,
++        [McpGatewayToolSet.DiscoveredToolSourceIdPropertyName] = match.SourceId,
++    };
++
++    protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
++    {
++        var result = await gateway.InvokeAsync(new McpGatewayInvokeRequest(ToolId: match.ToolId, Arguments: arguments), cancellationToken).ConfigureAwait(false);
++        return McpGatewayJsonSerializer.TrySerializeToElement(result);
++    }
++}
+diff --git a/src/ManagedCode.MCPGateway/Discovery/McpGatewayDiscovery.cs b/src/ManagedCode.MCPGateway/Discovery/McpGatewayDiscovery.cs
+new file mode 100644
+--- /dev/null
++++ b/src/ManagedCode.MCPGateway/Discovery/McpGatewayDiscovery.cs
+@@ -0,0 +1,62 @@
++using System.Text;
++using ManagedCode.MCPGateway.Abstractions;
++
++namespace ManagedCode.MCPGateway;
++
++public sealed class McpGatewayDiscovery(IMcpGateway gateway)
++{
++    private const int MaximumSummaryCharacters = 512;
++    private const string SchemaNotFoundMessage = "Tool schema is unavailable.";
++
++    public async Task<McpGatewayToolSchema?> GetSchemaAsync(string toolId, CancellationToken cancellationToken = default)
++    {
++        ArgumentException.ThrowIfNullOrWhiteSpace(toolId);
++        var descriptors = await gateway.ListToolsAsync(cancellationToken).ConfigureAwait(false);
++        var descriptor = descriptors.FirstOrDefault(tool => string.Equals(tool.ToolId, toolId, StringComparison.OrdinalIgnoreCase));
++        if (descriptor is null) return null;
++        if (descriptor.InputSchema.ValueKind == System.Text.Json.JsonValueKind.Undefined) throw new InvalidOperationException(SchemaNotFoundMessage);
++        return new(descriptor.ToolId, descriptor.SourceId, descriptor.InputSchema.Clone(), descriptor.OutputSchema?.Clone(), McpGatewayDefinitionFingerprint.Compute(descriptor.InputSchema));
++    }
++
++    public async Task<McpGatewayDiscoveryResult> SearchAsync(McpGatewayDiscoveryRequest request, CancellationToken cancellationToken = default)
++    {
++        ArgumentNullException.ThrowIfNull(request);
++        ArgumentOutOfRangeException.ThrowIfLessThan(request.MaxBytes, McpGatewayDiscoveryRequest.MinimumMaximumBytes);
++        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(request.MaxResults);
++        var search = await gateway.SearchAsync(new McpGatewaySearchRequest(request.Query, request.MaxResults)
++        {
++            SourceId = request.SourceId,
++            Category = request.Category,
++        }, cancellationToken).ConfigureAwait(false);
++        var primary = new List<McpGatewayToolSummary>();
++        var related = new List<McpGatewayToolSummary>();
++        var nextSteps = new List<McpGatewayToolSummary>();
++        var result = new McpGatewayDiscoveryResult(primary, related, nextSteps, false);
++        var omitted = AddSummaries(search.Matches, primary, result, request.MaxBytes);
++        omitted |= AddSummaries(search.RelatedMatches, related, result, request.MaxBytes);
++        omitted |= AddSummaries(search.NextStepMatches, nextSteps, result, request.MaxBytes);
++        result = result with { HasMore = omitted };
++        for (var iteration = 0; iteration < 3; iteration++) result = result with { DeliveredBytes = Measure(result) };
++        return result;
++    }
++
++    private static bool AddSummaries(IReadOnlyList<McpGatewaySearchMatch> matches, List<McpGatewayToolSummary> target, McpGatewayDiscoveryResult result, int budget)
++    {
++        var omitted = false;
++        foreach (var match in matches)
++        {
++            var length = Math.Min(match.Description.Length, MaximumSummaryCharacters);
++            if (length > 0 && char.IsHighSurrogate(match.Description[length - 1])) length--;
++            target.Add(new(match.ToolId, match.SourceId, match.Description[..length], match.Score)
++            { IsReadOnly = match.IsReadOnly, IsDestructive = match.IsDestructive });
++            if (Measure(result with { HasMore = true, DeliveredBytes = budget }) > budget)
++            {
++                target.RemoveAt(target.Count - 1);
++                omitted = true;
++            }
++        }
++        return omitted;
++    }
++
++    private static int Measure(McpGatewayDiscoveryResult result) => Encoding.UTF8.GetByteCount(McpGatewayJsonSerializer.TrySerializeToElement(result)!.Value.GetRawText());
++}
+diff --git a/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayDiscoveryRequest.cs b/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayDiscoveryRequest.cs
+new file mode 100644
+--- /dev/null
++++ b/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayDiscoveryRequest.cs
+@@ -0,0 +1,11 @@
++namespace ManagedCode.MCPGateway;
++
++public sealed record McpGatewayDiscoveryRequest(string? Query = null)
++{
++    public const int DefaultMaximumBytes = 16 * 1024;
++    public const int MinimumMaximumBytes = 1024;
++    public int MaxResults { get; init; } = McpGatewayOptions.DefaultSearchLimitValue;
++    public int MaxBytes { get; init; } = DefaultMaximumBytes;
++    public string? SourceId { get; init; }
++    public string? Category { get; init; }
++}
+diff --git a/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayDiscoveryResult.cs b/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayDiscoveryResult.cs
+new file mode 100644
+--- /dev/null
++++ b/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayDiscoveryResult.cs
+@@ -0,0 +1,16 @@
++namespace ManagedCode.MCPGateway;
++
++public sealed record McpGatewayToolSummary(string ToolId, string SourceId, string Description, double Score)
++{
++    public bool? IsReadOnly { get; init; }
++    public bool? IsDestructive { get; init; }
++}
++
++public sealed record McpGatewayDiscoveryResult(
++    IReadOnlyList<McpGatewayToolSummary> Matches,
++    IReadOnlyList<McpGatewayToolSummary> RelatedMatches,
++    IReadOnlyList<McpGatewayToolSummary> NextStepMatches,
++    bool HasMore)
++{
++    public int DeliveredBytes { get; init; }
++}
+diff --git a/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayToolSchema.cs b/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayToolSchema.cs
+new file mode 100644
+--- /dev/null
++++ b/src/ManagedCode.MCPGateway/Discovery/Models/McpGatewayToolSchema.cs
+@@ -0,0 +1,11 @@
++using System.Text.Json;
++
++namespace ManagedCode.MCPGateway;
++
++public sealed record McpGatewayToolSchema(string ToolId, string SourceId, JsonElement InputSchema, JsonElement? OutputSchema, string SchemaHash);
++
++public enum McpGatewayDiscoveredToolMode
++{
++    ArgumentEnvelope,
++    Schema,
++}

@@ -602,7 +602,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges gateway-ranked graph candidate results as supporting evidence. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in that candidate fallback so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Large catalogs use a bounded candidate-backed schema path instead of an unbounded full-graph SPARQL pass. The graph engine deduplicates repeated catalog documents, symmetric related edges, topics, entities, and assertions while keeping confidence values bounded, so repeated file/custom-document inputs do not inflate the graph or exported JSON-LD.
+Use it when you want deterministic Markdown-LD graph retrieval with related and next-step expansion. The default graph mode is schema-aware `Hybrid`: it asks `ManagedCode.MarkdownLd.Kb` to generate and execute schema-scoped SPARQL against the tool graph, then merges gateway-ranked graph candidate results as supporting evidence. If schema search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in that candidate fallback so typo-heavy queries such as `trak shipmnt` can still map to shipment-tracking tools without embeddings. Large catalogs bind a bounded candidate subject set through `VALUES` on the existing graph. A caller-supplied schema profile `CandidateNodeIds` is preserved as the explicit candidate pool; null enables normal gateway selection, while an empty collection matches no primary subjects. An explicit pool keeps schema results authoritative in Hybrid mode too, so secondary ranking or fuzzy fallback cannot introduce primary tools outside that pool. This retrieval filter is not an authorization boundary. The graph engine deduplicates repeated catalog documents, symmetric related edges, topics, entities, and assertions while keeping confidence values bounded, so repeated file/custom-document inputs do not inflate the graph or exported JSON-LD.
 
 ```csharp
 services.AddMcpGateway(options =>
@@ -612,7 +612,7 @@ services.AddMcpGateway(options =>
 });
 ```
 
-Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes form the candidate graph for real schema-aware SPARQL, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Related and next-step evidence still comes from the complete graph.
+Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes bind subject `VALUES` in real schema-aware SPARQL on the existing graph, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Relationship evidence and related/next-step expansion use the same complete graph; search does not reconstruct a candidate graph.
 
 If a host wants to force only the schema-aware SPARQL path or explicitly use the older lower-level token-distance graph path:
 
@@ -1096,19 +1096,24 @@ Run focused BenchmarkDotNet commands one at a time so generated benchmark build 
 
 CI runs the full BenchmarkDotNet suite with `--filter "*"` after the build/test gate and uploads the complete benchmark reports as `benchmark-results`. The release workflow also runs the full suite before package creation and uploads `release-benchmark-results`. These benchmark jobs are intentionally not smoke tests or reduced benchmark subsets.
 
-Latest full local BenchmarkDotNet snapshot on May 4, 2026, Apple M2 Pro, .NET SDK `10.0.201`, runtime `.NET 10.0.5`. Benchmark setup, cleanup, and measured async paths run async end-to-end without sync-over-async blocking:
+Latest full local BenchmarkDotNet snapshot on October 12, 2026, Apple M2 Pro, .NET SDK `10.0.401`, runtime `.NET 10.0.12`, published `MarkdownLd.Kb 0.2.15`. All 12 standard-job cases completed in 17m59s with allocation statistics; async setup, cleanup and measured paths remain async end-to-end.
 
 | Scenario | Mean | Allocated |
 | --- | ---: | ---: |
-| `BuildGraphIndex` | 608.6 ms | 500.46 MB |
-| `SearchWeatherGraph` | 25.22 ms | 25.88 MB |
-| `SearchPortfolioGraph` | 24.55 ms | 26.07 MB |
-| `SearchArchiveGraph` | 122.17 ms | 108.64 MB |
-| `SearchWeatherGraphTool` | 24.40 ms | 25.92 MB |
-| `SearchArchiveGraphTool` | 111.05 ms | 108.10 MB |
-| `CreateGatewayTools` | 568.5 ns | 936 B |
-| `CreateGraphTools` | 1.094 us | 1,528 B |
-| `CreateDiscoveredTools` | 786.0 ns | 3,192 B |
+| `BuildGraphIndex` | 824.653 ms | 490.48 MiB |
+| `SearchWeatherGraph` | 18.808 ms | 9.23 MiB |
+| `SearchPortfolioGraph` | 8.766 ms | 9.19 MiB |
+| `SearchArchiveGraph` | 16.763 ms | 20.31 MiB |
+| `SearchWeatherGraphTool` | 10.878 ms | 9.23 MiB |
+| `SearchArchiveGraphTool` | 15.472 ms | 20.28 MiB |
+| `SearchExactIdentityGraph` | 12.306 ms | 15.03 MiB |
+| `SearchNoMatchGraph` | 76.846 ms | 37.49 MiB |
+| `SearchNoMatchGraphTool` | 3.353 ms | 2.98 MiB |
+| `CreateGatewayTools` | 1008.4 ns | 1.60 KiB |
+| `CreateGraphTools` | 1790.3 ns | 2.84 KiB |
+| `CreateDiscoveredTools` | 836.9 ns | 3.10 KiB |
+
+Timing dispersion is material in several cases; the full report includes standard deviations. Normal no-match search enables token-distance fallback, while the strict graph tool returns no candidates. See [graph-search profiling](docs/Performance/GatewaySearchProfiling.md) for measured bottlenecks and comparison boundaries.
 
 See [docs/Performance/Benchmarks.md](docs/Performance/Benchmarks.md) for benchmark scope and optimization policy.
 

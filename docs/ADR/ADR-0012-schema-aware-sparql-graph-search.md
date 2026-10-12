@@ -36,13 +36,13 @@ Constraints:
 
 Markdown-LD graph search in `ManagedCode.MCPGateway` will be schema-aware SPARQL-first when graph mode is hybrid or schema-aware.
 
-Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes form the candidate graph for real schema-aware SPARQL, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Related and next-step evidence still comes from the complete graph.
+Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes bind subject `VALUES` in real schema-aware SPARQL on the existing graph, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Relationship evidence and related/next-step expansion use the same complete graph; search does not reconstruct a candidate graph.
 
 Key points:
 
 - `ManagedCode.MarkdownLd.Kb` `SearchBySchemaAsync(...)` is the primary graph retrieval call for `McpGatewaySearchStrategy.Graph`.
 - `McpGatewayMarkdownLdGraphSearchMode.Hybrid` is the default graph search mode.
-- Large catalogs first use a gateway-built ranked candidate index over searchable tool node IDs to choose a bounded candidate window, then run schema-aware SPARQL over that focused graph instead of executing full-graph SPARQL for every query.
+- Large catalogs first use a gateway-built ranked candidate index over searchable tool node IDs to choose a bounded candidate window, then bind those subjects through SPARQL `VALUES` on the full graph, preserving cross-tool relationship evidence and expansion without per-query graph reconstruction.
 - Non-federated `IMcpGatewayGraphSearch.SearchGraphAsync(...)` and the built-in `gateway_graph_schema_search` tool use the same candidate-backed schema path as normal `SearchAsync(...)`.
 - Hybrid mode executes schema-aware SPARQL first and merges ranked graph candidate results as support.
 - If schema-aware search finds no mapped gateway tools, hybrid mode enables fuzzy token matching in the ranked candidate fallback.
@@ -143,7 +143,7 @@ Negative / risks:
 
 - graph search now depends on more upstream `ManagedCode.MarkdownLd.Kb` behavior
 - schema-profile drift can reduce result quality if generated graph predicates change
-- large-catalog schema search still materializes a per-query candidate graph until upstream schema search exposes a candidate filter such as `CandidateNodeIds`
+- caller-selected candidate pools control recall; their contents are retrieval constraints, not authorization
 - federated queries add endpoint and configurable timeout policy that operators must understand
 
 Mitigations:
@@ -153,7 +153,7 @@ Mitigations:
 - keep token-distance mode as an explicit compatibility option
 - keep ranked candidate/fuzzy matching inside the Markdown-LD graph path rather than exposing a separate public token strategy
 - keep ranked candidate/fuzzy use bounded by the gateway index instead of recreating upstream ranked-search artifacts per query
-- replace per-query candidate graph materialization with an upstream schema-search candidate filter when `ManagedCode.MarkdownLd.Kb` exposes one, ideally emitted as SPARQL `VALUES`
+- use the published owner schema candidate API and its SPARQL `VALUES` compiler on the original graph; preserve explicit profile candidate pools and owner validation
 - keep federation endpoints allowlisted and diagnostic-driven
 - cover local schema search, schema/profile inspection, index-build tooling, federated local graph search, graph tools, and export with tests
 
@@ -243,3 +243,22 @@ Rollback:
 - [`README.md`](../../README.md)
 - [`docs/Architecture/Overview.md`](../Architecture/Overview.md)
 - [`docs/Features/SearchQueryNormalizationAndRanking.md`](../Features/SearchQueryNormalizationAndRanking.md)
+
+### Candidate VALUES integration (2026-10-12)
+
+Use the published owner candidate profile property and reuse the indexed KnowledgeGraph. The previous reduced graph omitted relationships to searchable tools outside the candidate pool, losing real schema evidence; ranked reconstruction also omitted schema expansion metadata. Exact/large-catalog selection now binds primary subjects while the owner retrieves relationship evidence and expansion from the complete graph. An explicit caller-owned candidate pool is authoritative and reaches owner validation unchanged. Null keeps normal gateway selection and empty selects no primary subjects. When the caller supplies a pool, Hybrid returns its authoritative schema result; ranked merging and fuzzy fallback cannot introduce an out-of-pool primary tool. Three real regressions reproduce the previous bypass for selected, empty and unknown pools. Owner 0.2.14 additionally fixes overlapping expansion roles/RDF types and constant-predicate query compilation; adoption requires its actual public package.
+
+```mermaid
+flowchart LR
+    Selection[Exact identity or ranked candidates] --> Values[Owner candidate VALUES]
+    Values --> Graph[Existing indexed RDF graph]
+    Graph --> Evidence[Cross-tool schema evidence]
+    Evidence --> Expansion[Owner related and next-step expansion]
+    Expansion --> Mapping[Gateway tool identity and SDK invocation]
+```
+
+Validation: reproduce lost cross-tool evidence before the repair, use a real SDK upstream MCP server for search-to-invocation, retain explicit/empty/invalid pools, run the full TUnit suite and coverage, inspect code size/analyzers and all dependency advisories, and compare full BenchmarkDotNet suites. Consumer package adoption and publication require actual owner NuGet feed availability.
+
+Maintainability: this repair removes the per-query candidate graph compiler and synthetic expansion mapping rather than growing the existing runtime partial. The existing GraphSearch/GraphOperations runtime partials remain above the 350-line type budget; its hybrid/ranked/fallback flow predates this repair. Follow-up: move those existing ranking flows into feature-local collaborators with current real retrieval tests before adding another search mode. All new candidate/profile helpers and regression methods stay within current method/file limits.
+
+Owner 0.2.15 also selects focused URI graph triples through official subject/object indexes, avoiding full asserted-graph enumeration after schema matching. The owning package retains general RDF projection for non-URI focus, object-only selected nodes, sorted induced edges and read/write locking. Consumer performance claims require actual published owner adoption and full gateway benchmark qualification; no projection workaround belongs in the gateway.

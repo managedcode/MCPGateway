@@ -40,7 +40,7 @@ Embedded JSON-LD resources may also provide an explicit descriptor-to-node URI b
 
 Application-owned vocabularies configure `MarkdownLdGraphSchemaSearchProfile` for their actual tool types, text predicates, relationships, and facets. Runtime schema validation, schema description, and SPARQL search share that profile while retaining request-bounded result limits; a custom URI binding does not imply schema.org metadata.
 
-Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes form the candidate graph for real schema-aware SPARQL, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Related and next-step evidence still comes from the complete graph.
+Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes bind subject `VALUES` in real schema-aware SPARQL on the existing graph, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Relationship evidence and related/next-step expansion use the same complete graph; search does not reconstruct a candidate graph. The owner selects focused URI triples through its official RDF indexes, with general RDF projection for non-URI identities.
 
 Graph-specific search and indexing operations deliberately sit on `IMcpGatewayGraphSearch` and built-in graph tools instead of expanding the MCP-facing `IMcpGateway` contract. That surface exposes schema/profile inspection, generated SPARQL, graph evidence, explicit allowlisted federated SPARQL, mapped gateway tool matches, and runtime graph export while normal gateway search still returns the stable `McpGatewaySearchResult` and invocation still uses the same `ToolId` path. Non-federated direct graph tool search reuses the same candidate-backed schema path as normal graph search so agents cannot bypass the large-catalog optimization by calling `gateway_graph_schema_search`.
 
@@ -51,6 +51,8 @@ For MCP interoperability in the other direction, the package exposes `WithMcpGat
 The repository now uses feature-first package slices for `Gateway`, `Discovery`, `Catalog`, `Search`, `Invocation`, `Prompts`, `Resources`, and `Hosting`. The durable policy decision behind that structure is captured in [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md).
 
 The benchmark project under `benchmarks/ManagedCode.MCPGateway.Benchmarks/` is intentionally outside the package source tree. It references the package project, runs BenchmarkDotNet in `Release`, and measures search, direct graph tool search, index-build, and meta-tool allocation behavior without adding a runtime dependency to the NuGet package.
+
+The CLI adapter in `src/ManagedCode.MCPGateway.Cli/` is packaged separately as the `mcpgateway` .NET tool. It uses the official MCP SDK to call a configured gateway endpoint for search, schema lookup, and invocation; its release workflow packs and publishes only that adapter. It adds no runtime dependency to the library.
 
 ## Governance Map
 
