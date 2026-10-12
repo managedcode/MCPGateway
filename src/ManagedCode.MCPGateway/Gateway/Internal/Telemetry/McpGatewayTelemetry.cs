@@ -88,6 +88,16 @@ internal static class McpGatewayTelemetry
         description: "Tokens consumed by vector embedding generation during index builds."
     );
 
+    private static readonly Histogram<long> SearchResultCount = Meter.CreateHistogram<long>(ResultCountTagName);
+    private static readonly Histogram<long> SearchRelatedCount = Meter.CreateHistogram<long>(RelatedCountTagName);
+    private static readonly Histogram<long> SearchNextStepCount = Meter.CreateHistogram<long>(NextStepCountTagName);
+    private static readonly Histogram<long> SearchFocusedNodes = Meter.CreateHistogram<long>(FocusedGraphNodeCountTagName);
+    private static readonly Histogram<long> SearchFocusedEdges = Meter.CreateHistogram<long>(FocusedGraphEdgeCountTagName);
+    private static readonly Histogram<long> IndexTools = Meter.CreateHistogram<long>(ToolCountTagName);
+    private static readonly Histogram<long> IndexVectorizedTools = Meter.CreateHistogram<long>(VectorizedToolCountTagName);
+    private static readonly Histogram<long> IndexNodes = Meter.CreateHistogram<long>(GraphNodeCountTagName);
+    private static readonly Histogram<long> IndexEdges = Meter.CreateHistogram<long>(GraphEdgeCountTagName);
+
     public static Activity? StartSearchActivity(McpGatewaySearchStrategy configuredStrategy)
     {
         var activity = ActivitySource.StartActivity(SearchActivityName, ActivityKind.Internal);
@@ -121,6 +131,11 @@ internal static class McpGatewayTelemetry
         );
 
         SearchRequests.Add(1, tags);
+        SearchResultCount.Record(result.Matches.Count, tags);
+        SearchRelatedCount.Record(result.RelatedMatches.Count, tags);
+        SearchNextStepCount.Record(result.NextStepMatches.Count, tags);
+        SearchFocusedNodes.Record(result.FocusedGraphNodeCount, tags);
+        SearchFocusedEdges.Record(result.FocusedGraphEdgeCount, tags);
         SearchDuration.Record(durationMilliseconds, tags);
 
         if (
@@ -150,6 +165,11 @@ internal static class McpGatewayTelemetry
         }
 
         ApplyTags(activity, tags);
+        activity.SetTag(ResultCountTagName, result.Matches.Count);
+        activity.SetTag(RelatedCountTagName, result.RelatedMatches.Count);
+        activity.SetTag(NextStepCountTagName, result.NextStepMatches.Count);
+        activity.SetTag(FocusedGraphNodeCountTagName, result.FocusedGraphNodeCount);
+        activity.SetTag(FocusedGraphEdgeCountTagName, result.FocusedGraphEdgeCount);
         if (!cacheHit && rankedMetrics?.VectorDurationMilliseconds is double vectorDuration)
         {
             activity.SetTag(SearchVectorDurationMillisecondsTagName, vectorDuration);
@@ -179,14 +199,14 @@ internal static class McpGatewayTelemetry
         var tags = new TagList
         {
             { ConfiguredStrategyTagName, configuredStrategy.ToString() },
-            { ToolCountTagName, result.ToolCount },
-            { VectorizedToolCountTagName, result.VectorizedToolCount },
             { GraphEnabledTagName, result.IsGraphSearchEnabled },
-            { GraphNodeCountTagName, result.GraphNodeCount },
-            { GraphEdgeCountTagName, result.GraphEdgeCount },
         };
 
         IndexBuilds.Add(1, tags);
+        IndexTools.Record(result.ToolCount, tags);
+        IndexVectorizedTools.Record(result.VectorizedToolCount, tags);
+        IndexNodes.Record(result.GraphNodeCount, tags);
+        IndexEdges.Record(result.GraphEdgeCount, tags);
         IndexBuildDuration.Record(durationMilliseconds, tags);
         if (result.IsVectorSearchEnabled || vectorTokenUsage.TotalTokenCount > 0)
         {
@@ -199,6 +219,10 @@ internal static class McpGatewayTelemetry
         }
 
         ApplyTags(activity, tags);
+        activity.SetTag(ToolCountTagName, result.ToolCount);
+        activity.SetTag(VectorizedToolCountTagName, result.VectorizedToolCount);
+        activity.SetTag(GraphNodeCountTagName, result.GraphNodeCount);
+        activity.SetTag(GraphEdgeCountTagName, result.GraphEdgeCount);
         if (result.IsVectorSearchEnabled || vectorTokenUsage.TotalTokenCount > 0)
         {
             activity.SetTag(IndexVectorTokensTagName, vectorTokenUsage.TotalTokenCount);
@@ -227,11 +251,6 @@ internal static class McpGatewayTelemetry
             { UsedGraphTagName, usedGraphSearch },
             { CacheHitTagName, cacheHit },
             { QueryNormalizedTagName, queryNormalized },
-            { ResultCountTagName, result.Matches.Count },
-            { RelatedCountTagName, result.RelatedMatches.Count },
-            { NextStepCountTagName, result.NextStepMatches.Count },
-            { FocusedGraphNodeCountTagName, result.FocusedGraphNodeCount },
-            { FocusedGraphEdgeCountTagName, result.FocusedGraphEdgeCount },
         };
     }
 

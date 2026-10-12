@@ -38,7 +38,12 @@ internal sealed partial class McpGatewayRuntime
         McpClient? Client,
         float[]? Vector = null,
         double Magnitude = ToolEmbeddingDefaultMagnitude
-    );
+    )
+    {
+        public McpGatewaySchemaValidator Validator { get; } = new(Descriptor);
+        public string SchemaHash { get; } = McpGatewayDefinitionHash.Compute(new { Descriptor.InputSchema, Descriptor.OutputSchema });
+        public string TechnicalDefinitionHash { get; } = McpGatewayDefinitionHash.Create(Descriptor, Descriptor.BindingFingerprint ?? string.Empty).DefinitionHash;
+    }
 
     private readonly record struct ToolSearchTermIndex(
         IReadOnlySet<string> SearchBoostTerms,
@@ -84,6 +89,11 @@ internal sealed partial class McpGatewayRuntime
         int Version
     )
     {
+        public SnapshotOwnership Ownership { get; init; } = new(null);
+        public IReadOnlyDictionary<McpGatewayToolSourceRegistration, IReadOnlyList<McpGatewayLoadedTool>> LoadedTools { get; init; } =
+            new Dictionary<McpGatewayToolSourceRegistration, IReadOnlyList<McpGatewayLoadedTool>>();
+        public object? SourceOwner { get; init; }
+        public string? VisibilityFingerprint { get; init; }
         public static ToolCatalogSnapshot Empty { get; } = new([], false, null, -1);
     }
 
@@ -100,6 +110,7 @@ internal sealed partial class McpGatewayRuntime
         IReadOnlyList<McpGatewayDiagnostic> SchemaDiagnostics
     )
     {
+        public Lazy<Task<KnowledgeGraphFullTextIndex>> FullText { get; } = new(() => Graph.BuildFullTextIndexAsync());
         public bool CanSearch => Graph.TripleCount > 0 && EntriesByNodeId.Count > 0;
 
         public bool CanSearchByTokenDistance => Graph.CanSearchByTokenDistance;

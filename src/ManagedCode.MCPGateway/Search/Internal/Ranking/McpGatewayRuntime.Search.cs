@@ -8,7 +8,8 @@ internal sealed partial class McpGatewayRuntime
         CancellationToken cancellationToken = default
     )
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken);
+        using var visibleSnapshot = await GetVisibleSnapshotAsync(cancellationToken);
+        var snapshot = visibleSnapshot.Snapshot;
         var descriptors = new List<McpGatewayToolDescriptor>(snapshot.Entries.Count);
         foreach (var entry in snapshot.Entries)
         {
@@ -37,7 +38,8 @@ internal sealed partial class McpGatewayRuntime
 
         using var activity = McpGatewayTelemetry.StartSearchActivity(_searchStrategy);
         var stopwatch = Stopwatch.StartNew();
-        var snapshot = await GetSnapshotAsync(cancellationToken);
+        using var visibleSnapshot = await GetVisibleSnapshotAsync(cancellationToken, request);
+        var snapshot = visibleSnapshot.Snapshot;
         var diagnostics = new List<McpGatewayDiagnostic>();
         var limit = Math.Clamp(
             request.MaxResults.GetValueOrDefault(_defaultSearchLimit),
@@ -61,7 +63,8 @@ internal sealed partial class McpGatewayRuntime
             var normalizedQuery = await NormalizeSearchQueryAsync(
                 originalQuery,
                 diagnostics,
-                cancellationToken
+                cancellationToken,
+                snapshot.VisibilityFingerprint
             );
             queryNormalized = normalizedQuery is not null;
             var searchInput = BuildSearchInput(
@@ -71,6 +74,10 @@ internal sealed partial class McpGatewayRuntime
                 flattenedContext
             );
             var chatClientFingerprint = Volatile.Read(ref _searchQueryChatClientFingerprint);
+            if (snapshot.VisibilityFingerprint is { } partition)
+            {
+                chatClientFingerprint = McpGatewayDefinitionHash.Compute(new { chatClientFingerprint, partition });
+            }
             var embeddingGeneratorFingerprint =
                 await ResolveSearchResultEmbeddingGeneratorFingerprintAsync(
                     snapshot,
@@ -240,6 +247,8 @@ internal sealed partial class McpGatewayRuntime
             Math.Clamp(score, SearchScoreMinimum, SearchScoreMaximum)
         )
         {
+            SchemaHash = entry.SchemaHash,
+            DefinitionHash = entry.Descriptor.DefinitionHash ?? entry.TechnicalDefinitionHash,
             SearchAliases = entry.Descriptor.SearchAliases,
             SearchKeywords = entry.Descriptor.SearchKeywords,
             Categories = entry.Descriptor.Categories,

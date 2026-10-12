@@ -9,7 +9,10 @@ internal sealed class McpGatewayFactoryResult(
     IMcpGatewayResourceCatalog resourceCatalog,
     IMcpGatewayRegistry registry,
     IMcpGatewayCatalogRuntime catalogRuntime,
-    McpGatewayToolSet toolSet
+    McpGatewayToolSet toolSet,
+    IMcpGatewayDiscovery discovery,
+    IMcpGatewayCatalogPublication publication,
+    IMcpGatewayResultReader? resultReader
 ) : IMcpGatewayInstance
 {
     public IMcpGateway Gateway { get; } = gateway;
@@ -23,6 +26,9 @@ internal sealed class McpGatewayFactoryResult(
     public IMcpGatewayCatalogRuntime CatalogRuntime { get; } = catalogRuntime;
 
     public McpGatewayToolSet ToolSet { get; } = toolSet;
+    public IMcpGatewayDiscovery Discovery { get; } = discovery;
+    public IMcpGatewayCatalogPublication Publication { get; } = publication;
+    public IMcpGatewayResultReader? ResultReader { get; } = resultReader;
 
     public ValueTask DisposeAsync() => releaseAsync(Gateway, Registry, CatalogRuntime);
 }

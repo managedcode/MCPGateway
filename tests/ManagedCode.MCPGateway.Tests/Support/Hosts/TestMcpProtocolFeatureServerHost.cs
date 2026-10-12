@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.IO.Pipelines;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -113,11 +114,12 @@ internal sealed class TestMcpProtocolFeatureServerHost : IAsyncDisposable
 
     public Task EmitResourceUpdatedAsync(
         string resourceUri = ResourceUri,
+        JsonObject? meta = null,
         CancellationToken cancellationToken = default
     ) =>
         Server.SendNotificationAsync(
             NotificationMethods.ResourceUpdatedNotification,
-            new ResourceUpdatedNotificationParams { Uri = resourceUri },
+            new ResourceUpdatedNotificationParams { Uri = resourceUri, Meta = meta },
             McpJsonUtilities.DefaultOptions,
             cancellationToken
         );

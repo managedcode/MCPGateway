@@ -6,4 +6,8 @@ public sealed record McpGatewaySearchRequest(
     IReadOnlyDictionary<string, object?>? Context = null,
     string? ContextSummary = null,
     bool IncludeDisabledTools = false
-);
+)
+{
+    public string? SourceId { get; init; }
+    public string? Category { get; init; }
+}

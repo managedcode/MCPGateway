@@ -153,6 +153,9 @@ public sealed partial class McpGatewaySearchTests
                 )
             )
             .IsTrue();
+        await Assert.That(measurements.Any(static measurement => measurement.InstrumentName == "mcpgateway.search.result_count"
+            && measurement.Value == 1 && !measurement.Tags.ContainsKey("mcpgateway.search.result_count"))).IsTrue();
+
         await Assert
             .That(
                 measurements.Any(static measurement =>
@@ -207,10 +210,7 @@ public sealed partial class McpGatewaySearchTests
                         "hybrid",
                         StringComparison.Ordinal
                     )
-                    && Convert.ToInt32(
-                        measurement.Tags["mcpgateway.search.result_count"],
-                        CultureInfo.InvariantCulture
-                    ) == 1
+                    && !measurement.Tags.ContainsKey("mcpgateway.search.result_count")
                     && (bool?)measurement.Tags["mcpgateway.search.used_vector"] == true
                     && (bool?)measurement.Tags["mcpgateway.search.used_graph"] == true
                     && (bool?)measurement.Tags["mcpgateway.search.cache_hit"] == false

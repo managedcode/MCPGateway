@@ -8,4 +8,7 @@ public sealed record McpGatewayInvokeRequest(
     string? Query = null,
     IReadOnlyDictionary<string, object?>? Context = null,
     string? ContextSummary = null
-);
+)
+{
+    public McpGatewayResponseOptions? ResponseOptions { get; init; }
+}

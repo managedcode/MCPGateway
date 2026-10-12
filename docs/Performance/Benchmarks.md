@@ -8,8 +8,11 @@ The benchmark project is not packable and is not a runtime dependency of the NuG
 - repeated schema-aware graph searches, exact tool identity and no-match/fuzzy fallback over a prebuilt catalog
 - direct built-in graph tool search and strict no-match over the same prebuilt catalog
 - reusable `McpGatewayToolSet` meta-tool projection
+- warm discovery/exact-schema/invocation cycles for 1,000, 5,000 and 10,000 varied-schema tools
+- four concurrent permission partitions, disabled tools and an offline failing source
+- repeated validated catalog refresh
 
-Benchmark classes use the default BenchmarkDotNet job plus `MemoryDiagnoser`. Setup, cleanup, and measured async paths run async end-to-end without sync-over-async blocking. CI runs the complete suite with `--filter "*"` after build/test/coverage and uploads the generated reports as `benchmark-results`; release runs the same complete suite before package creation and uploads `release-benchmark-results`. Both enforce 85% library line coverage with explicit source-root mapping for deterministic PDBs; an empty report fails the gate. Neither workflow runs a smoke-only or short-run benchmark subset.
+Benchmark classes use the default BenchmarkDotNet job plus `MemoryDiagnoser`; the runner adds a P95 column for observed iteration latency. P95 is not a production service SLO. Scaling setup prints cold index elapsed time, total allocated bytes and retained managed bytes after collection; these are separate diagnostic observations, not warmed per-operation measurements or process RSS. Setup, cleanup, and measured async paths run async end-to-end without sync-over-async blocking. CI runs the complete suite with `--filter "*"` after build/test/coverage and uploads the generated reports as `benchmark-results`; release runs the same complete suite before package creation and uploads `release-benchmark-results`. Both enforce 85% library line coverage with explicit source-root mapping for deterministic PDBs; an empty report fails the gate. Neither workflow runs a smoke-only or short-run benchmark subset.
 
 ## Commands
 
@@ -56,6 +59,12 @@ The gateway uses a bounded candidate search index before schema-aware SPARQL on 
 
 Disabling Markdown-LD Tiktoken extraction and reducing related-token fanout were also measured and rejected. Extraction mode changes broke graph export and custom-document search semantics; lower related-token fanout reduced build allocation slightly but regressed large archive search/tool latency enough to fail the tradeoff.
 
+## Regression review thresholds
+
+Use the latest full snapshot as the baseline only with the same SDK/runtime, dependencies, fixture, job, GC mode and comparable host conditions. A repeatable increase above 20% in allocated bytes per operation triggers investigation before release. Mean or P95 increases above 20% also trigger investigation when repeated on that same host and supported by the reported variance; timings from different machines or busy shared runs are not comparable. These are review targets, not claimed production SLOs or portable timing gates for hosted CI runners.
+
+The automated gates reject failed benchmark reports and enforce the discovery payload limit and caller isolation inside every scaling cycle. Coverage separately enforces 85% library line coverage. Cold index allocation and retained managed memory are reported separately from warmed operation allocation; neither is excluded when assessing large-catalog capacity.
+
 ## Runtime Notes
 
 The project targets modern .NET, so optimization work should account for runtime improvements before rewriting clear code. Official .NET 9 and .NET 10 performance notes show continued JIT and BCL improvements around stack allocation, deabstraction, span-friendly APIs, delegate handling, array handling, and library internals. That makes broad rewrites to `struct`, `ValueTask`, `AsSpan`, compiled lambdas, or hand-rolled enumerators risky unless this benchmark suite shows a specific win in the gateway path.
@@ -76,3 +85,11 @@ Do not apply broad micro-optimizations such as converting normal reference types
 - [BenchmarkDotNet console arguments](https://benchmarkdotnet.org/articles/guides/console-args.html)
 - [Performance Improvements in .NET 9](https://devblogs.microsoft.com/dotnet/performance-improvements-in-net-9/)
 - [Performance Improvements in .NET 10](https://devblogs.microsoft.com/dotnet/performance-improvements-in-net-10/)
+
+## Governed delivery and owner allocation repair
+
+Public `ManagedCode.MarkdownLd.Kb 0.2.16` removes boxed dictionary enumeration from token-vector dot products (56 B to 0 B per measured operation) and caches immutable semantic snapshots until mutation. On the owner's full DefaultJob fixtures, warmed focused exact search changed from 4.78 MiB to 38.05 KiB at 120 nodes and from 44.48 MiB to 269.63 KiB at 1,000 nodes. Cold setup and retained snapshot memory remain separate costs. Concurrent-host timing dispersion prevents extrapolating those values into gateway latency guarantees.
+
+A fresh gateway full suite must include all 19 cases and retain non-empty successful reports before release. Scaling checks enforce a 2,048-byte discovery response and authorized canonical ID; permission-partition benchmarks fail if another caller's ID appears. Proposed allocation/latency targets require a measured comparable baseline; historical snapshots are not acceptance evidence for new datasets.
+
+The public-0.2.17 local run completed one 1,000-tool case (four concurrent authorized cycles): mean 153.703 ms, standard deviation 82.495 ms, 94,027,906 B/op. Cold setup took 44.768 s, allocated 7,165,324,552 bytes and retained 781,691,088 managed bytes after collection. Memory compression/swap pressure made the shared host unsuitable for comparative latency; the run was explicitly stopped during the 5,000-tool setup. `artifacts/governed-final-local-partial-benchmarks.log` is a partial receipt, not full qualification. Canonical CI/release provides the required complete 19-case evidence on a separate runner.

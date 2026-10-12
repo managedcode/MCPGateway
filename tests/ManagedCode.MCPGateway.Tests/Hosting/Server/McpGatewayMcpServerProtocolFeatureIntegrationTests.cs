@@ -319,13 +319,12 @@ public sealed class McpGatewayMcpServerProtocolFeatureIntegrationTests
         }
     }
 
-    private static IReadOnlyList<IMcpGatewayServerSource> CreateSources(IMcpGatewayRegistry registry) =>
-        ((IMcpGatewayCatalogSource)registry)
-            .CreateSnapshot()
-            .Registrations.Select(static registration =>
-                (IMcpGatewayServerSource)new McpGatewayRegistrationBoundServerSource(registration)
-            )
-            .ToList();
+    private static IReadOnlyList<IMcpGatewayServerSource> CreateSources(IMcpGatewayRegistry registry)
+    {
+        using var snapshot = ((IMcpGatewayCatalogSource)registry).CreateSnapshot();
+        return snapshot.Registrations.Select(static registration =>
+            (IMcpGatewayServerSource)new McpGatewayRegistrationBoundServerSource(registration)).ToList();
+    }
 
     private sealed class IsolatedGatewayBindingResolver(
         IMcpGatewayFactory gatewayFactory,

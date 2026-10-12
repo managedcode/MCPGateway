@@ -532,6 +532,77 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
 - `Error`
 - `McpResult`: the complete upstream `CallToolResult` for MCP sources, preserving all content blocks, structured content, metadata, and `IsError`. `Output` remains the normalized convenience view. A successfully completed protocol call can contain a tool-level error; protocol bridges should forward `McpResult`.
 
+## Governed Publication And Progressive Discovery
+
+Enable managed mode when technical registration must remain separate from reviewed publication. Register your host implementations of `IMcpGatewayExecutionContextProvider` and `IMcpGatewayAccessPolicy`; identity comes from authenticated host state, never from tool arguments or `Context`. The access policy covers discovery, schemas, dispatch, delivery, prompts, resources, notifications, graph administration/federation, tasks and result reads.
+
+```csharp
+services.AddScoped<IMcpGatewayExecutionContextProvider, RequestIdentityProvider>();
+services.AddScoped<IMcpGatewayAccessPolicy, GatewayAccessPolicy>();
+services.AddMcpGatewayInMemoryCatalogStore();
+services.AddMcpGatewayInMemoryResultStore();
+services.AddMcpGateway(options =>
+{
+    options.Governance.ManagedCatalog = true;
+    options.Governance.MaximumResponseBytes = 64 * 1024;
+    options.MaximumToolSchemaBytes = 64 * 1024;
+    options.AddTool("weather", AIFunctionFactory.Create(WeatherTools.GetForecast));
+});
+```
+
+`RequestIdentityProvider` and `GatewayAccessPolicy` above are application services you supply. Managed tools remain unavailable until a trusted reviewer publishes definitions. `IMcpGatewayCatalogPublication.InspectCandidateAsync()` returns immutable candidate definitions; apply reviewed permissions/provenance with `WithReviewMetadata`, set approved lifecycle, then call `PublishAsync` with the expected revision and reviewer reference. Conflicts, schema drift and failed validation retain the previous published catalog. `RevokeAsync` immediately gates future dispatch/delivery, including previously materialized proxies and stored results. Distributed hosts can replace `IMcpGatewayCatalogDefinitionStore` with their own atomic implementation.
+
+Use compact discovery before requesting a complete schema:
+
+```csharp
+var discovery = serviceProvider.GetRequiredService<IMcpGatewayDiscovery>();
+var page = await discovery.DiscoverAsync(new("weather forecast")
+{
+    MaxResults = 5,
+    MaxBytes = 2048,
+});
+var schema = await discovery.GetToolSchemaAsync(page.Tools[0].ToolId);
+```
+
+Summaries contain purpose, ID, source, hints, score, schema hash and catalog revision. Full schemas are omitted. A continuation token is bound to the visible selection/query/revision and the entire serialized page respects the byte budget. Exact schema lookup preserves nested constraints and returns a typed `McpGatewaySchemaTooLargeException` when its complete response exceeds `MaximumToolSchemaBytes` (64 KiB default); increase that host option when a large schema is intentional. No schema or JSON response is truncated.
+
+`McpGatewayDiscoveryToolSet.CreateSchemaFaithfulToolsAsync` creates proxies with the actual tool argument schema. SDK hosts use `services.AddMcpServer().WithMcpGatewayDiscovery()` for the fixed compact discovery, schema and invocation tool set. A registered result store adds the result-reading tool. `WithMcpGatewayCatalog()` retains the existing complete catalog export. Factory-created instances expose their own `Discovery`, `Publication` and optional `ResultReader` services and use their configured execution/response limits.
+
+## Approved Results And Bounded Execution
+
+```csharp
+var result = await gateway.InvokeAsync(new(ToolId: "weather_forecast")
+{
+    ResponseOptions = new()
+    {
+        SelectPaths = ["/location", "/days/0/temperature"],
+        MaxBytes = 2048,
+        StoreOversizedResult = true,
+    },
+});
+```
+
+Response options stay inside the gateway. Strict JSON Pointer projection preserves selected JSON values and array positions. `IMcpGatewayResultPolicy` can approve/redact output before schema validation, projection or storage; its approved JSON replaces raw MCP text, structured content and metadata. Outcomes distinguish tool business errors, invalid arguments, denied access, capacity rejection, cancellation, timeout, uncertain mutation completion and rejected delivery. A mutating call that times out after dispatch is never automatically retried.
+
+The optional result store defaults to 256 entries, 16 MiB total, 4 MiB per result and a 15-minute lifetime. It uses host-owned `IMemoryCache`; handles require the originating actor, tenant, authorization partition and policy revision plus live publication/access checks. `IMcpGatewayResultReader.ReadAsync` accepts the same projection/budget options. Reader access cannot widen the originating managed instance's response cap. Supply `IMcpGatewayResultStore` for persistent storage; managed implementations must preserve definition and delivery-limit metadata.
+
+Managed mode enables bounded execution; other hosts opt in with `options.Execution.Enabled = true`. A trusted context deadline is enforced independently of admission mode; model context cannot extend it. Defaults are 32 concurrent calls and 64 queued calls per source, 30-second queue wait, 60-second execution deadline, and a 30-second circuit break after five transport failures. Configure `options.Execution.Sources` for specific limits and future source IDs; the default controller set is finite. Dynamic/distributed hosts can supply `IMcpGatewaySourceAdmission`. Work that ignores cancellation retains its capacity/client/catalog lease until actual completion.
+
+For remote tools, configure `options.Execution.RemoteBindings` and implement `IMcpGatewayExecutionClientResolver` to return a caller-bound official SDK client lease. The gateway checks binding reference, audience, credential revision, scopes and current upstream schema before dispatch. Shared technical execution requires explicit `UseSharedTechnicalClient` approval. Managed HTTP imports and remote federation require `McpGatewayEgressHttpClient.Create` with your `IMcpGatewayEgressPolicy`, trusted context provider and `SocketsHttpHandler`; destination and resolved IP approval happen before connection, and redirects cannot forward credentials implicitly. Optional context forwarding uses `RestrictForwardedContext`, `ForwardedContextKeys` and `ForwardContextSummary`; managed mode always restricts it.
+
+Configure periodic refresh only for explicitly selected sources:
+
+```csharp
+services.AddMcpGatewaySourceRefresh(options =>
+{
+    options.SourceIds.Add("weather");
+    options.Interval = TimeSpan.FromMinutes(5);
+    options.MaxConcurrency = 4;
+});
+```
+
+`IMcpGatewayCatalogRuntime.RefreshSourceAsync` and official SDK list-change notifications use the same targeted single-flight refresh. `SourceRefreshTimeout` and `SourceNotificationSubscriptionTimeout` default to 30 seconds and can be overridden. Failed refresh preserves the last validated catalog; unchanged sources retain their clients, and retired clients wait for active operations. Hosted refresh uses configurable bounded backoff and stops with the host.
+
 ## Search Hints
 
 If a tool should be easier to find through multilingual aliases, stable domain keywords, category-first routing, or execution-aware discovery, register explicit search hints:
@@ -727,6 +798,14 @@ Federated SPARQL execution defaults to `McpGatewayOptions.DefaultMarkdownLdFeder
 The default tool profile uses a bounded tool candidate pool for large catalogs. An application-owned profile with no explicit candidate pool searches the complete graph, so ontology classes and properties remain searchable even in large catalogs. For a gateway instance dedicated to vocabulary exploration, set `options.MarkdownLdGraphSchemaSearchProfile = KnowledgeGraphSchemaSearchProfile.Ontology` and query it through `IMcpGatewayGraphSearch.SearchGraphAsync(...)`. Ontology matches that have no registered tool binding return `ToolMatch = null`.
 
 Lucene full-text indexing/search and SPIN packages are available in `ManagedCode.MarkdownLd.Kb`. The gateway currently exposes schema-aware SPARQL, ranked/token support and explicit federation; it has no dedicated Lucene or SPIN execution API.
+
+## Lucene Full-Text And Caller-Bound Federation
+
+`IMcpGatewayGraphFullTextSearch.BuildFullTextIndexAsync()` builds or inspects the Lucene index for the current authorized RDF graph. `SearchFullTextAsync(query, maxResults)` returns node identity, literal label, raw Lucene relevance and mapped tool ID. `McpGatewayFullTextToolSet.CreateTools()` exposes `gateway_graph_fulltext_build` and `gateway_graph_fulltext_search`; Lucene scores are separate from calibrated gateway confidence. Reconfiguration retires old indexes after active readers drain.
+
+For managed remote SPARQL, configure `McpGatewayFederatedServiceBinding` entries in `options.FederatedServiceBindings`, explicitly allow their endpoints, and register `IMcpGatewayFederatedClientResolver`. Each lease supplies a caller-owned egress HttpClient, binding reference, audience, credential revision and scopes. The gateway authorizes the actual query/endpoints before dispatch, validates those claims and keeps leases until the official dotNetRDF SERVICE request finishes. No default search performs unconfigured network calls.
+
+Application-owned graphs register `IMcpGatewayAuthorizedGraphFactory` to return an independently owned authorized projection. `KnowledgeGraph.Project` in `ManagedCode.MarkdownLd.Kb 0.2.16` accepts explicit allowed subjects, resource objects and predicates; it preserves RDF identity without following private neighbors automatically. Ontology profiles continue through the schema/SPARQL APIs. The official SPIN package is present, but usable RDF-command/offline execution is blocked by [dotNetRDF issue 911](https://github.com/dotnetrdf/dotnetrdf/issues/911); the gateway exposes no fake SPIN executor.
 
 ## Graph Sources
 
@@ -1059,6 +1138,7 @@ The gateway emits built-in .NET tracing and metrics:
 - `ActivitySource`: `ManagedCode.MCPGateway`
 - search activity: `ManagedCode.MCPGateway.Search`
 - build activity: `ManagedCode.MCPGateway.BuildIndex`
+- invocation activity: `ManagedCode.MCPGateway.Invoke`
 - `Meter`: `ManagedCode.MCPGateway`
 
 Instruments:
@@ -1071,8 +1151,12 @@ Instruments:
 - `mcpgateway.index.builds`
 - `mcpgateway.index.build.duration`
 - `mcpgateway.index.build.vector.tokens`
+- `mcpgateway.invocation.requests`, `mcpgateway.invocation.duration`, `mcpgateway.invocation.dispatch_duration`, `mcpgateway.invocation.admission_duration`
+- `mcpgateway.invocation.source_payload_bytes`, `mcpgateway.invocation.approved_payload_bytes`, `mcpgateway.invocation.delivered_bytes`
+- `mcpgateway.invocation.projections`, `mcpgateway.invocation.stored_results`, `mcpgateway.result.reads`
+- `mcpgateway.catalog.publications`, `mcpgateway.catalog.source_refreshes`
 
-Search telemetry includes configured strategy, ranking mode, graph/vector usage, cache-hit state, normalization state, result counts, focused graph counts, and vector token usage. Build telemetry includes tool counts, graph state, vectorized tool counts, duration, and vector token usage.
+Search telemetry includes configured strategy, ranking mode, graph/vector usage, cache-hit state, normalization state and measured vector token usage. Result/related/next-step counts, focused graph sizes and index tool/node/edge counts are histograms rather than metric labels. Invocation labels use bounded outcomes/operations; publication, refresh and result-read labels use boolean status. Default metrics and logs contain no arguments, result content, actor IDs or credentials. Register `IMcpGatewayAuditSink` for explicit host-controlled auditing with approved pseudonymous context/references; `Execution.AuditTimeout` defaults to 30 seconds. Audit failure never retries or changes an already completed mutation. No model-token savings or monetary-cost claim is inferred from byte measurements.
 
 `McpGatewayIndexBuildResult` also exposes:
 
@@ -1104,7 +1188,9 @@ Run focused BenchmarkDotNet commands one at a time so generated benchmark build 
 
 CI and release enforce at least 85% line coverage of the library; deterministic CI builds use explicit Coverlet source-root mapping so an empty report fails the gate. CI runs the full BenchmarkDotNet suite with `--filter "*"` after the build/test/coverage gate and uploads the complete benchmark reports as `benchmark-results`. The release workflow also runs the full suite before package creation and uploads `release-benchmark-results`. These benchmark jobs are intentionally not smoke tests or reduced benchmark subsets.
 
-Latest full local BenchmarkDotNet snapshot on October 12, 2026, Apple M2 Pro, .NET SDK `10.0.401`, runtime `.NET 10.0.12`, published `MarkdownLd.Kb 0.2.15`. All 12 standard-job cases completed in 17m59s with allocation statistics; async setup, cleanup and measured paths remain async end-to-end.
+The current full suite includes 19 standard-job cases, including 1k/5k/10k catalogs, four concurrent authorization partitions and repeated refresh. A partial local run with published `MarkdownLd.Kb 0.2.17` completed the 1,000-tool authorized-cycle case: mean 153.703 ms, standard deviation 82.495 ms and 89.67 MiB allocated per four concurrent discovery/schema/invocation cycles. Cold setup took 44.768 s and retained 745.48 MiB of managed memory. The shared host was under memory/swap pressure; the run was stopped during 5,000-tool setup and is not full qualification or a latency guarantee. Canonical CI/release must complete all 19 cases before publication.
+
+Historical full local snapshot on October 12, 2026, Apple M2 Pro, .NET SDK `10.0.401`, runtime `.NET 10.0.12`, published `MarkdownLd.Kb 0.2.15`: the previous 12 standard-job cases completed in 17m59s with allocation statistics. Async setup, cleanup and measured paths remain async end-to-end.
 
 | Scenario | Mean | Allocated |
 | --- | ---: | ---: |

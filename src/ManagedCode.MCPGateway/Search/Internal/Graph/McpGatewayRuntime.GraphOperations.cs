@@ -13,7 +13,10 @@ internal sealed partial class McpGatewayRuntime
         ArgumentNullException.ThrowIfNull(request);
         ArgumentException.ThrowIfNullOrWhiteSpace(request.Query);
 
-        var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        await McpGatewayAccessBoundary.DemandAsync(_serviceProvider, request.UseFederation ? McpGatewayOperation.FederateGraph : McpGatewayOperation.ReadGraph,
+            CatalogAssetName, null, cancellationToken);
+        using var visibility = await GetVisibleSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = visibility.Snapshot;
         var diagnostics = new List<McpGatewayDiagnostic>();
         if (snapshot.GraphIndex is not ToolGraphSearchIndex graphIndex)
         {
@@ -52,6 +55,19 @@ internal sealed partial class McpGatewayRuntime
         {
             if (request.UseFederation)
             {
+                var context = await McpGatewayTrustedContext.ResolveAsync(_serviceProvider, cancellationToken);
+                var egress = await McpGatewayAccessBoundary.AuthorizeAsync(_serviceProvider, context,
+                    new(McpGatewayOperation.FederateGraph, CatalogAssetName)
+                    {
+                        Arguments = new Dictionary<string, object?>
+                        {
+                            [QueryArgumentName] = request.Query,
+                            [FederationEndpointsArgumentName] = serviceEndpoints,
+                        },
+                    }, cancellationToken);
+                if (!egress.IsAllowed)
+                { throw new UnauthorizedAccessException(FederationQueryDeniedMessage); }
+                await using var clients = await ResolveFederatedClientsAsync(serviceEndpoints, cancellationToken);
                 var result = await graphIndex
                     .Graph.SearchBySchemaFederatedAsync(
                         schemaQuery,
@@ -59,7 +75,8 @@ internal sealed partial class McpGatewayRuntime
                         CreateFederatedSparqlExecutionOptions(
                             graphIndex,
                             serviceEndpoints,
-                            request.IncludeLocalGatewayGraph
+                            request.IncludeLocalGatewayGraph,
+                            clients.Bindings
                         ),
                         cancellationToken
                     )
@@ -107,7 +124,9 @@ internal sealed partial class McpGatewayRuntime
         CancellationToken cancellationToken = default
     )
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        await McpGatewayAccessBoundary.DemandAsync(_serviceProvider, McpGatewayOperation.ExportGraph, CatalogAssetName, null, cancellationToken);
+        using var visibility = await GetVisibleSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = visibility.Snapshot;
         if (snapshot.GraphIndex is not ToolGraphSearchIndex graphIndex)
         {
             return new McpGatewayMarkdownLdGraphExport(
@@ -201,7 +220,8 @@ internal sealed partial class McpGatewayRuntime
     private FederatedSparqlExecutionOptions CreateFederatedSparqlExecutionOptions(
         ToolGraphSearchIndex graphIndex,
         IReadOnlyList<Uri> serviceEndpoints,
-        bool includeLocalGatewayGraph
+        bool includeLocalGatewayGraph,
+        IReadOnlyList<FederatedSparqlRemoteServiceBinding> remoteBindings
     )
     {
         IReadOnlyList<FederatedSparqlLocalServiceBinding> localBindings =
@@ -227,6 +247,8 @@ internal sealed partial class McpGatewayRuntime
             {
                 AllowedServiceEndpoints = serviceEndpoints,
                 LocalServiceBindings = localBindings,
+                RemoteServiceBindings = remoteBindings,
+                RequireExplicitRemoteServiceBindings = _managedCatalog,
                 QueryExecutionTimeoutMilliseconds = ConvertTimeoutToMilliseconds(queryTimeout),
             };
         }
@@ -235,6 +257,8 @@ internal sealed partial class McpGatewayRuntime
         {
             AllowedServiceEndpoints = serviceEndpoints,
             LocalServiceBindings = localBindings,
+            RemoteServiceBindings = remoteBindings,
+            RequireExplicitRemoteServiceBindings = _managedCatalog,
         };
     }
 

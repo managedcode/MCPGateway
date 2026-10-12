@@ -12,6 +12,13 @@ public sealed record McpGatewayToolDescriptor(
     IReadOnlyList<string> RequiredArguments
 )
 {
+    /// <summary>Stable source destination identity used by reviewed publication, never credential values.</summary>
+    public string? BindingFingerprint { get; init; }
+    /// <summary>Original source name retained separately from the canonical gateway protocol name.</summary>
+    public string? UpstreamToolName { get; init; }
+    public bool RequiresPublication { get; init; }
+    public string? DefinitionHash { get; init; }
+    public IReadOnlyList<string> RequiredPermissions { get; init; } = [];
     public string ToolName => ProtocolTool.Name;
 
     public string? DisplayName => ProtocolTool.Title;

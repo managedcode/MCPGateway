@@ -32,6 +32,8 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
 
     public McpClient Client { get; }
 
+    public IServiceProvider Services => _serviceProvider;
+
     public ModelContextProtocol.Server.McpServer Server { get; }
 
     public IMcpGatewayRegistry Registry =>

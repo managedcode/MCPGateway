@@ -32,6 +32,8 @@ internal sealed partial class McpGatewayRuntime
             RequiredArguments: ExtractRequiredArguments(protocolTool.InputSchema)
         )
         {
+            BindingFingerprint = registration.BindingFingerprint,
+            UpstreamToolName = tool.Name,
             SearchAliases = searchHints.Aliases ?? [],
             SearchKeywords = searchHints.Keywords ?? [],
             Categories = searchHints.Categories ?? [],
@@ -439,7 +441,7 @@ internal sealed partial class McpGatewayRuntime
         if (
             McpGatewayJsonSerializer.TrySerializeToElement(schema)
             is not JsonElement serializedSchema
-            || !McpGatewayProtocolSchema.IsToolObjectSchema(serializedSchema)
+            || serializedSchema.ValueKind is not (JsonValueKind.Object or JsonValueKind.True or JsonValueKind.False)
         )
         {
             return SerializedSchema.Empty;
@@ -454,7 +456,8 @@ internal sealed partial class McpGatewayRuntime
     private static IReadOnlyList<string> ExtractRequiredArguments(JsonElement schemaElement)
     {
         if (
-            !schemaElement.TryGetProperty(InputSchemaRequiredPropertyName, out var required)
+            schemaElement.ValueKind != JsonValueKind.Object
+            || !schemaElement.TryGetProperty(InputSchemaRequiredPropertyName, out var required)
             || required.ValueKind != JsonValueKind.Array
         )
         {

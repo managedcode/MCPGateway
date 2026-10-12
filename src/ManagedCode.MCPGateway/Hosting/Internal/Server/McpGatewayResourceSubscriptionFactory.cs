@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -44,26 +45,36 @@ internal sealed class McpGatewayResourceSubscriptionFactory(
             cancellationToken
         ) ?? throw new McpException($"Resource '{exposedUri}' was not found.");
 
+        var context = await McpGatewayTrustedContext.ResolveAsync(serviceProvider, cancellationToken);
+        await McpGatewayAccessBoundary.DemandAsync(serviceProvider, McpGatewayOperation.SubscribeResource,
+            resolvedRequest.ExposedUri, resolvedRequest.SourceId, cancellationToken);
+        var registry = bindingLease.Binding.Registry as IMcpGatewayCatalogSource;
+        using var initial = registry?.CreateSnapshot();
+        var version = initial?.Version;
         return await resolvedRequest.Source.ListenForResourceUpdatesAsync(
                 resolvedRequest.UpstreamUri,
-                (notification, token) =>
-                    deliveryGate.DeliverAsync(
-                        string.Concat(
-                            ResourceDeliveryKeyPrefix,
-                            resolvedRequest.ExposedUri
-                        ),
-                        deliveryToken =>
-                            forwarder.ForwardUpdateAsync(
-                                key,
-                                downstreamServer,
-                                resolvedRequest.ExposedUri,
-                                notification,
-                                attempt,
-                                subscriptionId,
-                                deliveryToken
-                            ),
-                        token
-                    ),
+                async (notification, token) =>
+                {
+                    if (token.IsCancellationRequested && !deliveryGate.IsOpen)
+                    { return; }
+                    await deliveryGate.DeliverAsync(
+                        string.Concat(ResourceDeliveryKeyPrefix, resolvedRequest.ExposedUri),
+                        async deliveryToken =>
+                        {
+                            await using var scope = serviceProvider.CreateAsyncScope();
+                            using var actor = serviceProvider.GetService<McpGatewayExecutionScope>()
+                                ?.Push(context, scope.ServiceProvider, null, null);
+                            using var current = registry?.CreateSnapshot();
+                            if (current?.Version != version
+                                || !(await McpGatewayAccessBoundary.AuthorizeAsync(scope.ServiceProvider, context,
+                                    new(McpGatewayOperation.ReceiveResourceUpdate, resolvedRequest.ExposedUri, resolvedRequest.SourceId), deliveryToken)).IsAllowed)
+                            { return; }
+                            await forwarder.ForwardUpdateAsync(key, downstreamServer, resolvedRequest.ExposedUri,
+                                scope.ServiceProvider.GetService<IMcpGatewayAccessPolicy>() is null ? notification
+                                    : new ResourceUpdatedNotificationParams { Uri = notification.Uri },
+                                attempt, subscriptionId, deliveryToken);
+                        }, token);
+                },
                 loggerFactory,
                 cancellationToken
             )

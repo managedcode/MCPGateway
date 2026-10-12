@@ -11,6 +11,7 @@ internal sealed class McpGatewayMcpClientLifetime(bool disposeClient) : IAsyncDi
     private int _disposed;
 
     internal bool HasCachedClient => Volatile.Read(ref _client) is not null;
+    internal McpClient? CachedClient => Volatile.Read(ref _client);
 
     public async ValueTask<McpClient> GetAsync(
         Func<ILoggerFactory, CancellationToken, ValueTask<McpClient>> createClientAsync,

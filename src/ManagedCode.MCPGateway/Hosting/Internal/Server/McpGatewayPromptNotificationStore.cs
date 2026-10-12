@@ -23,6 +23,10 @@ internal sealed class McpGatewayPromptNotificationState(
 )
 {
     private int _disposed;
+    public McpGatewayExecutionContext ExecutionContext { get; init; } = McpGatewayExecutionContext.TrustedLocal;
+    private string? _visiblePromptFingerprint;
+    public string? VisiblePromptFingerprint { get => Volatile.Read(ref _visiblePromptFingerprint); set => Volatile.Write(ref _visiblePromptFingerprint, value); }
+    public bool TryUpdateVisiblePromptFingerprint(string fingerprint) => Interlocked.Exchange(ref _visiblePromptFingerprint, fingerprint) != fingerprint;
 
     public McpGatewayPromptNotificationKey Key { get; } = key;
 

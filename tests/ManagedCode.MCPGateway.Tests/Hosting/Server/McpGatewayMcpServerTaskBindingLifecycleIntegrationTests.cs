@@ -57,6 +57,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
     public async Task CancelledTask_ReleasesItsIsolatedBindingAndKeepsCancelledStatePollable()
     {
         var disposeCount = 0;
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
             static _ => { },
             services =>
@@ -68,7 +69,10 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
                                 "isolated",
                                 TestFunctionFactory.CreateFunction(
                                     (string value, CancellationToken cancellationToken) =>
-                                        RunLocalCancellableTaskToolAsync(value, cancellationToken),
+                                    {
+                                        entered.TrySetResult();
+                                        return RunLocalCancellableTaskToolAsync(value, cancellationToken);
+                                    },
                                     LocalCancellableTaskToolName,
                                     "Runs a cancellable local task."
                                 )
@@ -83,6 +87,7 @@ public sealed class McpGatewayMcpServerTaskBindingLifecycleIntegrationTests
             LocalCancellableTaskToolName,
             "beta"
         );
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         var initialDisposeCount = Volatile.Read(ref disposeCount);
         _ = await gatewayServer.Client.CancelTaskAsync(created.TaskId);
         var cancelled = await WaitForTaskAsync<CancelledTaskResult>(

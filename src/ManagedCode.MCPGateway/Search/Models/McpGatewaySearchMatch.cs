@@ -14,6 +14,8 @@ public sealed record McpGatewaySearchMatch(
     double Score
 )
 {
+    public string? SchemaHash { get; init; }
+    public string? DefinitionHash { get; init; }
     public IReadOnlyList<string> SearchAliases { get; init; } = [];
 
     public IReadOnlyList<string> SearchKeywords { get; init; } = [];

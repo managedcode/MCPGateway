@@ -5,14 +5,16 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed class McpGatewayResourceCatalog(
     IMcpGatewayCatalogSource catalogSource,
-    ILoggerFactory loggerFactory
+    ILoggerFactory loggerFactory,
+    IServiceProvider serviceProvider
 ) : IMcpGatewayResourceCatalog
 {
     public async Task<IReadOnlyList<McpGatewayResourceDescriptor>> ListResourcesAsync(
         CancellationToken cancellationToken = default
     )
     {
-        var snapshot = catalogSource.CreateSnapshot();
+        using var snapshot = catalogSource.CreateSnapshot();
+        var context = await McpGatewayTrustedContext.ResolveAsync(serviceProvider, cancellationToken);
         var descriptors = new List<McpGatewayResourceDescriptor>();
 
         foreach (var registration in snapshot.Registrations)
@@ -20,7 +22,15 @@ internal sealed class McpGatewayResourceCatalog(
             cancellationToken.ThrowIfCancellationRequested();
 
             var resources = await registration.LoadResourcesAsync(loggerFactory, cancellationToken);
-            descriptors.AddRange(resources.Select(resource => BuildDescriptor(registration, resource)));
+            foreach (var resource in resources)
+            {
+                var descriptor = BuildDescriptor(registration, resource);
+                if ((await McpGatewayAccessBoundary.AuthorizeAsync(serviceProvider, context,
+                    new(McpGatewayOperation.Discover, descriptor.ResourceUri, descriptor.SourceId), cancellationToken)).IsAllowed)
+                {
+                    descriptors.Add(descriptor);
+                }
+            }
         }
 
         return descriptors
@@ -33,7 +43,8 @@ internal sealed class McpGatewayResourceCatalog(
         CancellationToken cancellationToken = default
     )
     {
-        var snapshot = catalogSource.CreateSnapshot();
+        using var snapshot = catalogSource.CreateSnapshot();
+        var context = await McpGatewayTrustedContext.ResolveAsync(serviceProvider, cancellationToken);
         var descriptors = new List<McpGatewayResourceTemplateDescriptor>();
 
         foreach (var registration in snapshot.Registrations)
@@ -44,9 +55,15 @@ internal sealed class McpGatewayResourceCatalog(
                 loggerFactory,
                 cancellationToken
             );
-            descriptors.AddRange(
-                templates.Select(template => BuildDescriptor(registration, template))
-            );
+            foreach (var template in templates)
+            {
+                var descriptor = BuildDescriptor(registration, template);
+                if ((await McpGatewayAccessBoundary.AuthorizeAsync(serviceProvider, context,
+                    new(McpGatewayOperation.Discover, descriptor.UriTemplate, descriptor.SourceId), cancellationToken)).IsAllowed)
+                {
+                    descriptors.Add(descriptor);
+                }
+            }
         }
 
         return descriptors
@@ -74,7 +91,8 @@ internal sealed class McpGatewayResourceCatalog(
 
         var sourceId = request.SourceId.Trim();
         var resourceUri = request.ResourceUri.Trim();
-        var snapshot = catalogSource.CreateSnapshot();
+        await McpGatewayAccessBoundary.DemandAsync(serviceProvider, McpGatewayOperation.ReadResource, resourceUri, sourceId, cancellationToken);
+        using var snapshot = catalogSource.CreateSnapshot();
         var registration = snapshot.Registrations.FirstOrDefault(candidate =>
             string.Equals(candidate.SourceId, sourceId, StringComparison.Ordinal)
         );

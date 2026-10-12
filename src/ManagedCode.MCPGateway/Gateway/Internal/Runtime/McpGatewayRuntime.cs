@@ -438,6 +438,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private readonly int _maxDescriptorLength;
     private readonly TimeSpan? _markdownLdFederatedSparqlQueryTimeout;
     private readonly IReadOnlyList<Uri> _markdownLdFederatedServiceEndpoints;
+    private readonly IReadOnlyList<McpGatewayFederatedServiceBinding> _federatedServiceBindings;
+    private readonly TimeSpan _sourceNotificationSubscriptionTimeout;
     private readonly int _mcpTaskMaximumConsecutiveStuckPolls;
     private readonly Uri _graphLocalFederationEndpoint;
     private readonly IMcpGatewaySearchCache _searchRuntimeCache;
@@ -463,7 +465,22 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         _loggerFactory = loggerFactory;
 
         var resolvedOptions = options.Value;
+        ArgumentOutOfRangeException.ThrowIfLessThan(resolvedOptions.MaximumToolSchemaBytes, 1);
+        McpGatewayAccessBoundary.ValidateServices(serviceProvider, resolvedOptions);
+        _managedCatalog = resolvedOptions.Governance.ManagedCatalog;
+        _executionOptions = resolvedOptions.Execution.Snapshot();
+        ArgumentOutOfRangeException.ThrowIfLessThan(resolvedOptions.Governance.MaximumResponseBytes, 1);
+        _maximumManagedResponseBytes = resolvedOptions.Governance.MaximumResponseBytes;
+        if (_executionOptions.AuditTimeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(options));
+        }
         _catalogSource = ResolveCatalogSource(serviceProvider);
+        if (_catalogSource is IMcpGatewayCatalogStagingSource staging)
+        {
+            staging.SetCandidateValidator(StageCatalogAsync);
+        }
+
         _searchStrategy = resolvedOptions.SearchStrategy;
         _markdownLdGraphSearchMode = resolvedOptions.MarkdownLdGraphSearchMode;
         _markdownLdGraphSource = resolvedOptions.MarkdownLdGraphSource;
@@ -495,6 +512,21 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
             nameof(McpGatewayOptions.MarkdownLdFederatedSparqlQueryTimeout)
         );
         _markdownLdFederatedServiceEndpoints = resolvedOptions.MarkdownLdFederatedServiceEndpoints;
+        _sourceNotificationSubscriptionTimeout = ValidateOptionalTimeout(resolvedOptions.SourceNotificationSubscriptionTimeout,
+            nameof(McpGatewayOptions.SourceNotificationSubscriptionTimeout))!.Value;
+        _federatedServiceBindings = resolvedOptions.FederatedServiceBindings.Select(binding => binding with
+        {
+            RequiredScopes = binding.RequiredScopes.ToArray(),
+        }).ToArray();
+        if (_federatedServiceBindings.Any(binding => !binding.Endpoint.IsAbsoluteUri
+            || string.IsNullOrWhiteSpace(binding.SourceId) || string.IsNullOrWhiteSpace(binding.BindingReference)
+            || string.IsNullOrWhiteSpace(binding.Audience)
+            || !_markdownLdFederatedServiceEndpoints.Contains(binding.Endpoint))
+            || _federatedServiceBindings.Select(binding => binding.Endpoint.AbsoluteUri).Distinct(StringComparer.Ordinal).Count()
+                != _federatedServiceBindings.Count)
+        {
+            throw new ArgumentException("Federated bindings must identify unique, explicitly allowlisted endpoints, sources and audiences.", nameof(options));
+        }
         _mcpTaskMaximumConsecutiveStuckPolls = ValidateMinimum(
             resolvedOptions.McpTaskStore.MaximumConsecutiveStuckPolls,
             $"{nameof(McpGatewayOptions.McpTaskStore)}.{nameof(McpGatewayMcpTaskStoreOptions.MaximumConsecutiveStuckPolls)}",
@@ -536,25 +568,24 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         }
 
         var buildOperation = Volatile.Read(ref _buildOperation);
-        if (buildOperation is null)
+        if (buildOperation is not null)
         {
-            return;
+            await buildOperation.CancelAsync();
+            try
+            {
+                await buildOperation.Task;
+            }
+            catch (OperationCanceledException) when (buildOperation.CancellationToken.IsCancellationRequested)
+            {
+                _logger.LogDebug(RuntimeDisposeBuildFailureLogMessage);
+            }
+            catch (Exception exception) when (!McpGatewayRuntimeFailureClassifier.HasFatalFailure(exception))
+            {
+                _logger.LogDebug(RuntimeDisposeBuildFailureLogMessage);
+            }
         }
-
-        await buildOperation.CancelAsync();
-        try
-        {
-            await buildOperation.Task;
-        }
-        catch (OperationCanceledException)
-            when (buildOperation.CancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
-        catch (Exception exception) when (!McpGatewayRuntimeFailureClassifier.HasFatalFailure(exception))
-        {
-            _logger.LogDebug(RuntimeDisposeBuildFailureLogMessage);
-        }
+        await DisposeSourceNotificationsAsync();
+        await Task.WhenAll(_ownedSnapshots.Keys.Select(RetireSnapshotAsync));
     }
 
     private static IMcpGatewayCatalogSource ResolveCatalogSource(IServiceProvider serviceProvider)

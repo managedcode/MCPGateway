@@ -9,6 +9,7 @@ internal sealed class McpGatewaySubscriptionDeliveryGate : IDisposable
         Func<CancellationToken, ValueTask>
     > _pendingDeliveries = new(StringComparer.Ordinal);
     private int _state;
+    internal bool IsOpen => Volatile.Read(ref _state) == 1;
 
     public ValueTask DeliverAsync(
         string key,

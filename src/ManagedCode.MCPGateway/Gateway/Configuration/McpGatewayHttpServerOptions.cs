@@ -18,6 +18,9 @@ public sealed class McpGatewayHttpServerOptions
 
     public ClientOAuthOptions? OAuth { get; set; }
 
+    /// <summary>Optional host-owned SDK HTTP pipeline, including explicit egress controls.</summary>
+    public HttpClient? HttpClient { get; set; }
+
     internal McpGatewayHttpServerOptions CloneWithSourceId(string sourceId) =>
         new()
         {
@@ -29,5 +32,6 @@ public sealed class McpGatewayHttpServerOptions
                 : new Dictionary<string, string>(AdditionalHeaders, StringComparer.Ordinal),
             ConnectionTimeout = ConnectionTimeout,
             OAuth = OAuth,
+            HttpClient = HttpClient,
         };
 }

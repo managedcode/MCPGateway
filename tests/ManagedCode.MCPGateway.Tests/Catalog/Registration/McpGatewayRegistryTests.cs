@@ -34,9 +34,10 @@ public sealed class McpGatewayRegistryTests
             }
         );
         registry.AddHttpServer("http-source", new Uri("https://example.com/mcp"));
+        afterToolSnapshot.Dispose();
         await registry.ClearAsync();
 
-        var finalSnapshot = registry.CreateSnapshot();
+        using var finalSnapshot = registry.CreateSnapshot();
 
         await Assert.That(afterToolSnapshot.Version).IsEqualTo(1);
         await Assert.That(finalSnapshot.Version).IsEqualTo(4);
@@ -71,7 +72,8 @@ public sealed class McpGatewayRegistryTests
 
         await registry.ReconfigureAsync(replacement);
 
-        var registrations = registry.CreateSnapshot().Registrations;
+        using var snapshot = registry.CreateSnapshot();
+        var registrations = snapshot.Registrations;
         var localRegistration = registrations.OfType<McpGatewayLocalToolSourceRegistration>().Single();
         var tools = await localRegistration.LoadToolsAsync(
             NullLoggerFactory.Instance,
@@ -229,7 +231,8 @@ public sealed class McpGatewayRegistryTests
             disposeClient: false
         );
 
-        var registrations = registry.CreateSnapshot().Registrations;
+        using var snapshot = registry.CreateSnapshot();
+        var registrations = snapshot.Registrations;
         var localRegistrations = registrations.OfType<McpGatewayLocalToolSourceRegistration>().ToArray();
         var loadedTools = await Task.WhenAll(
             localRegistrations.Select(registration =>

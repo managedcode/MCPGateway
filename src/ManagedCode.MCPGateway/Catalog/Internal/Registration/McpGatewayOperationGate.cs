@@ -6,6 +6,8 @@ internal sealed class McpGatewayOperationGate
     private int _activeOperations;
     private TaskCompletionSource<object?>? _operationsDrainedSignal;
 
+    public bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
     public void ThrowIfDisposed(object owner)
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, owner);

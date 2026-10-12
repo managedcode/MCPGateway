@@ -1,7 +1,6 @@
 #pragma warning disable MCPEXP001
 
 using Microsoft.Extensions.Options;
-using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
 
@@ -10,8 +9,10 @@ namespace ManagedCode.MCPGateway;
 internal sealed class McpGatewayMcpServerOptionsSetup(
     McpGatewayMcpServerHandlers handlers,
     McpGatewayMcpServerSubscriptionCoordinator subscriptionCoordinator,
-    IMcpTaskStore taskStore,
-    IOptions<McpGatewayOptions> gatewayOptions
+    McpGatewayMcpServerTaskStore taskStore,
+    IOptions<McpGatewayOptions> gatewayOptions,
+    McpGatewayGovernanceMessageFilter governanceFilter,
+    IServiceProvider services
 )
     : IPostConfigureOptions<McpServerOptions>
 {
@@ -22,6 +23,7 @@ internal sealed class McpGatewayMcpServerOptionsSetup(
         if (taskStore is McpGatewayMcpServerTaskStore gatewayTaskStore)
         {
             gatewayTaskStore.Configure(gatewayOptions.Value.McpTaskStore);
+            gatewayTaskStore.ConfigureAccess(services, gatewayOptions.Value.Governance.ManagedCatalog);
         }
         options.Capabilities ??= new ServerCapabilities();
         options.Capabilities.Tools ??= new ToolsCapability();
@@ -40,6 +42,7 @@ internal sealed class McpGatewayMcpServerOptionsSetup(
         options.Handlers.ListResourceTemplatesHandler = handlers.ListResourceTemplatesAsync;
         options.Handlers.ReadResourceHandler = handlers.ReadResourceAsync;
         options.Handlers.CompleteHandler = handlers.CompleteAsync;
+        options.Filters.Message.IncomingFilters.Add(governanceFilter.Create());
         options.Filters.Message.IncomingFilters.Add(
             subscriptionCoordinator.CreateIncomingFilter()
         );

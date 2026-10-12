@@ -10,7 +10,7 @@ public sealed class McpGateway(
     IOptions<McpGatewayOptions> options,
     ILogger<McpGateway> logger,
     ILoggerFactory loggerFactory
-) : IMcpGateway, IMcpGatewayGraphSearch
+) : IMcpGateway, IMcpGatewayGraphSearch, IMcpGatewayCatalogInspection, IMcpGatewayGraphFullTextSearch, IMcpGatewayToolSchemaLookup
 {
     private readonly McpGatewayRuntime _runtime = CreateRuntime(
         serviceProvider,
@@ -18,6 +18,15 @@ public sealed class McpGateway(
         logger,
         loggerFactory
     );
+
+    Task<McpGatewayToolDescriptor?> IMcpGatewayToolSchemaLookup.GetAuthorizedSchemaToolAsync(string toolId, CancellationToken cancellationToken) =>
+        _runtime.GetAuthorizedSchemaToolAsync(toolId, cancellationToken);
+
+    public Task<McpGatewayFullTextIndexResult> BuildFullTextIndexAsync(CancellationToken cancellationToken = default) =>
+        _runtime.BuildFullTextIndexAsync(cancellationToken);
+
+    public Task<IReadOnlyList<McpGatewayFullTextMatch>> SearchFullTextAsync(string query, int? maxResults = null,
+        CancellationToken cancellationToken = default) => _runtime.SearchFullTextAsync(query, maxResults, cancellationToken);
 
     public Task<McpGatewayIndexBuildResult> BuildIndexAsync(
         CancellationToken cancellationToken = default
@@ -68,6 +77,9 @@ public sealed class McpGateway(
     ) => _runtime.ExportMarkdownLdGraphAsync(cancellationToken);
 
     public ValueTask DisposeAsync() => _runtime.DisposeAsync();
+
+    public Task<IReadOnlyList<McpGatewayToolDescriptor>> InspectCandidateToolsAsync(CancellationToken cancellationToken = default) =>
+        _runtime.InspectCandidateToolsAsync(cancellationToken);
 
     private static McpGatewayRuntime CreateRuntime(
         IServiceProvider serviceProvider,

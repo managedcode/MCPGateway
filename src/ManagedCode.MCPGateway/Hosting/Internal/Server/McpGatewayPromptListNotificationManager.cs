@@ -1,3 +1,5 @@
+using ManagedCode.MCPGateway.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
@@ -57,6 +59,9 @@ internal sealed class McpGatewayPromptListNotificationManager(
         ArgumentException.ThrowIfNullOrWhiteSpace(listenerId);
         cancellationToken.ThrowIfCancellationRequested();
         store.ThrowIfDisposed();
+        var context = await McpGatewayTrustedContext.ResolveAsync(serviceProvider, cancellationToken);
+        await McpGatewayAccessBoundary.DemandAsync(serviceProvider, McpGatewayOperation.SubscribePromptChanges,
+            PromptListChangedDeliveryKey, null, cancellationToken);
 
         var key = McpGatewayPromptNotificationKey.Create(downstreamServer, listenerId);
         if (store.TryGet(key, out var existingState))
@@ -82,7 +87,10 @@ internal sealed class McpGatewayPromptListNotificationManager(
             ),
             subscriptionId,
             deliveryGate
-        );
+        )
+        { ExecutionContext = context };
+        createdState.VisiblePromptFingerprint = McpGatewayDefinitionHash.Compute(
+            await bindingLease.Binding.PromptCatalog.ListPromptsAsync(cancellationToken));
 
         if (!store.TryAdd(key, createdState))
         {
@@ -137,6 +145,9 @@ internal sealed class McpGatewayPromptListNotificationManager(
 
         foreach (var source in activeSources.Values)
         {
+            if (!(await McpGatewayAccessBoundary.AuthorizeAsync(serviceProvider, listenerState.ExecutionContext,
+                new(McpGatewayOperation.SubscribePromptChanges, PromptListChangedDeliveryKey, source.SourceId), cancellationToken)).IsAllowed)
+            { continue; }
             if (listenerState.UpstreamSubscriptions.ContainsKey(source.SourceId))
             {
                 continue;
@@ -147,7 +158,7 @@ internal sealed class McpGatewayPromptListNotificationManager(
                     new ValueTask(
                         ForwardUpstreamPromptListChangedAsync(
                             listenerState.Key,
-                            source.SourceId,
+                            source,
                             token
                         )
                     ),
@@ -190,35 +201,58 @@ internal sealed class McpGatewayPromptListNotificationManager(
 
     private Task ForwardUpstreamPromptListChangedAsync(
         McpGatewayPromptNotificationKey key,
-        string sourceId,
+        IMcpGatewayServerSource source,
         CancellationToken cancellationToken
     )
     {
         logger.LogDebug(
             "Forwarding MCP prompt list changed notification from upstream source '{SourceId}' to listener '{ServerId}:{ListenerId}'.",
-            sourceId,
+            source.SourceId,
             key.ServerId,
             key.ListenerId
         );
 
-        return NotifyPromptListChangedAsync(key, cancellationToken);
+        return NotifyPromptListChangedAsync(key, cancellationToken, source);
     }
 
     private async Task NotifyPromptListChangedAsync(
         McpGatewayPromptNotificationKey key,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        IMcpGatewayServerSource? source = null
     )
     {
         if (!store.TryGet(key, out var listenerState))
         {
             return;
         }
+        if (cancellationToken.IsCancellationRequested && !listenerState.DeliveryGate.IsOpen)
+        { return; }
 
         try
         {
-            var delivery = new Func<CancellationToken, ValueTask>(token =>
-                new ValueTask(
-                    listenerState.DownstreamServer.SendNotificationAsync(
+            await using var scope = serviceProvider.CreateAsyncScope();
+            using var actor = serviceProvider.GetService<McpGatewayExecutionScope>()?.Push(listenerState.ExecutionContext,
+                scope.ServiceProvider, null, null);
+            if (!(await McpGatewayAccessBoundary.AuthorizeAsync(scope.ServiceProvider, listenerState.ExecutionContext,
+                new(McpGatewayOperation.ReceivePromptChanges, PromptListChangedDeliveryKey, source?.SourceId), cancellationToken)).IsAllowed)
+            { return; }
+            if (source is not null && !(await listenerState.Binding.ListSourcesAsync(cancellationToken)).Any(current => ReferenceEquals(current, source)))
+            { return; }
+            if (source is null || scope.ServiceProvider.GetService<IMcpGatewayAccessPolicy>() is not null)
+            {
+                var fingerprint = McpGatewayDefinitionHash.Compute(await listenerState.Binding.PromptCatalog.ListPromptsAsync(cancellationToken));
+                if (!listenerState.TryUpdateVisiblePromptFingerprint(fingerprint))
+                { return; }
+            }
+            var delivery = new Func<CancellationToken, ValueTask>(async token =>
+            {
+                await using var deliveryScope = serviceProvider.CreateAsyncScope();
+                using var deliveryActor = serviceProvider.GetService<McpGatewayExecutionScope>()?.Push(listenerState.ExecutionContext,
+                    deliveryScope.ServiceProvider, null, null);
+                if (!(await McpGatewayAccessBoundary.AuthorizeAsync(deliveryScope.ServiceProvider, listenerState.ExecutionContext,
+                    new(McpGatewayOperation.ReceivePromptChanges, PromptListChangedDeliveryKey, source?.SourceId), token)).IsAllowed)
+                { return; }
+                await listenerState.DownstreamServer.SendNotificationAsync(
                         NotificationMethods.PromptListChangedNotification,
                         new PromptListChangedNotificationParams
                         {
@@ -228,16 +262,15 @@ internal sealed class McpGatewayPromptListNotificationManager(
                         },
                         McpJsonUtilities.DefaultOptions,
                         token
-                    )
-                )
-            );
+                    );
+            });
             await listenerState.DeliveryGate.DeliverAsync(
                 PromptListChangedDeliveryKey,
                 delivery,
                 cancellationToken
             );
         }
-        catch (Exception)
+        catch (Exception exception) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(exception))
         {
             logger.LogDebug(PromptNotificationDeliveryFailedLogMessage);
 

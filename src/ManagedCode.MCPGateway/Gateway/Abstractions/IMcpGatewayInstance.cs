@@ -13,4 +13,7 @@ public interface IMcpGatewayInstance : IAsyncDisposable
     IMcpGatewayCatalogRuntime CatalogRuntime { get; }
 
     McpGatewayToolSet ToolSet { get; }
+    IMcpGatewayDiscovery Discovery => new McpGatewayDiscoveryService(Gateway);
+    IMcpGatewayCatalogPublication? Publication => null;
+    IMcpGatewayResultReader? ResultReader => null;
 }

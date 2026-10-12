@@ -8,7 +8,9 @@ internal sealed partial class McpGatewayRuntime
         CancellationToken cancellationToken = default
     )
     {
-        var snapshot = await GetSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        await McpGatewayAccessBoundary.DemandAsync(_serviceProvider, McpGatewayOperation.ReadGraph, CatalogAssetName, null, cancellationToken);
+        using var visibility = await GetVisibleSnapshotAsync(cancellationToken).ConfigureAwait(false);
+        var snapshot = visibility.Snapshot;
         var diagnostics = new List<McpGatewayDiagnostic>();
         var profile = CreateToolGraphSchemaSearchProfile(
             _defaultSearchLimit,

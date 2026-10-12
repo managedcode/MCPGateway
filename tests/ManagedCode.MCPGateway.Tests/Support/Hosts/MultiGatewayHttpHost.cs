@@ -166,13 +166,12 @@ internal sealed class MultiGatewayHttpHost(
         new("gateway-5", "/mcp/gateway-5", "gateway-5-policy", "gateway-5-token"),
     ];
 
-    private static IReadOnlyList<IMcpGatewayServerSource> CreateSources(IMcpGatewayRegistry registry) =>
-        ((IMcpGatewayCatalogSource)registry)
-            .CreateSnapshot()
-            .Registrations.Select(static registration =>
-                (IMcpGatewayServerSource)new McpGatewayRegistrationBoundServerSource(registration)
-            )
-            .ToList();
+    private static IReadOnlyList<IMcpGatewayServerSource> CreateSources(IMcpGatewayRegistry registry)
+    {
+        using var snapshot = ((IMcpGatewayCatalogSource)registry).CreateSnapshot();
+        return snapshot.Registrations.Select(static registration =>
+            (IMcpGatewayServerSource)new McpGatewayRegistrationBoundServerSource(registration)).ToList();
+    }
 
     internal sealed record HostedGatewayRoute(
         string GatewayId,

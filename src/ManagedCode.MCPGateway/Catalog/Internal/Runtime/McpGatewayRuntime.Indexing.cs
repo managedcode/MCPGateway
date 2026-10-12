@@ -12,6 +12,12 @@ internal sealed partial class McpGatewayRuntime
         CancellationToken cancellationToken = default
     )
     {
+        await McpGatewayAccessBoundary.DemandAsync(_serviceProvider, McpGatewayOperation.AdministerGraph, CatalogAssetName, null, cancellationToken);
+        return await EnsureIndexAsync(cancellationToken);
+    }
+
+    private async Task<McpGatewayIndexBuildResult> EnsureIndexAsync(CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
 
         var existingBuild = Volatile.Read(ref _buildOperation);
@@ -97,13 +103,14 @@ internal sealed partial class McpGatewayRuntime
 
         using var activity = McpGatewayTelemetry.StartBuildIndexActivity(_searchStrategy);
         var stopwatch = Stopwatch.StartNew();
-        var registrySnapshot = _catalogSource.CreateSnapshot();
+        using var registrySnapshot = _catalogSource.CreateSnapshot();
         var diagnostics = new List<McpGatewayDiagnostic>();
-        var entries = await BuildCatalogEntriesAsync(
+        var catalog = await BuildCatalogEntriesAsync(
             registrySnapshot,
             diagnostics,
             cancellationToken
         );
+        var entries = catalog.Entries;
         var vectorization = await VectorizeEntriesAsync(entries, diagnostics, cancellationToken);
         var graphIndex = await TryBuildGraphIndexAsync(entries, diagnostics, cancellationToken);
         var snapshot = CreateSnapshot(
@@ -111,7 +118,8 @@ internal sealed partial class McpGatewayRuntime
             entries,
             vectorization.IsVectorSearchEnabled,
             graphIndex
-        );
+        ) with
+        { LoadedTools = catalog.LoadedTools };
 
         TryUpdateState(snapshot, registrySnapshot.Version);
 
@@ -132,149 +140,6 @@ internal sealed partial class McpGatewayRuntime
             stopwatch.Elapsed.TotalMilliseconds
         );
         return buildResult;
-    }
-
-    private async Task<List<ToolCatalogEntry>> BuildCatalogEntriesAsync(
-        McpGatewayCatalogSourceSnapshot registrySnapshot,
-        IList<McpGatewayDiagnostic> diagnostics,
-        CancellationToken cancellationToken
-    )
-    {
-        var entries = new List<ToolCatalogEntry>();
-        var reservedToolIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var loadedRegistrations =
-            new List<(McpGatewayToolSourceRegistration Registration, IReadOnlyList<McpGatewayLoadedTool> Tools)>();
-
-        foreach (var registration in registrySnapshot.Registrations)
-        {
-            var tools = await LoadRegistrationToolsAsync(registration, diagnostics, cancellationToken);
-            loadedRegistrations.Add((registration, tools));
-        }
-
-        var normalizedToolNameCounts = CountNormalizedToolNames(loadedRegistrations);
-
-        foreach (var (registration, tools) in loadedRegistrations)
-        {
-            AddCatalogEntries(
-                entries,
-                reservedToolIds,
-                normalizedToolNameCounts,
-                registration,
-                tools,
-                diagnostics
-            );
-        }
-
-        return entries;
-    }
-
-    private async Task<IReadOnlyList<McpGatewayLoadedTool>> LoadRegistrationToolsAsync(
-        McpGatewayToolSourceRegistration registration,
-        IList<McpGatewayDiagnostic> diagnostics,
-        CancellationToken cancellationToken
-    )
-    {
-        try
-        {
-            return await registration.LoadToolsAsync(_loggerFactory, cancellationToken);
-        }
-        catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
-        {
-            diagnostics.Add(
-                new McpGatewayDiagnostic(
-                    SourceLoadFailedDiagnosticCode,
-                    SourceLoadFailedMessage
-                )
-            );
-            _logger.LogWarning(FailedToLoadGatewaySourceLogMessage);
-            return [];
-        }
-    }
-
-    private void AddCatalogEntries(
-        ICollection<ToolCatalogEntry> entries,
-        ISet<string> reservedToolIds,
-        IReadOnlyDictionary<string, int> normalizedToolNameCounts,
-        McpGatewayToolSourceRegistration registration,
-        IReadOnlyList<McpGatewayLoadedTool> tools,
-        IList<McpGatewayDiagnostic> diagnostics
-    )
-    {
-        foreach (var loadedTool in tools)
-        {
-            if (string.IsNullOrWhiteSpace(loadedTool.Tool.Name))
-            {
-                continue;
-            }
-
-            var toolName = loadedTool.Tool.Name.Trim();
-            var normalizedToolName = McpGatewayProtocolName.Normalize(
-                toolName,
-                McpGatewayProtocolName.DefaultToolName
-            );
-            var requiresSourcePrefix =
-                normalizedToolNameCounts.TryGetValue(normalizedToolName, out var count)
-                && count > 1;
-            var toolId = McpGatewayProtocolName.CreateToolId(
-                registration.SourceId,
-                toolName,
-                reservedToolIds,
-                requiresSourcePrefix
-            );
-            var descriptor = BuildDescriptor(registration, loadedTool, toolName, toolId);
-
-            if (requiresSourcePrefix)
-            {
-                diagnostics.Add(
-                    new McpGatewayDiagnostic(
-                        DuplicateToolIdDiagnosticCode,
-                        string.Format(
-                            CultureInfo.InvariantCulture,
-                            DuplicateToolIdMessageFormat,
-                            normalizedToolName
-                        )
-                    )
-                );
-            }
-
-            var document = BuildDescriptorDocument(descriptor);
-            var searchTermIndex = BuildToolSearchTermIndex(document);
-            entries.Add(
-                new ToolCatalogEntry(
-                    descriptor,
-                    loadedTool.Tool,
-                    document,
-                    searchTermIndex.SearchBoostTerms,
-                    searchTermIndex.ConfidenceTerms,
-                    loadedTool.Client
-                )
-            );
-        }
-    }
-
-    private static IReadOnlyDictionary<string, int> CountNormalizedToolNames(
-        IReadOnlyList<(McpGatewayToolSourceRegistration Registration, IReadOnlyList<McpGatewayLoadedTool> Tools)> loadedRegistrations
-    )
-    {
-        var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (_, tools) in loadedRegistrations)
-        {
-            foreach (var loadedTool in tools)
-            {
-                if (string.IsNullOrWhiteSpace(loadedTool.Tool.Name))
-                {
-                    continue;
-                }
-
-                var normalizedToolName = McpGatewayProtocolName.Normalize(
-                    loadedTool.Tool.Name,
-                    McpGatewayProtocolName.DefaultToolName
-                );
-                counts[normalizedToolName] = counts.GetValueOrDefault(normalizedToolName) + 1;
-            }
-        }
-
-        return counts;
     }
 
     private async Task<VectorizationOutcome> VectorizeEntriesAsync(
@@ -601,7 +466,8 @@ internal sealed partial class McpGatewayRuntime
             isVectorSearchEnabled,
             graphIndex,
             registrySnapshot.Version
-        );
+        )
+        { SourceOwner = registrySnapshot.Owner, Ownership = new(graphIndex) };
 
     private static McpGatewayIndexBuildResult CreateBuildResult(
         ToolCatalogSnapshot snapshot,
@@ -617,8 +483,9 @@ internal sealed partial class McpGatewayRuntime
 
     private void TryUpdateState(ToolCatalogSnapshot snapshot, int snapshotVersion)
     {
+        _ownedSnapshots.TryAdd(snapshot.Ownership, 0);
         var state = Volatile.Read(ref _state);
-        while (!state.IsDisposed)
+        while (!state.IsDisposed && state.SnapshotVersion <= snapshotVersion)
         {
             var updatedState = state with
             {
@@ -629,11 +496,17 @@ internal sealed partial class McpGatewayRuntime
                 ReferenceEquals(Interlocked.CompareExchange(ref _state, updatedState, state), state)
             )
             {
+                SynchronizeSourceNotifications(snapshot);
+                if (!ReferenceEquals(state.Snapshot.Ownership, snapshot.Ownership))
+                {
+                    _ = RetireSnapshotAsync(state.Snapshot.Ownership);
+                }
                 return;
             }
 
             state = Volatile.Read(ref _state);
         }
+        _ = RetireSnapshotAsync(snapshot.Ownership);
     }
 
     private static async Task AwaitCanceledBuildAsync(BuildOperation buildOperation)

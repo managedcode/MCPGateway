@@ -12,9 +12,11 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
     private const string PromptSubscriptionId = "prompt-manager-test";
 
     [Test]
-    public async Task ResourceListener_DoesNotDeadlockAndDisposesAfterCancellation()
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task ResourceListener_DoesNotDeadlockAndDisposesAfterCancellation(bool cancelEarly)
     {
-        var source = new EarlyResourceUpdateSource("source-a");
+        var source = new EarlyResourceUpdateSource("source-a", cancelEarly);
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
             static _ => { },
             services =>
@@ -36,9 +38,11 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
     }
 
     [Test]
-    public async Task PromptListener_DisposesEarlySubscriptionAfterCancellation()
+    [Arguments(true)]
+    [Arguments(false)]
+    public async Task PromptListener_DisposesEarlySubscriptionAfterCancellation(bool cancelEarly)
     {
-        var source = new EarlyPromptListChangeSource("source-a");
+        var source = new EarlyPromptListChangeSource("source-a", cancelEarly);
         await using var gatewayServer = await GatewayMcpServerHost.StartAsync(
             static _ => { },
             services =>
@@ -241,7 +245,7 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
         }
     }
 
-    private sealed class EarlyResourceUpdateSource(string sourceId)
+    private sealed class EarlyResourceUpdateSource(string sourceId, bool cancelEarly)
         : TestMcpGatewayServerSource(sourceId)
     {
         private int _disposedSubscriptionCount;
@@ -259,7 +263,8 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
             cancellationToken.ThrowIfCancellationRequested();
 
             using var cancellationSource = new CancellationTokenSource();
-            await cancellationSource.CancelAsync();
+            if (cancelEarly)
+            { await cancellationSource.CancelAsync(); }
             await onUpdated(
                 new ResourceUpdatedNotificationParams { Uri = resourceUri },
                 cancellationSource.Token
@@ -271,7 +276,7 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
         }
     }
 
-    private sealed class EarlyPromptListChangeSource(string sourceId)
+    private sealed class EarlyPromptListChangeSource(string sourceId, bool cancelEarly)
         : TestMcpGatewayServerSource(sourceId)
     {
         private int _disposedSubscriptionCount;
@@ -288,7 +293,8 @@ public sealed class McpGatewaySubscriptionEarlyCallbackTests
             cancellationToken.ThrowIfCancellationRequested();
 
             using var cancellationSource = new CancellationTokenSource();
-            await cancellationSource.CancelAsync();
+            if (cancelEarly)
+            { await cancellationSource.CancelAsync(); }
             await onChanged(new PromptListChangedNotificationParams(), cancellationSource.Token);
 
             return new CountingAsyncDisposable(() =>

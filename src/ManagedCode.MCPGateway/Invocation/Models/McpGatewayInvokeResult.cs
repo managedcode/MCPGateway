@@ -12,7 +12,14 @@ public sealed record McpGatewayInvokeResult(
     string? Error = null
 )
 {
-    /// <summary>The complete upstream MCP result, when the invoked source is MCP.</summary>
+    /// <summary>Business outcome, independent of successful protocol completion.</summary>
+    public McpGatewayInvocationOutcome Outcome { get; init; } = IsSuccess
+        ? McpGatewayInvocationOutcome.Succeeded : McpGatewayInvocationOutcome.UpstreamUnavailable;
+    public string? ErrorCode { get; init; }
+    public string? DefinitionHash { get; init; }
+    public int? DeliveredBytes { get; init; }
+    public string? ResultHandle { get; init; }
+    /// <summary>The approved outward MCP result, when the invoked source is MCP.</summary>
     [JsonIgnore]
     public CallToolResult? McpResult { get; init; }
 }

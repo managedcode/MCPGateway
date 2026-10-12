@@ -32,14 +32,15 @@ public sealed class McpGatewayFactory(
         var catalogRuntime = (IMcpGatewayCatalogRuntime)registry;
         var runtimeServiceProvider = new McpGatewayFactoryServiceProvider(
             serviceProvider,
-            registry
+            registry,
+            gatewayOptions
         );
         var promptCatalog = new McpGatewayPromptCatalog(
             registry,
             runtimeServiceProvider,
             loggerFactory
         );
-        var resourceCatalog = new McpGatewayResourceCatalog(registry, loggerFactory);
+        var resourceCatalog = new McpGatewayResourceCatalog(registry, loggerFactory, runtimeServiceProvider);
         var gateway = new McpGateway(
             runtimeServiceProvider,
             gatewayOptions,
@@ -48,24 +49,31 @@ public sealed class McpGatewayFactory(
         );
 
         return new McpGatewayFactoryResult(
-            ReleaseAsync,
+            (gatewayToRelease, registryToRelease, catalogToRelease) => ReleaseAsync(gatewayToRelease, registryToRelease, catalogToRelease, runtimeServiceProvider),
             gateway,
             promptCatalog,
             resourceCatalog,
             registry,
             catalogRuntime,
-            new McpGatewayToolSet(gateway)
+            new McpGatewayToolSet(gateway),
+            new McpGatewayDiscoveryService(gateway, runtimeServiceProvider, options.MaximumToolSchemaBytes),
+            new McpGatewayCatalogPublicationService(gateway, runtimeServiceProvider),
+            serviceProvider.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IMcpGatewayResultStore))
+                ? new McpGatewayResultReader(runtimeServiceProvider, gatewayOptions) : null
         );
     }
 
     private static async ValueTask ReleaseAsync(
         IMcpGateway runtimeGateway,
         IMcpGatewayRegistry runtimeRegistry,
-        IMcpGatewayCatalogRuntime runtimeCatalogRuntime
+        IMcpGatewayCatalogRuntime runtimeCatalogRuntime,
+        McpGatewayFactoryServiceProvider runtimeServices
     )
     {
         var cleanupExceptions = new List<Exception>();
         await DisposeAsync(runtimeGateway, cleanupExceptions);
+        if (runtimeServices.OwnedAdmission is { } ownedAdmission)
+        { await DisposeAsync(ownedAdmission, cleanupExceptions); }
 
         if (
             !ReferenceEquals(runtimeCatalogRuntime, runtimeRegistry)
@@ -114,9 +122,21 @@ public sealed class McpGatewayFactory(
 
     private sealed class McpGatewayFactoryServiceProvider(
         IServiceProvider rootServiceProvider,
-        IMcpGatewayRegistry registry
-    ) : IServiceProvider, IKeyedServiceProvider
+        IMcpGatewayRegistry registry,
+        IOptions<McpGatewayOptions> instanceOptions
+    ) : IServiceProvider, IKeyedServiceProvider, IMcpGatewayAdmissionProvider
     {
+        private readonly Lazy<McpGatewaySourceAdmission> _admission = new(() => new(instanceOptions,
+            rootServiceProvider.GetService<TimeProvider>() ?? TimeProvider.System));
+        public IAsyncDisposable? OwnedAdmission => _admission.IsValueCreated ? _admission.Value : null;
+        public IMcpGatewaySourceAdmission Admission
+        {
+            get
+            {
+                var configured = McpGatewayTrustedContext.OperationServices(rootServiceProvider).GetRequiredService<IMcpGatewaySourceAdmission>();
+                return configured is McpGatewaySourceAdmission ? _admission.Value : configured;
+            }
+        }
         public object? GetService(Type serviceType)
         {
             if (

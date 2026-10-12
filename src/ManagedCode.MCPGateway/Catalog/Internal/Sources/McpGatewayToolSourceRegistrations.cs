@@ -39,6 +39,7 @@ internal abstract class McpGatewayToolSourceRegistration(string sourceId, string
     public string? DisplayName { get; } = displayName;
 
     public abstract McpGatewaySourceRegistrationKind Kind { get; }
+    public virtual string BindingFingerprint => McpGatewayDefinitionHash.Compute(new { SourceId, Kind });
 
     public abstract ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,
@@ -124,21 +125,23 @@ internal sealed class McpGatewayHttpToolSourceRegistration(McpGatewayHttpServerO
         disposeClient: true
     )
 {
+    internal bool HasControlledHttpClient => options.HttpClient is McpGatewayEgressHttpClient.PolicyHttpClient client
+        && client.SourceId.Equals(SourceId, StringComparison.OrdinalIgnoreCase);
     internal const HttpTransportMode CurrentTransportMode = HttpTransportMode.StreamableHttp;
 
     private readonly McpGatewayHttpServerOptions options = options;
 
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Http;
+    public override string BindingFingerprint => McpGatewayDefinitionHash.Compute(new { SourceId, Kind, options.Endpoint });
 
     protected override async ValueTask<McpClient> CreateClientAsync(
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
     )
     {
-        var transport = new HttpClientTransport(
-            CreateTransportOptions(options),
-            loggerFactory
-        );
+        var transport = options.HttpClient is { } httpClient
+            ? new HttpClientTransport(CreateTransportOptions(options), httpClient, loggerFactory, ownsHttpClient: false)
+            : new HttpClientTransport(CreateTransportOptions(options), loggerFactory);
 
         try
         {
@@ -224,6 +227,7 @@ internal sealed class McpGatewayStdioToolSourceRegistration(McpGatewayStdioServe
     private readonly McpGatewayStdioServerOptions options = options;
 
     public override McpGatewaySourceRegistrationKind Kind => McpGatewaySourceRegistrationKind.Stdio;
+    public override string BindingFingerprint => McpGatewayDefinitionHash.Compute(new { SourceId, Kind, options.Command, options.Arguments, options.WorkingDirectory });
 
     protected override async ValueTask<McpClient> CreateClientAsync(
         ILoggerFactory loggerFactory,
@@ -295,6 +299,7 @@ internal abstract class McpGatewayClientToolSourceRegistration(
     private readonly McpGatewayMcpClientLifetime _clientLifetime = new(disposeClient);
 
     internal bool HasCachedClient => _clientLifetime.HasCachedClient;
+    internal McpClient? CachedClient => _clientLifetime.CachedClient;
 
     public override async ValueTask<IReadOnlyList<McpGatewayLoadedTool>> LoadToolsAsync(
         ILoggerFactory loggerFactory,

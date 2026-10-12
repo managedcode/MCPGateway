@@ -4,9 +4,10 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="JsonSchema.Net" Version="9.4.1" />
     <PackageVersion Include="ManagedCode.Communication" Version="10.3.7" />
     <PackageVersion Include="DotNet.ReproducibleBuilds" Version="2.0.5" />
-    <PackageVersion Include="ManagedCode.MarkdownLd.Kb" Version="0.2.15" />
+    <PackageVersion Include="ManagedCode.MarkdownLd.Kb" Version="0.2.17" />
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.12" />
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />

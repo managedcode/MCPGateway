@@ -6,52 +6,95 @@ using ModelContextProtocol.Client;
 
 namespace ManagedCode.MCPGateway;
 
-internal sealed class McpGatewayRegistry(
+internal sealed partial class McpGatewayRegistry(
     IOptions<McpGatewayOptions> options,
     McpGatewayPromptChangeHub promptChangeHub
 )
     : IMcpGatewayRegistry,
         IMcpGatewayCatalogRuntime,
         IMcpGatewayCatalogSource,
+        IMcpGatewayCatalogStagingSource,
         IAsyncDisposable
 {
     private McpGatewayRegistrationCollection _registrations = CreateRegistrations(options);
     private readonly McpGatewayOperationGate _operationGate = new();
     private int _version;
+    private readonly SemaphoreSlim _reconfiguration = new(1, 1);
+    private readonly System.Threading.Lock _stateGate = new();
+    private Func<McpGatewayCatalogSourceSnapshot, CancellationToken, Task<McpGatewayStagedCatalog>>? _candidateValidator;
+
+    public void SetCandidateValidator(Func<McpGatewayCatalogSourceSnapshot, CancellationToken, Task<McpGatewayStagedCatalog>> validator) =>
+        _candidateValidator = validator;
 
     public ValueTask ClearAsync(CancellationToken cancellationToken = default) =>
         ReconfigureAsync(new McpGatewayOptions(), cancellationToken);
 
-    public async ValueTask ReconfigureAsync(
-        McpGatewayOptions configuration,
-        CancellationToken cancellationToken = default
-    )
+    public ValueTask ReconfigureAsync(McpGatewayOptions configuration, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        return ReconfigureCoreAsync(configuration.SourceRegistrations, null, null, cancellationToken);
+    }
+
+    private async ValueTask ReconfigureCoreAsync(IReadOnlyList<McpGatewayToolSourceRegistration> registrations, string? refreshSourceId,
+        int? requiredVersion, CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
 
-        IReadOnlyList<McpGatewayToolSourceRegistration> previousRegistrations;
         _operationGate.Enter(this);
+        var acquired = false;
         try
         {
-            _operationGate.ThrowIfDisposed(this);
-
-            var previousCollection = _registrations;
-            _registrations = new McpGatewayRegistrationCollection(
-                configuration.SourceRegistrations
-            );
-            previousRegistrations = previousCollection.Drain();
-            Interlocked.Increment(ref _version);
+            await _reconfiguration.WaitAsync(cancellationToken);
+            acquired = true;
+            var candidate = new McpGatewayRegistrationCollection(registrations);
+            var committed = false;
+            try
+            {
+                var expectedVersion = requiredVersion ?? Volatile.Read(ref _version);
+                if (expectedVersion != Volatile.Read(ref _version))
+                { throw new InvalidOperationException(RefreshConflictMessage); }
+                var candidateSnapshot = new McpGatewayCatalogSourceSnapshot(expectedVersion + 1, candidate.Snapshot()) { Owner = candidate, RefreshSourceId = refreshSourceId };
+                await using var staged = _candidateValidator is { } validate ? await validate(candidateSnapshot, cancellationToken) : null;
+                cancellationToken.ThrowIfCancellationRequested();
+                McpGatewayRegistrationCollection previous;
+                lock (_stateGate)
+                {
+                    if (_version != expectedVersion)
+                    {
+                        throw new InvalidOperationException(RefreshConflictMessage);
+                    }
+                    previous = _registrations;
+                    _registrations = candidate;
+                    Interlocked.Increment(ref _version);
+                    committed = true;
+                    staged?.Publish();
+                }
+                promptChangeHub.NotifyChanged();
+                await previous.RetireAsync();
+                var cleanupExceptions = new List<Exception>();
+                await DisposeRegistrationsAsync(previous.Drain().Where(source => !candidateSnapshot.Registrations.Contains(source)).ToArray(), cleanupExceptions);
+                ThrowIfCleanupFailed(cleanupExceptions);
+            }
+            finally
+            {
+                if (!committed)
+                {
+                    await candidate.RetireAsync();
+                    var retained = _registrations.Snapshot();
+                    var cleanupExceptions = new List<Exception>();
+                    await DisposeRegistrationsAsync(candidate.Drain().Where(source => !retained.Contains(source)).ToArray(), cleanupExceptions);
+                    ThrowIfCleanupFailed(cleanupExceptions);
+                }
+            }
         }
         finally
         {
             _operationGate.Exit();
+            if (acquired)
+            {
+                _reconfiguration.Release();
+            }
         }
-
-        var cleanupExceptions = new List<Exception>();
-        await DisposeRegistrationsAsync(previousRegistrations, cleanupExceptions);
-        promptChangeHub.NotifyChanged();
-        ThrowIfCleanupFailed(cleanupExceptions);
     }
 
     public void AddTool(string sourceId, AITool tool, string? displayName = null) =>
@@ -206,10 +249,20 @@ internal sealed class McpGatewayRegistry(
         try
         {
             _operationGate.ThrowIfDisposed(this);
-            return new McpGatewayCatalogSourceSnapshot(
-                Volatile.Read(ref _version),
-                _registrations.Snapshot()
-            );
+            lock (_stateGate)
+            {
+                while (!_operationGate.IsDisposed)
+                {
+                    var collection = Volatile.Read(ref _registrations);
+                    if (!collection.TryAcquireLease())
+                    {
+                        continue;
+                    }
+                    return new McpGatewayCatalogSourceSnapshot(Volatile.Read(ref _version), collection.Snapshot())
+                    { Owner = collection, Release = collection.ReleaseLease };
+                }
+                throw new ObjectDisposedException(nameof(McpGatewayRegistry));
+            }
         }
         finally
         {
@@ -227,9 +280,11 @@ internal sealed class McpGatewayRegistry(
         Interlocked.Increment(ref _version);
         await waitForDrain;
 
+        await _registrations.RetireAsync();
         var registrations = _registrations.Drain();
         var cleanupExceptions = new List<Exception>();
         await DisposeRegistrationsAsync(registrations, cleanupExceptions);
+        _reconfiguration.Dispose();
         ThrowIfCleanupFailed(cleanupExceptions);
     }
 
@@ -274,8 +329,11 @@ internal sealed class McpGatewayRegistry(
         try
         {
             _operationGate.ThrowIfDisposed(this);
-            mutation(_registrations);
-            Interlocked.Increment(ref _version);
+            lock (_stateGate)
+            {
+                mutation(_registrations);
+                Interlocked.Increment(ref _version);
+            }
         }
         finally
         {

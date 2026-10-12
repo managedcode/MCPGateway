@@ -13,6 +13,14 @@ namespace ManagedCode.MCPGateway;
 
 public static class McpGatewayMcpServerBuilderExtensions
 {
+    /// <summary>Export only compact discovery, schema inspection and invocation tools.</summary>
+    public static IMcpServerBuilder WithMcpGatewayDiscovery(this IMcpServerBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        builder.Services.Configure<McpGatewayMcpServerExportOptions>(options => options.Mode = McpGatewayMcpServerExportMode.DiscoveryOnly);
+        return builder.WithMcpGatewayCatalog();
+    }
+
     public static IMcpServerBuilder WithMcpGatewayCatalog(this IMcpServerBuilder builder) =>
         WithMcpGatewayCatalog(builder, new McpGatewayMcpServerTaskStore());
 
@@ -35,15 +43,15 @@ public static class McpGatewayMcpServerBuilderExtensions
         builder.Services.TryAddSingleton<McpGatewayPromptNotificationStore>();
         builder.Services.TryAddSingleton<McpGatewayPromptListNotificationManager>();
         builder.Services.TryAddSingleton<McpGatewayMcpServerSubscriptionCoordinator>();
-        if (taskStore is McpGatewayMcpServerTaskStore gatewayTaskStore)
-        {
-            builder.Services.TryAddSingleton(gatewayTaskStore);
-        }
-
+        var guardedStore = taskStore as McpGatewayMcpServerTaskStore ?? new McpGatewayMcpServerTaskStore(taskStore);
+        builder.Services.TryAddSingleton(guardedStore);
+        builder.WithTasks(guardedStore);
+        // The host keeps its original store; SDK caller paths use the guarded adapter.
         builder.Services.AddSingleton(taskStore);
-        builder.WithTasks(taskStore);
         builder.WithMcpApps();
         builder.Services.TryAddSingleton<McpGatewayMcpServerHandlers>();
+        builder.Services.TryAddSingleton<McpGatewayExecutionScope>();
+        builder.Services.TryAddSingleton<McpGatewayGovernanceMessageFilter>();
         builder.Services.TryAddEnumerable(
             ServiceDescriptor.Singleton<
                 IPostConfigureOptions<McpServerOptions>,

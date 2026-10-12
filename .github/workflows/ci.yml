@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'AGENTS.md'
 
 env:
   DOTNET_VERSION: '10.0.x'
@@ -78,7 +82,7 @@ jobs:
     name: Full Benchmarks
     runs-on: ubuntu-latest
     needs: build-test
-    timeout-minutes: 60
+    timeout-minutes: 180
 
     steps:
       - name: Checkout

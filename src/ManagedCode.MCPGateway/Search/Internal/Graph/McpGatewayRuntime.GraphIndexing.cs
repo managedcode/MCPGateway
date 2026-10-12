@@ -48,14 +48,15 @@ internal sealed partial class McpGatewayRuntime
             || (_markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.FileSystem
                 && string.Equals(Path.GetExtension(_markdownLdGraphPath), JsonLdGraphExtension, StringComparison.OrdinalIgnoreCase)))
         {
+            var bindings = CreateEntriesByGraphNodeId(entries, []);
             var graph = _markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.EmbeddedResource
                 ? KnowledgeGraph.LoadJsonLd(await (_jsonLdGraphLoader
                     ?? throw new InvalidOperationException(MissingJsonLdResourceLoaderMessage))(cancellationToken).ConfigureAwait(false))
                 : await KnowledgeGraph.LoadJsonLdFromFileAsync(_markdownLdGraphPath!, cancellationToken).ConfigureAwait(false);
-            var bindings = CreateEntriesByGraphNodeId(entries, []);
             var nodeIds = graph.ToSnapshot().Nodes.Select(node => node.Id).ToHashSet(StringComparer.Ordinal);
             if (bindings.Keys.Any(nodeId => !nodeIds.Contains(nodeId)))
             {
+                graph.Dispose();
                 throw new InvalidDataException(MissingJsonLdToolNodesMessage);
             }
 
@@ -92,35 +93,43 @@ internal sealed partial class McpGatewayRuntime
         IReadOnlyDictionary<string, ToolCatalogEntry> entriesByNodeId
     )
     {
-        var snapshot = graph.ToSnapshot();
-        var searchableNodeIds = new HashSet<string>(entriesByNodeId.Count, StringComparer.Ordinal);
-        foreach (var nodeId in entriesByNodeId.Keys)
+        try
         {
-            searchableNodeIds.Add(nodeId);
-        }
+            var snapshot = graph.ToSnapshot();
+            var searchableNodeIds = new HashSet<string>(entriesByNodeId.Count, StringComparer.Ordinal);
+            foreach (var nodeId in entriesByNodeId.Keys)
+            {
+                searchableNodeIds.Add(nodeId);
+            }
 
-        var nodesById = CreateRankedGraphNodesById(snapshot.Nodes);
-        var navigation = CreateGraphNavigationIndex(snapshot, searchableNodeIds);
-        var schemaDiagnostics = CreateSchemaProfileDiagnostics(
-            graph,
-            CreateToolGraphSchemaSearchProfile(
-                _defaultSearchLimit,
-                GraphFocusedRelatedResultsLimit,
-                GraphFocusedNextStepResultsLimit
-            )
-        );
-        return new ToolGraphSearchIndex(
-            graph,
-            snapshot,
-            entriesByNodeId,
-            searchableNodeIds,
-            nodesById,
-            CreateGraphCandidateSearchIndex(entriesByNodeId, nodesById, navigation),
-            navigation,
-            snapshot.Nodes.Count,
-            snapshot.Edges.Count,
-            schemaDiagnostics
-        );
+            var nodesById = CreateRankedGraphNodesById(snapshot.Nodes);
+            var navigation = CreateGraphNavigationIndex(snapshot, searchableNodeIds);
+            var schemaDiagnostics = CreateSchemaProfileDiagnostics(
+                graph,
+                CreateToolGraphSchemaSearchProfile(
+                    _defaultSearchLimit,
+                    GraphFocusedRelatedResultsLimit,
+                    GraphFocusedNextStepResultsLimit
+                )
+            );
+            return new ToolGraphSearchIndex(
+                graph,
+                snapshot,
+                entriesByNodeId,
+                searchableNodeIds,
+                nodesById,
+                CreateGraphCandidateSearchIndex(entriesByNodeId, nodesById, navigation),
+                navigation,
+                snapshot.Nodes.Count,
+                snapshot.Edges.Count,
+                schemaDiagnostics
+            );
+        }
+        catch
+        {
+            graph.Dispose();
+            throw;
+        }
     }
 
     private async Task<

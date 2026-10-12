@@ -12,6 +12,31 @@ internal sealed class McpGatewayRegistrationCollection(
     private const string EndpointRequiredMessage = "An endpoint is required.";
     private const string SourceIdRequiredMessage = "A source id is required.";
 
+    private readonly McpGatewayOperationGate _leaseGate = new();
+
+    public bool TryAcquireLease()
+    {
+        try
+        {
+            _leaseGate.Enter(this);
+            return true;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
+    }
+
+    public void ReleaseLease() => _leaseGate.Exit();
+
+    public async ValueTask RetireAsync()
+    {
+        if (_leaseGate.TryStartDispose(out var drained))
+        {
+            await drained;
+        }
+    }
+
     private ConcurrentQueue<McpGatewayToolSourceRegistration> _registrations = new(
         registrations ?? []
     );

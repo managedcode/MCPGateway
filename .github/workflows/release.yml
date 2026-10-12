@@ -3,6 +3,10 @@ name: Release
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+      - 'AGENTS.md'
   workflow_dispatch:
 
 env:
@@ -14,6 +18,7 @@ permissions:
 jobs:
   build:
     name: Build, Test, and Pack
+    timeout-minutes: 180
     runs-on: ubuntu-latest
 
     outputs:
@@ -218,7 +223,7 @@ jobs:
           - [managedcode/MCPGateway](https://github.com/managedcode/MCPGateway)
           EOF
 
-      - name: Create or update GitHub Release
+      - name: Create GitHub Release if needed
         shell: bash
         run: |
           set -euo pipefail
@@ -226,8 +231,7 @@ jobs:
           TAG="v$VERSION"
 
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" ./artifacts/*.nupkg --clobber --repo "$GITHUB_REPOSITORY"
-            gh release edit "$TAG" --title "$TAG" --notes-file release_notes.md --repo "$GITHUB_REPOSITORY"
+            echo "Release $TAG already exists; preserving its published package artifacts."
           else
             gh release create "$TAG" ./artifacts/*.nupkg --title "$TAG" --notes-file release_notes.md --repo "$GITHUB_REPOSITORY"
           fi

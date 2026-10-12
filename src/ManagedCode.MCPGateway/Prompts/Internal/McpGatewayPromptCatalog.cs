@@ -14,7 +14,8 @@ internal sealed class McpGatewayPromptCatalog(
         CancellationToken cancellationToken = default
     )
     {
-        var snapshot = catalogSource.CreateSnapshot();
+        using var snapshot = catalogSource.CreateSnapshot();
+        var context = await McpGatewayTrustedContext.ResolveAsync(serviceProvider, cancellationToken);
         var descriptors = new List<McpGatewayPromptDescriptor>();
 
         foreach (var registration in snapshot.Registrations)
@@ -22,7 +23,15 @@ internal sealed class McpGatewayPromptCatalog(
             cancellationToken.ThrowIfCancellationRequested();
 
             var prompts = await registration.LoadPromptsAsync(loggerFactory, cancellationToken);
-            descriptors.AddRange(prompts.Select(prompt => BuildDescriptor(registration, prompt)));
+            foreach (var prompt in prompts)
+            {
+                var descriptor = BuildDescriptor(registration, prompt);
+                if ((await McpGatewayAccessBoundary.AuthorizeAsync(serviceProvider, context,
+                    new(McpGatewayOperation.Discover, descriptor.PromptId, descriptor.SourceId), cancellationToken)).IsAllowed)
+                {
+                    descriptors.Add(descriptor);
+                }
+            }
         }
 
         return descriptors
@@ -96,6 +105,7 @@ internal sealed class McpGatewayPromptCatalog(
         var sourceId = request.SourceId.Trim();
         var promptName = request.PromptName.Trim();
         var promptId = $"{sourceId}:{promptName}";
+        await McpGatewayAccessBoundary.DemandAsync(serviceProvider, McpGatewayOperation.RenderPrompt, promptId, sourceId, cancellationToken);
         if (!activePromptIds.Add(promptId))
         {
             throw new InvalidOperationException(
@@ -103,7 +113,7 @@ internal sealed class McpGatewayPromptCatalog(
             );
         }
 
-        var snapshot = catalogSource.CreateSnapshot();
+        using var snapshot = catalogSource.CreateSnapshot();
         var registration = snapshot.Registrations.FirstOrDefault(candidate =>
             string.Equals(candidate.SourceId, sourceId, StringComparison.Ordinal)
         );
@@ -170,7 +180,7 @@ internal sealed class McpGatewayPromptCatalog(
 
     private McpGatewayToolSourceRegistration? FindRegistration(string sourceId)
     {
-        var snapshot = catalogSource.CreateSnapshot();
+        using var snapshot = catalogSource.CreateSnapshot();
         return snapshot.Registrations.FirstOrDefault(candidate =>
             string.Equals(candidate.SourceId, sourceId, StringComparison.Ordinal)
         );

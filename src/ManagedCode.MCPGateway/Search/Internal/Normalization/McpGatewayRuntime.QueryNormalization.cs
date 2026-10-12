@@ -9,7 +9,8 @@ internal sealed partial class McpGatewayRuntime
     private async Task<string?> NormalizeSearchQueryAsync(
         string? query,
         ICollection<McpGatewayDiagnostic> diagnostics,
-        CancellationToken cancellationToken
+        CancellationToken cancellationToken,
+        string? visibilityFingerprint = null
     )
     {
         if (_searchQueryNormalization == McpGatewaySearchQueryNormalization.Disabled)
@@ -25,6 +26,10 @@ internal sealed partial class McpGatewayRuntime
 
         await using var chatClientLease = ResolveSearchQueryChatClient();
         var chatClientFingerprint = chatClientLease.Fingerprint;
+        if (visibilityFingerprint is not null)
+        {
+            chatClientFingerprint = McpGatewayDefinitionHash.Compute(new { chatClientFingerprint, visibilityFingerprint });
+        }
         var cachedNormalizedQuery = await _searchRuntimeCache.TryGetNormalizedQueryAsync(
             _searchQueryNormalization,
             trimmedQuery,

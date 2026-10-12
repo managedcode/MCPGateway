@@ -22,6 +22,9 @@ public static class McpGatewayServiceCollectionExtensions
 
         services.TryAddSingleton<IMcpGatewaySearchCache, McpGatewayNoOpSearchCache>();
         services.TryAddSingleton<McpGatewayPromptChangeHub>();
+        services.TryAddSingleton<McpGatewayExecutionScope>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IMcpGatewaySourceAdmission, McpGatewaySourceAdmission>();
         var gatewayRegistered = services.Any(static descriptor =>
             descriptor.ServiceType == typeof(IMcpGateway)
         );
@@ -42,6 +45,16 @@ public static class McpGatewayServiceCollectionExtensions
         services.TryAddSingleton<IMcpGatewayPromptCatalog, McpGatewayPromptCatalog>();
         services.TryAddSingleton<IMcpGatewayResourceCatalog, McpGatewayResourceCatalog>();
         services.TryAddSingleton<IMcpGatewayFactory, McpGatewayFactory>();
+        if (!gatewayRegistered)
+        {
+            services.TryAddSingleton<IMcpGatewayGraphFullTextSearch>(provider => (IMcpGatewayGraphFullTextSearch)provider.GetRequiredService<IMcpGateway>());
+            services.TryAddSingleton<McpGatewayFullTextToolSet>();
+            services.TryAddSingleton(static provider => (IMcpGatewayCatalogInspection)provider.GetRequiredService<IMcpGateway>());
+        }
+        services.TryAddSingleton<IMcpGatewayCatalogPublication>(provider => new McpGatewayCatalogPublicationService(
+            provider.GetRequiredService<IMcpGatewayCatalogInspection>(), provider));
+        services.TryAddSingleton<IMcpGatewayDiscovery, McpGatewayDiscoveryService>();
+        services.TryAddSingleton<McpGatewayDiscoveryToolSet>();
         services.TryAddSingleton(static serviceProvider =>
         {
             var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
@@ -50,6 +63,17 @@ public static class McpGatewayServiceCollectionExtensions
                 : new McpGatewayToolSet(gateway);
         });
 
+        return services;
+    }
+
+    public static IServiceCollection AddMcpGatewaySourceRefresh(this IServiceCollection services,
+        Action<McpGatewaySourceRefreshOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+        services.Configure(configure);
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, McpGatewaySourceRefreshService>());
         return services;
     }
 
@@ -63,6 +87,36 @@ public static class McpGatewayServiceCollectionExtensions
         services.Replace(
             ServiceDescriptor.Singleton<IMcpGatewaySearchCache, McpGatewayInMemorySearchCache>()
         );
+        return services;
+    }
+
+    public static IServiceCollection AddMcpGatewayInMemoryResultStore(this IServiceCollection services,
+        Action<McpGatewayResultStoreOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddMemoryCache();
+        services.AddOptions<McpGatewayResultStoreOptions>();
+        if (configure is not null)
+        {
+            services.Configure(configure);
+        }
+        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<IMcpGatewayResultStore, McpGatewayInMemoryResultStore>();
+        services.TryAddSingleton<IMcpGatewayResultReader, McpGatewayResultReader>();
+        return services;
+    }
+
+    public static IServiceCollection AddMcpGatewayInMemoryCatalogStore(this IServiceCollection services,
+        Action<McpGatewayCatalogStoreOptions>? configure = null)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.AddMemoryCache();
+        services.AddOptions<McpGatewayCatalogStoreOptions>();
+        if (configure is not null)
+        {
+            services.Configure(configure);
+        }
+        services.TryAddSingleton<IMcpGatewayCatalogDefinitionStore, McpGatewayInMemoryCatalogDefinitionStore>();
         return services;
     }
 

@@ -54,7 +54,7 @@ public sealed class McpGatewayServerBinding(
             throw new InvalidOperationException(MissingSourcesMessage);
         }
 
-        var snapshot = catalogSource.CreateSnapshot();
+        using var snapshot = catalogSource.CreateSnapshot();
         var activeSourceIds = new HashSet<string>(StringComparer.Ordinal);
         var sources = new List<IMcpGatewayServerSource>(snapshot.Registrations.Count);
 

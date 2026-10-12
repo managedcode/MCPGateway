@@ -168,6 +168,7 @@ If no new rule is detected -> do not update the file.
 - Keep scope explicit before coding:
   - in scope
   - out of scope
+- An urgent intermediate publication does not cancel previously authorized implementation; resume and finish the remaining scope unless the user explicitly cancels or defers it, because publishing a checkpoint must not silently replace delivery of the requested feature set.
 - Implement code and tests together for every behavior change.
 - Keep the gateway reusable as a NuGet library, not as an app-specific host.
 - Preserve one public execution surface for local `AITool` instances and MCP tools.

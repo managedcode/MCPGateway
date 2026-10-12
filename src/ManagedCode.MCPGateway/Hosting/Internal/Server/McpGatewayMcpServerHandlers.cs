@@ -1,4 +1,7 @@
+using ManagedCode.MCPGateway.Abstractions;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -8,9 +11,11 @@ namespace ManagedCode.MCPGateway;
 internal sealed class McpGatewayMcpServerHandlers(
     McpGatewayMcpServerBindingManager bindingManager,
     IServiceProvider serviceProvider,
-    ILoggerFactory loggerFactory
+    ILoggerFactory loggerFactory,
+    IOptions<McpGatewayMcpServerExportOptions> exportOptions
 )
 {
+    private const string ResultReaderNameConflictMessage = "A catalog tool collides with the reserved stored-result reader name.";
     public async ValueTask<ListToolsResult> ListToolsAsync(
         RequestContext<ListToolsRequestParams> request,
         CancellationToken cancellationToken
@@ -23,11 +28,21 @@ internal sealed class McpGatewayMcpServerHandlers(
             cancellationToken
         );
 
-        var descriptors = await binding.Binding.Gateway.ListToolsAsync(cancellationToken);
-        return new ListToolsResult
+        if (exportOptions.Value.Mode == McpGatewayMcpServerExportMode.DiscoveryOnly)
         {
-            Tools = descriptors.Select(McpGatewayMcpServerProtocolMapper.ToProtocolTool).ToList(),
-        };
+            return new ListToolsResult { Tools = CreateDiscoveryTools(binding.Binding).Select(tool => tool.ProtocolTool).ToList() };
+        }
+
+        var descriptors = await binding.Binding.Gateway.ListToolsAsync(cancellationToken);
+        var tools = descriptors.Select(McpGatewayMcpServerProtocolMapper.ToProtocolTool).ToList();
+        var resultReader = CreateDiscoveryTools(binding.Binding).FirstOrDefault(tool => tool.ProtocolTool.Name == McpGatewayDiscoveryToolSet.ResultToolName);
+        if (resultReader is not null)
+        {
+            if (tools.Any(tool => tool.Name.Equals(McpGatewayDiscoveryToolSet.ResultToolName, StringComparison.OrdinalIgnoreCase)))
+            { throw new InvalidOperationException(ResultReaderNameConflictMessage); }
+            tools.Add(resultReader.ProtocolTool);
+        }
+        return new ListToolsResult { Tools = tools };
     }
 
     public async ValueTask<CallToolResult> CallToolAsync(
@@ -49,6 +64,21 @@ internal sealed class McpGatewayMcpServerHandlers(
             request.Server,
             cancellationToken
         );
+
+        if (exportOptions.Value.Mode == McpGatewayMcpServerExportMode.DiscoveryOnly)
+        {
+            var tool = CreateDiscoveryTools(binding.Binding).FirstOrDefault(candidate => candidate.ProtocolTool.Name.Equals(toolId, StringComparison.OrdinalIgnoreCase));
+            return tool is null
+                ? McpGatewayMcpServerProtocolMapper.CreateErrorToolResult(McpGatewayMcpProtocolConstants.InvalidToolNameMessage)
+                : await tool.InvokeAsync(request, cancellationToken);
+        }
+
+        if (toolId.Equals(McpGatewayDiscoveryToolSet.ResultToolName, StringComparison.OrdinalIgnoreCase))
+        {
+            var reader = CreateDiscoveryTools(binding.Binding).FirstOrDefault(tool => tool.ProtocolTool.Name == McpGatewayDiscoveryToolSet.ResultToolName);
+            if (reader is not null)
+            { return await reader.InvokeAsync(request, cancellationToken); }
+        }
 
         var resolvedTool = await McpGatewayMcpServerRequestResolver.ResolveToolAsync(
             binding.Binding,
@@ -73,6 +103,10 @@ internal sealed class McpGatewayMcpServerHandlers(
 
         return McpGatewayMcpServerProtocolMapper.ToProtocolToolResult(invokeResult);
     }
+
+    private IEnumerable<McpServerTool> CreateDiscoveryTools(IMcpGatewayServerBinding binding) =>
+        new McpGatewayDiscoveryToolSet(binding.Gateway, new McpGatewayDiscoveryService(binding.Gateway, serviceProvider), serviceProvider)
+            .CreateTools().Cast<AIFunction>().Select(function => McpServerTool.Create(function));
 
     public async ValueTask<ListPromptsResult> ListPromptsAsync(
         RequestContext<ListPromptsRequestParams> request,
@@ -266,6 +300,11 @@ internal sealed class McpGatewayMcpServerHandlers(
             )
             ?? throw new McpException("The requested completion target was not found.");
 
+        var asset = reference is PromptReference prompt ? prompt.Name
+            : ((ResourceTemplateReference)reference).Uri;
+        await McpGatewayAccessBoundary.DemandAsync(serviceProvider, McpGatewayOperation.CompleteArgument,
+            asset ?? throw new McpException(McpGatewayMcpProtocolConstants.InvalidCompletionReferenceMessage),
+            resolvedRequest.Source.SourceId, cancellationToken);
         return await resolvedRequest.Source.CompleteAsync(
                 resolvedRequest.UpstreamReference,
                 McpGatewayMcpServerProtocolMapper.CloneArgument(argument),

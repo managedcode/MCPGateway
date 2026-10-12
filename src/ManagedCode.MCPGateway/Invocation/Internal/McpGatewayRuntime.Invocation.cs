@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol;
 using ModelContextProtocol.Client;
@@ -12,43 +13,131 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
+    private readonly int _maximumManagedResponseBytes;
     public async Task<McpGatewayInvokeResult> InvokeAsync(
         McpGatewayInvokeRequest request,
         CancellationToken cancellationToken = default
     )
     {
         ArgumentNullException.ThrowIfNull(request);
+        var executionContext = await McpGatewayTrustedContext.ResolveAsync(_serviceProvider, cancellationToken);
 
+        using var activity = McpGatewayInvocationTelemetry.Start();
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
+        McpGatewayInvokeResult result;
+        try
+        { result = await InvokeCoreAsync(request, executionContext, cancellationToken); }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            McpGatewayInvocationTelemetry.Complete(activity, CreateDenied(request) with
+            { Outcome = McpGatewayInvocationOutcome.Cancelled, ErrorCode = ExecutionCancelledCode },
+                System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            throw;
+        }
+        var duration = System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        McpGatewayInvocationTelemetry.Complete(activity, result, duration);
+        if (McpGatewayTrustedContext.OperationServices(_serviceProvider).GetService<IMcpGatewayAuditSink>() is { } audit)
+        {
+            try
+            {
+                using var auditTimeout = new CancellationTokenSource(_executionOptions.AuditTimeout,
+                    _serviceProvider.GetService<TimeProvider>() ?? TimeProvider.System);
+                await audit.RecordAsync(executionContext, new("invoke", result.ToolId, result.SourceId, result.DefinitionHash,
+                    result.Outcome, result.ErrorCode, result.DeliveredBytes ?? 0, duration,
+                    (_serviceProvider.GetService<TimeProvider>() ?? TimeProvider.System).GetUtcNow()), auditTimeout.Token).AsTask().WaitAsync(auditTimeout.Token);
+            }
+            catch (Exception exception) when (!McpGatewayRuntimeFailureClassifier.HasFatalFailure(exception))
+            {
+                _logger.LogError("Gateway audit delivery failed.");
+            }
+        }
+        return result;
+    }
+
+    private async Task<McpGatewayInvokeResult> InvokeCoreAsync(McpGatewayInvokeRequest request,
+        McpGatewayExecutionContext executionContext, CancellationToken cancellationToken)
+    {
+        using var catalogLease = await AcquireCatalogLeaseAsync(cancellationToken);
         var snapshot = await GetSnapshotAsync(cancellationToken);
+        if (snapshot.Version != catalogLease.Version || !ReferenceEquals(snapshot.SourceOwner, catalogLease.Owner))
+        {
+            return CreateDenied(request);
+        }
         var resolution = ResolveInvocationTarget(snapshot, request);
         if (!resolution.IsSuccess || resolution.Entry is null)
         {
-            return CreateInvocationFailure(
-                request.ToolId ?? string.Empty,
-                request.SourceId ?? string.Empty,
-                request.ToolName ?? string.Empty,
-                resolution.Error
-            );
+            return _managedCatalog || McpGatewayTrustedContext.OperationServices(_serviceProvider).GetService<IMcpGatewayAccessPolicy>() is not null
+                ? CreateDenied(request)
+                : CreateInvocationFailure(request.ToolId ?? string.Empty, request.SourceId ?? string.Empty,
+                    request.ToolName ?? string.Empty, resolution.Error);
         }
-
         var entry = resolution.Entry;
+        if (!await IsPublishedAsync(entry.Descriptor, cancellationToken))
+        {
+            return CreateDenied(request);
+        }
+        if (_managedCatalog)
+        {
+            var response = request.ResponseOptions ?? new McpGatewayResponseOptions();
+            request = request with { ResponseOptions = response with { MaxBytes = Math.Min(response.MaxBytes, _maximumManagedResponseBytes) } };
+        }
         var arguments = BuildInvocationArguments(request, entry.Descriptor);
-
+        var valid = ValidateInvocation(entry, request, arguments);
+        var descriptor = await GetApprovedDescriptorAsync(entry.Descriptor, cancellationToken);
+        var decision = await McpGatewayAccessBoundary.AuthorizeAsync(_serviceProvider, executionContext,
+            new(McpGatewayOperation.Invoke, descriptor.ToolId, descriptor.SourceId)
+            {
+                Arguments = valid ? arguments : null,
+                RequiredPermissions = descriptor.RequiredPermissions,
+                DefinitionHash = descriptor.DefinitionHash
+            }, cancellationToken);
+        if (!decision.IsAllowed)
+        {
+            return CreateDenied(request);
+        }
+        if (!valid)
+        {
+            return CreateInvalidArgumentsFailure(descriptor);
+        }
         try
         {
-            return await InvokeResolvedToolAsync(entry, request, arguments, cancellationToken);
+            var result = await ExecuteAdmittedAsync(entry, request, arguments, executionContext, decision, catalogLease, cancellationToken);
+            return await McpGatewayResultDelivery.DeliverAsync(_serviceProvider, descriptor, request,
+                result with { DefinitionHash = descriptor.DefinitionHash },
+                executionContext, entry.Validator, _managedCatalog, _maximumManagedResponseBytes, cancellationToken);
         }
         catch (Exception ex) when (McpGatewayRuntimeFailureClassifier.IsRecoverable(ex))
         {
             _logger.LogError(GatewayInvocationFailedLogMessage);
-            return CreateInvocationFailure(
-                entry.Descriptor.ToolId,
-                entry.Descriptor.SourceId,
-                entry.Descriptor.ToolName,
-                InvocationFailedMessage
-            );
+            return CreateInvocationFailure(descriptor.ToolId, descriptor.SourceId, descriptor.ToolName, InvocationFailedMessage);
         }
     }
+
+    private static bool ValidateInvocation(ToolCatalogEntry entry, McpGatewayInvokeRequest request, Dictionary<string, object?> arguments)
+    {
+        try
+        {
+            if (request.ResponseOptions is { } response)
+            {
+                ArgumentOutOfRangeException.ThrowIfLessThan(response.MaxBytes, 1);
+                McpGatewayJsonProjection.Validate(response.SelectPaths);
+            }
+            return entry.Validator.ValidateArguments(arguments);
+        }
+        catch (Exception exception) when (exception is ArgumentException or JsonException or InvalidOperationException or Json.Schema.JsonSchemaException or Json.Schema.RefResolutionException)
+        {
+            return false;
+        }
+    }
+
+    private static McpGatewayInvokeResult CreateDenied(McpGatewayInvokeRequest request) =>
+        new(false, request.ToolId ?? string.Empty, request.SourceId ?? string.Empty, request.ToolName ?? string.Empty,
+            null, "The requested tool is unavailable.")
+        { Outcome = McpGatewayInvocationOutcome.Denied, ErrorCode = McpGatewayInvocationErrors.Unavailable };
+
+    private static McpGatewayInvokeResult CreateInvalidArgumentsFailure(McpGatewayToolDescriptor descriptor) =>
+        new(false, descriptor.ToolId, descriptor.SourceId, descriptor.ToolName, null, "Tool arguments or response options are invalid.")
+        { Outcome = McpGatewayInvocationOutcome.InvalidArguments, ErrorCode = McpGatewayInvocationErrors.InvalidArguments };
 
     private static Dictionary<string, object?> BuildInvocationArguments(
         McpGatewayInvokeRequest request,
@@ -160,7 +249,11 @@ internal sealed partial class McpGatewayRuntime
             entry.Descriptor.ToolName,
             ExtractMcpOutput(result)
         )
-        { McpResult = result };
+        {
+            McpResult = result,
+            Outcome = result.IsError is true ? McpGatewayInvocationOutcome.ToolError : McpGatewayInvocationOutcome.Succeeded,
+            ErrorCode = result.IsError is true ? McpGatewayInvocationErrors.ToolError : null,
+        };
     }
 
     private static bool RequiresTasksCapability(
@@ -268,7 +361,7 @@ internal sealed partial class McpGatewayRuntime
             );
     }
 
-    private static McpClientTool AttachInvocationMeta(
+    private McpClientTool AttachInvocationMeta(
         McpClientTool tool,
         McpGatewayInvokeRequest request
     )
@@ -277,7 +370,7 @@ internal sealed partial class McpGatewayRuntime
         return meta is null ? tool : tool.WithMeta(meta);
     }
 
-    private static JsonObject? BuildInvocationMeta(McpGatewayInvokeRequest request)
+    private JsonObject? BuildInvocationMeta(McpGatewayInvokeRequest request)
     {
         var payload = new JsonObject();
         if (!string.IsNullOrWhiteSpace(request.Query))
@@ -285,14 +378,18 @@ internal sealed partial class McpGatewayRuntime
             payload[QueryArgumentName] = request.Query.Trim();
         }
 
-        if (!string.IsNullOrWhiteSpace(request.ContextSummary))
+        var restricted = _managedCatalog || _executionOptions.RestrictForwardedContext;
+        if ((!restricted || _executionOptions.ForwardContextSummary) && !string.IsNullOrWhiteSpace(request.ContextSummary))
         {
             payload[ContextSummaryArgumentName] = request.ContextSummary.Trim();
         }
 
         if (request.Context is { Count: > 0 })
         {
-            var contextNode = McpGatewayJsonSerializer.TrySerializeToNode(request.Context);
+            var contextNode = McpGatewayJsonSerializer.TrySerializeToNode(restricted
+                ? request.Context.Where(pair => _executionOptions.ForwardedContextKeys.Contains(pair.Key))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase)
+                : request.Context);
             if (contextNode is not null)
             {
                 payload[ContextArgumentName] = contextNode;

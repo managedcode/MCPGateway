@@ -84,7 +84,7 @@ public sealed class McpGatewayToolSet
         );
 
         var invokeTool = AIFunctionFactory.Create(
-            InvokeAsync,
+            InvokeWithResponseAsync,
             new AIFunctionFactoryOptions
             {
                 Name = invokeName,
@@ -234,6 +234,14 @@ public sealed class McpGatewayToolSet
             ),
             cancellationToken
         );
+
+    private Task<McpGatewayInvokeResult> InvokeWithResponseAsync(string toolId,
+        Dictionary<string, object?>? arguments = null, string? query = null,
+        Dictionary<string, object?>? context = null, string? contextSummary = null,
+        McpGatewayResponseOptions? responseOptions = null, CancellationToken cancellationToken = default) =>
+        _gateway.InvokeAsync(new McpGatewayInvokeRequest(ToolId: toolId, Arguments: arguments, Query: query,
+            Context: context, ContextSummary: contextSummary)
+        { ResponseOptions = responseOptions }, cancellationToken);
 
     public Task<McpGatewayGraphSchemaResult> DescribeGraphSchemaAsync(
         CancellationToken cancellationToken = default

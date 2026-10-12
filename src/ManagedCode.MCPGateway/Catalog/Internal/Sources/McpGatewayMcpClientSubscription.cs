@@ -11,6 +11,12 @@ internal static class McpGatewayMcpClientSubscription
 {
     private const string SubscriptionIdPrefix = "mcpgateway-";
 
+    public static Task<IAsyncDisposable?> ListenForToolListChangesAsync(McpClient client,
+        CancellationToken cancellationToken) => ListenSubscription.CreateAsync(client,
+            new SubscriptionsListenNotifications { ToolsListChanged = true },
+            NotificationMethods.ToolListChangedNotification, static (_, _) => ValueTask.CompletedTask,
+            static granted => granted.ToolsListChanged == true, cancellationToken);
+
     public static Task<IAsyncDisposable?> ListenForPromptListChangesAsync(
         McpClient client,
         Func<PromptListChangedNotificationParams, CancellationToken, ValueTask> onChanged,

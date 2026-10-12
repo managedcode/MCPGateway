@@ -8,6 +8,8 @@ namespace ManagedCode.MCPGateway;
 
 internal static class McpGatewayMcpServerProtocolMapper
 {
+    private const string StoredResultMessage = "The approved result was stored. Read it through gateway_result_read using the resultHandle metadata.";
+    private const string ResultHandleMetadataKey = "resultHandle";
     private const string ToolInvocationFailedMessage = "Tool invocation failed.";
 
     public static Tool ToProtocolTool(McpGatewayToolDescriptor descriptor)
@@ -118,9 +120,24 @@ internal static class McpGatewayMcpServerProtocolMapper
 
     public static CallToolResult ToProtocolToolResult(McpGatewayInvokeResult invokeResult)
     {
+        if (invokeResult.ResultHandle is { } handle)
+        {
+            return new CallToolResult
+            {
+                IsError = true,
+                Content = [new TextContentBlock { Text = StoredResultMessage }],
+                Meta = new JsonObject { [ResultHandleMetadataKey] = handle },
+            };
+        }
         if (!invokeResult.IsSuccess)
         {
             return CreateErrorToolResult(invokeResult.Error ?? ToolInvocationFailedMessage);
+        }
+
+        if (invokeResult.McpResult is { } approvedProtocolResult)
+        {
+            approvedProtocolResult.IsError ??= invokeResult.Outcome == McpGatewayInvocationOutcome.ToolError;
+            return approvedProtocolResult;
         }
 
         if (invokeResult.Output is string textOutput)

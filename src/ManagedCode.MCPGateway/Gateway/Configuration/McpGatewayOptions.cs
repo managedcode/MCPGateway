@@ -17,6 +17,9 @@ public sealed class McpGatewayOptions
 
     /// <summary>Default maximum descriptor document length used for search/index source text.</summary>
     public const int DefaultMaxDescriptorLength = 16 * 1024;
+    public const int DefaultMaximumToolSchemaBytes = 64 * 1024;
+    /// <summary>Complete serialized schema lookup responses exceeding this budget produce an explicit failure.</summary>
+    public int MaximumToolSchemaBytes { get; set; } = DefaultMaximumToolSchemaBytes;
 
     /// <summary>Smallest valid search result limit.</summary>
     public const int MinimumSearchResultLimit = 1;
@@ -26,6 +29,10 @@ public sealed class McpGatewayOptions
 
     public static TimeSpan DefaultMarkdownLdFederatedSparqlQueryTimeout { get; } =
         TimeSpan.FromSeconds(30);
+    public static TimeSpan DefaultSourceNotificationSubscriptionTimeout { get; } = TimeSpan.FromSeconds(30);
+    public TimeSpan SourceNotificationSubscriptionTimeout { get; set; } = DefaultSourceNotificationSubscriptionTimeout;
+    public static TimeSpan DefaultSourceRefreshTimeout { get; } = TimeSpan.FromSeconds(30);
+    public TimeSpan SourceRefreshTimeout { get; set; } = DefaultSourceRefreshTimeout;
 
     private readonly McpGatewayRegistrationCollection _sourceRegistrations = new();
     private readonly List<Uri> _markdownLdFederatedServiceEndpoints = [];
@@ -68,6 +75,11 @@ public sealed class McpGatewayOptions
         DefaultMarkdownLdFederatedSparqlQueryTimeout;
 
     public McpGatewayMcpTaskStoreOptions McpTaskStore { get; set; } = new();
+    public McpGatewayGovernanceOptions Governance { get; set; } = new();
+    public McpGatewayExecutionOptions Execution { get; set; } = new();
+
+    /// <summary>Explicit caller-bound transports for configured remote SPARQL endpoints.</summary>
+    public IList<McpGatewayFederatedServiceBinding> FederatedServiceBindings { get; } = new List<McpGatewayFederatedServiceBinding>();
 
     internal IReadOnlyList<McpGatewayToolSourceRegistration> SourceRegistrations =>
         _sourceRegistrations.Snapshot();
