@@ -52,6 +52,8 @@ The repository now uses feature-first package slices for `Gateway`, `Discovery`,
 
 The benchmark project under `benchmarks/ManagedCode.MCPGateway.Benchmarks/` is intentionally outside the package source tree. It references the package project, runs BenchmarkDotNet in `Release`, and measures search, direct graph tool search, index-build, and meta-tool allocation behavior without adding a runtime dependency to the NuGet package.
 
+CI and release collect coverage from the built TUnit executable, map deterministic SourceLink `/_/` paths to the checkout through Coverlet's source-mapping file, and enforce at least 85% library line coverage. Empty coverage fails the gate. Release retains the coverage artifact and completes the full benchmark suite before packing and publishing.
+
 The CLI adapter in `src/ManagedCode.MCPGateway.Cli/` is packaged separately as the `mcpgateway` .NET tool. It uses the official MCP SDK to call a configured gateway endpoint for search, schema lookup, and invocation; its release workflow packs and publishes only that adapter. It adds no runtime dependency to the library.
 
 ## Governance Map

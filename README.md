@@ -1094,7 +1094,7 @@ dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/Man
 
 Run focused BenchmarkDotNet commands one at a time so generated benchmark build artifacts do not contend with each other.
 
-CI runs the full BenchmarkDotNet suite with `--filter "*"` after the build/test gate and uploads the complete benchmark reports as `benchmark-results`. The release workflow also runs the full suite before package creation and uploads `release-benchmark-results`. These benchmark jobs are intentionally not smoke tests or reduced benchmark subsets.
+CI and release enforce at least 85% line coverage of the library; deterministic CI builds use explicit Coverlet source-root mapping so an empty report fails the gate. CI runs the full BenchmarkDotNet suite with `--filter "*"` after the build/test/coverage gate and uploads the complete benchmark reports as `benchmark-results`. The release workflow also runs the full suite before package creation and uploads `release-benchmark-results`. These benchmark jobs are intentionally not smoke tests or reduced benchmark subsets.
 
 Latest full local BenchmarkDotNet snapshot on October 12, 2026, Apple M2 Pro, .NET SDK `10.0.401`, runtime `.NET 10.0.12`, published `MarkdownLd.Kb 0.2.15`. All 12 standard-job cases completed in 17m59s with allocation statistics; async setup, cleanup and measured paths remain async end-to-end.
 
@@ -1158,7 +1158,7 @@ dotnet csharpier check .
 Coverage:
 
 ```bash
-dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml
+dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml --include "[ManagedCode.MCPGateway]*" --threshold 85 --threshold-type line --threshold-stat total
 dotnet tool run reportgenerator -reports:"artifacts/coverage/coverage.cobertura.xml" -targetdir:"artifacts/coverage-report" -reporttypes:"HtmlSummary;MarkdownSummaryGithub"
 ```
 

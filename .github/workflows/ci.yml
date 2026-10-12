@@ -48,7 +48,10 @@ jobs:
         run: dotnet test --solution ManagedCode.MCPGateway.slnx --configuration Release --no-build --verbosity normal --report-trx --results-directory ./artifacts/test-results
 
       - name: Collect coverage
-        run: dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml
+        run: |
+          mkdir -p artifacts/coverage
+          printf '|%s/=/_/\n' "$GITHUB_WORKSPACE" > artifacts/coverage/source-roots-mappings.txt
+          dotnet tool run coverlet tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests.dll --target "./tests/ManagedCode.MCPGateway.Tests/bin/Release/net10.0/ManagedCode.MCPGateway.Tests" --targetargs "" --format cobertura --output artifacts/coverage/coverage.cobertura.xml --source-mapping-file artifacts/coverage/source-roots-mappings.txt --include "[ManagedCode.MCPGateway]*" --threshold 85 --threshold-type line --threshold-stat total
 
       - name: Render coverage report
         run: dotnet tool run reportgenerator -reports:"artifacts/coverage/coverage.cobertura.xml" -targetdir:"artifacts/coverage-report" -reporttypes:"HtmlSummary;MarkdownSummaryGithub"

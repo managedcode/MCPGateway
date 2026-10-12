@@ -9,7 +9,7 @@ The benchmark project is not packable and is not a runtime dependency of the NuG
 - direct built-in graph tool search and strict no-match over the same prebuilt catalog
 - reusable `McpGatewayToolSet` meta-tool projection
 
-Benchmark classes use the default BenchmarkDotNet job plus `MemoryDiagnoser`. Setup, cleanup, and measured async paths run async end-to-end without sync-over-async blocking. CI runs the complete suite with `--filter "*"` and uploads the generated reports as `benchmark-results`; release runs the same complete suite before package creation and uploads `release-benchmark-results`. Neither workflow runs a smoke-only or short-run benchmark subset.
+Benchmark classes use the default BenchmarkDotNet job plus `MemoryDiagnoser`. Setup, cleanup, and measured async paths run async end-to-end without sync-over-async blocking. CI runs the complete suite with `--filter "*"` after build/test/coverage and uploads the generated reports as `benchmark-results`; release runs the same complete suite before package creation and uploads `release-benchmark-results`. Both enforce 85% library line coverage with explicit source-root mapping for deterministic PDBs; an empty report fails the gate. Neither workflow runs a smoke-only or short-run benchmark subset.
 
 ## Commands
 
