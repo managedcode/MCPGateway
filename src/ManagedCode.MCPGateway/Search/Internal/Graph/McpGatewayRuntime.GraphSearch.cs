@@ -208,7 +208,7 @@ internal sealed partial class McpGatewayRuntime
         var schemaFocusedSearch = new FocusedGraphSearch(schemaSearch.Result, usedSchemaSearch: true);
 
         if (schemaSearch.UsedExactIdentity
-            || _graphSchemaSearchProfile?.CandidateNodeIds is not null
+            || HasConfiguredPrimarySchemaConstraints()
             || _markdownLdGraphSearchMode == McpGatewayMarkdownLdGraphSearchMode.SchemaAware)
         {
             return schemaFocusedSearch;
@@ -276,6 +276,19 @@ internal sealed partial class McpGatewayRuntime
             )
             .ConfigureAwait(false);
         return rankedEmptyTokenFallback with { UsedSchemaSearch = true, UsedSchemaFallback = true };
+    }
+
+    private bool HasConfiguredPrimarySchemaConstraints()
+    {
+        if (_graphSchemaSearchProfile is not { } profile)
+        {
+            return false;
+        }
+
+        return profile.CandidateNodeIds is not null
+            || profile.TypeFilters.Count > 0
+            || profile.ExcludedTypes.Count > 0
+            || profile.FacetFilters.Count > 0;
     }
 
     private static async Task<FocusedGraphSearch> SearchFocusedGraphByTokenDistanceAsync(

@@ -21,7 +21,15 @@ public sealed record McpGatewayGraphSchemaResult(
     int MaxNextStepResults,
     IReadOnlyList<string> ConfiguredFederatedServiceEndpoints,
     IReadOnlyList<McpGatewayDiagnostic> Diagnostics
-);
+)
+{
+    public IReadOnlyList<string> ExcludedTypes { get; init; } = [];
+
+    public IReadOnlyList<McpGatewayGraphSchemaFacetFilter> FacetFilters { get; init; } = [];
+
+    /// <summary>Configured absolute primary subject IRIs. Null applies no caller pool; the default tool profile may still select candidates. Empty matches none. Expansion is not restricted.</summary>
+    public IReadOnlyList<string>? CandidateNodeIds { get; init; }
+}
 
 public sealed record McpGatewayGraphSchemaTextPredicate(string PredicateId, double Weight);
 
@@ -30,7 +38,12 @@ public sealed record McpGatewayGraphSchemaRelationshipPredicate(
     IReadOnlyList<string> EvidencePredicateIds,
     double Weight,
     string Direction
-);
+)
+{
+    public IReadOnlyList<string> PredicatePath { get; init; } = [];
+}
+
+public sealed record McpGatewayGraphSchemaFacetFilter(string PredicateId, string ObjectId);
 
 public sealed record McpGatewayGraphSchemaExpansionPredicate(
     string PredicateId,

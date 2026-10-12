@@ -149,7 +149,14 @@ internal sealed partial class McpGatewayRuntime
                 .Select(static endpoint => endpoint.AbsoluteUri)
                 .ToArray(),
             diagnostics
-        );
+        )
+        {
+            ExcludedTypes = profile.ExcludedTypes.ToArray(),
+            FacetFilters = profile.FacetFilters
+                .Select(static filter => new McpGatewayGraphSchemaFacetFilter(filter.Predicate, filter.Object))
+                .ToArray(),
+            CandidateNodeIds = profile.CandidateNodeIds?.ToArray(),
+        };
 
     private static IReadOnlyList<McpGatewayGraphSchemaTextPredicate> MapGraphSchemaTextPredicates(
         IEnumerable<KnowledgeGraphSchemaTextPredicate> predicates
@@ -182,6 +189,9 @@ internal sealed partial class McpGatewayRuntime
                     predicate.Weight,
                     predicate.Direction.ToString()
                 )
+                {
+                    PredicatePath = predicate.PredicatePath.ToArray(),
+                }
             );
         }
 

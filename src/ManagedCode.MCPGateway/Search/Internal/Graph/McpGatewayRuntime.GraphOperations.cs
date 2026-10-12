@@ -33,6 +33,12 @@ internal sealed partial class McpGatewayRuntime
             : NormalizeGraphSchemaQuery(graphIndex, request.Query);
         var scoreContext = CreateSearchScoreContext(request.Query);
         var serviceEndpoints = ResolveGraphFederatedServiceEndpoints(request, diagnostics);
+        if (request.UseFederation && serviceEndpoints.Count == 0)
+        {
+            diagnostics.Add(new McpGatewayDiagnostic(GraphFederationNoEndpointsDiagnosticCode, GraphFederationNoEndpointsMessage));
+            return new McpGatewayGraphSearchResult([], [], [], diagnostics, IsFederated: true);
+        }
+
         var schemaServiceEndpoints = request.UseFederation ? serviceEndpoints : [];
         var profile = CreateToolGraphSchemaSearchProfile(
             limit,
@@ -134,7 +140,7 @@ internal sealed partial class McpGatewayRuntime
             return [];
         }
 
-        var endpoints = new Dictionary<string, Uri>(StringComparer.OrdinalIgnoreCase);
+        var endpoints = new Dictionary<string, Uri>(StringComparer.Ordinal);
         if (request.IncludeLocalGatewayGraph)
         {
             endpoints[_graphLocalFederationEndpoint.AbsoluteUri] = _graphLocalFederationEndpoint;
@@ -152,7 +158,7 @@ internal sealed partial class McpGatewayRuntime
 
         var allowedEndpointUris = new HashSet<string>(
             _markdownLdFederatedServiceEndpoints.Count,
-            StringComparer.OrdinalIgnoreCase
+            StringComparer.Ordinal
         );
         foreach (var configuredEndpoint in _markdownLdFederatedServiceEndpoints)
         {
@@ -204,7 +210,7 @@ internal sealed partial class McpGatewayRuntime
                 string.Equals(
                     endpoint.AbsoluteUri,
                     _graphLocalFederationEndpoint.AbsoluteUri,
-                    StringComparison.OrdinalIgnoreCase
+                    StringComparison.Ordinal
                 )
             )
                 ? [

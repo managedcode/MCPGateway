@@ -614,6 +614,8 @@ services.AddMcpGateway(options =>
 
 Exact tool IDs and names are resolved before schema-query normalization for non-federated graph search. Their tool nodes bind subject `VALUES` in real schema-aware SPARQL on the existing graph, so shared prefixes and action-word filtering cannot displace a known tool with a sibling operation. Relationship evidence and related/next-step expansion use the same complete graph; search does not reconstruct a candidate graph.
 
+When a configured `MarkdownLdGraphSchemaSearchProfile` supplies candidate IDs, type filters, excluded types, or facets, its SPARQL primary result is authoritative in Hybrid mode. Ranked merging and fuzzy fallback cannot restore tools rejected by those constraints. Related and next-step expansion still follows the configured graph relationships. These retrieval constraints do not replace host authorization.
+
 If a host wants to force only the schema-aware SPARQL path or explicitly use the older lower-level token-distance graph path:
 
 ```csharp
@@ -681,7 +683,8 @@ Console.WriteLine(graphResult.Matches[0].ToolMatch?.ToolId);
 
 - graph availability, node count, edge count, and graph source
 - search strategy, graph search mode, default limits, and max result settings
-- schema prefixes, text predicates, relationship predicates, expansion predicates, and type filters
+- schema prefixes, text predicates, relationship predicates and their predicate paths, expansion predicates, type filters, excluded types, and facets
+- the configured candidate pool, preserving `null` for no caller pool and an empty list for no primary candidates; the default tool profile may still select candidates per query
 - configured federated service endpoints
 - diagnostics when the profile cannot be validated against the current graph
 
@@ -718,7 +721,12 @@ var federatedResult = await graphSearch.SearchGraphAsync(
 ```
 
 The gateway never discovers remote SPARQL endpoints on its own. It uses the configured allowlist, can bind the local gateway graph as a federated service, and reports diagnostics when a requested endpoint is invalid or blocked.
+Allowlist matching preserves URI path and query casing after .NET URI normalization. If local federation is disabled and no allowed endpoint is selected, the result is empty with `graph_federation_no_endpoints`; the gateway does not execute a local search.
 Federated SPARQL execution defaults to `McpGatewayOptions.DefaultMarkdownLdFederatedSparqlQueryTimeout`, which is 30 seconds. Set `MarkdownLdFederatedSparqlQueryTimeout` to a larger `TimeSpan` for slower trusted endpoints, or set it to `null` when the host owns the deadline entirely through cancellation tokens or infrastructure policy.
+
+The default tool profile uses a bounded tool candidate pool for large catalogs. An application-owned profile with no explicit candidate pool searches the complete graph, so ontology classes and properties remain searchable even in large catalogs. For a gateway instance dedicated to vocabulary exploration, set `options.MarkdownLdGraphSchemaSearchProfile = KnowledgeGraphSchemaSearchProfile.Ontology` and query it through `IMcpGatewayGraphSearch.SearchGraphAsync(...)`. Ontology matches that have no registered tool binding return `ToolMatch = null`.
+
+Lucene full-text indexing/search and SPIN packages are available in `ManagedCode.MarkdownLd.Kb`. The gateway currently exposes schema-aware SPARQL, ranked/token support and explicit federation; it has no dedicated Lucene or SPIN execution API.
 
 ## Graph Sources
 

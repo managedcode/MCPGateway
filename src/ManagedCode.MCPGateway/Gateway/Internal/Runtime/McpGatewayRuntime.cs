@@ -33,6 +33,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         "graph_federation_endpoint_blocked";
     private const string GraphFederationEndpointInvalidDiagnosticCode =
         "graph_federation_endpoint_invalid";
+    private const string GraphFederationNoEndpointsDiagnosticCode = "graph_federation_no_endpoints";
+    private const string GraphFederationNoEndpointsMessage = "Federated graph search requires at least one selected local or allowlisted service endpoint.";
     private const string EmbeddingCountMismatchDiagnosticCode = "embedding_count_mismatch";
     private const string EmbeddingGeneratorMissingDiagnosticCode = "embedding_generator_missing";
     private const string EmbeddingFailedDiagnosticCode = "embedding_failed";

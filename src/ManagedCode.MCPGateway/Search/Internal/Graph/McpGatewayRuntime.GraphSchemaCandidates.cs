@@ -4,7 +4,7 @@ namespace ManagedCode.MCPGateway;
 
 internal sealed partial class McpGatewayRuntime
 {
-    private static async Task<SchemaGraphSearch> SearchGraphBySchemaAsync(
+    private async Task<SchemaGraphSearch> SearchGraphBySchemaAsync(
         ToolGraphSearchIndex graphIndex,
         string schemaQuery,
         KnowledgeGraphSchemaSearchProfile profile,
@@ -22,7 +22,7 @@ internal sealed partial class McpGatewayRuntime
             {
                 profile = profile with { CandidateNodeIds = exactNodeIds };
             }
-            else if (ShouldUseCandidateSchemaSearch(graphIndex))
+            else if (_graphSchemaSearchProfile is null && ShouldUseCandidateSchemaSearch(graphIndex))
             {
                 profile = profile with
                 {
