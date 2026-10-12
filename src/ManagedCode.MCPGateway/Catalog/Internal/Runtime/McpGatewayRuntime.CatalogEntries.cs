@@ -101,7 +101,8 @@ internal sealed partial class McpGatewayRuntime
                 McpGatewayProtocolName.DefaultToolName
             );
             var hasNameCollision = normalizedToolNameCounts.TryGetValue(normalizedToolName, out var count) && count > 1;
-            var requiresSourcePrefix = _managedCatalog || hasNameCollision;
+            var requiresSourcePrefix = _managedCatalog || hasNameCollision ||
+                registration is McpGatewayHttpToolSourceRegistration { UseSourceQualifiedToolIds: true };
             var toolId = approvedNames.TryGetValue((registration.SourceId.ToLowerInvariant(), loadedTool.Tool.Name), out var approvedName)
                 ? approvedName : McpGatewayProtocolName.CreateToolId(
                 registration.SourceId,

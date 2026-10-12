@@ -125,6 +125,7 @@ internal sealed class McpGatewayHttpToolSourceRegistration(McpGatewayHttpServerO
         disposeClient: true
     )
 {
+    internal bool UseSourceQualifiedToolIds => options.UseSourceQualifiedToolIds;
     internal bool HasControlledHttpClient => options.HttpClient is McpGatewayEgressHttpClient.PolicyHttpClient client
         && client.SourceId.Equals(SourceId, StringComparison.OrdinalIgnoreCase);
     internal const HttpTransportMode CurrentTransportMode = HttpTransportMode.StreamableHttp;

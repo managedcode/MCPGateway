@@ -1278,3 +1278,5 @@ mcpgateway tools call weather_lookup --arguments-file request.json --output resu
 ```
 
 Set `MCPGATEWAY_ENDPOINT` to omit `--endpoint`; authenticated endpoints use the bearer token from `MCPGATEWAY_TOKEN`. The server enforces its own gateway policy. Output is JSON, diagnostics use stderr, existing output files are never overwritten, and cancellation exits with code 130. Tool errors exit with code 2; connection, input, or file errors exit with code 1. CLI publication is independent through `publish-cli.yml`.
+
+For persisted selections across multiple HTTP servers, set `McpGatewayHttpServerOptions.UseSourceQualifiedToolIds = true`. Canonical IDs retain the source prefix before and after another server adds the same upstream tool name. The default naming behavior remains unchanged.

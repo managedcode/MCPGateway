@@ -10,6 +10,9 @@ public sealed class McpGatewayHttpServerOptions
 
     public Uri? Endpoint { get; set; }
 
+    /// <summary>Keep canonical tool IDs source-qualified even before another source introduces the same name.</summary>
+    public bool UseSourceQualifiedToolIds { get; set; }
+
     public string? DisplayName { get; set; }
 
     public IReadOnlyDictionary<string, string>? AdditionalHeaders { get; set; }
@@ -26,6 +29,7 @@ public sealed class McpGatewayHttpServerOptions
         {
             SourceId = sourceId,
             Endpoint = Endpoint,
+            UseSourceQualifiedToolIds = UseSourceQualifiedToolIds,
             DisplayName = DisplayName,
             AdditionalHeaders = AdditionalHeaders is null
                 ? null
