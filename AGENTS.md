@@ -199,7 +199,8 @@ If no new rule is detected -> do not update the file.
 - For graph/search delivery, do not rely on old mock-only coverage to prove retrieval quality; prefer real gateway integration tests that exercise generated Markdown-LD/SPARQL graph behavior, MCP-backed graph tools, and explicit vector-enabled paths so tests prove the shipped graph-first runtime instead of a mocked approximation.
 - Built-in graph/search tooling must include explicit schema/profile and index-build/inspection tools, because consumers and LLM agents need to understand, rebuild, and validate the tool graph/index before relying on graph/SPARQL retrieval.
 - For performance optimization work, add or update BenchmarkDotNet benchmarks with allocation statistics and use the benchmark results to choose hot-path changes; avoid speculative `ValueTask`, `struct`, `AsSpan`, compiled-lambda, or collection rewrites unless they improve measured runtime or allocation behavior without hurting API clarity.
-- CI and release benchmark coverage must run the full BenchmarkDotNet benchmark suite rather than smoke-only or shortcut benchmark checks, because benchmark results are used as real performance evidence in this repository.
+- CI benchmark coverage must run the full BenchmarkDotNet benchmark suite rather than smoke-only or shortcut checks, because benchmark results are used as real performance evidence in this repository.
+- Never run benchmarks in the Release workflow or make publication depend on benchmark jobs; keep benchmarks in CI so long performance measurements do not block NuGet delivery.
 - README benchmark documentation must include the latest representative benchmark result snapshot when benchmark coverage or performance behavior changes, because the user expects README readers to see actual measured results, not only benchmark commands.
 
 ### Repository Layout
