@@ -293,6 +293,18 @@ internal sealed partial class McpGatewayRuntime
             cancellationToken
         );
 
+        if (resultValue is CallToolResult protocol)
+        {
+            return new McpGatewayInvokeResult(true, entry.Descriptor.ToolId,
+                entry.Descriptor.SourceId, entry.Descriptor.ToolName, ExtractMcpOutput(protocol))
+            {
+                McpResult = protocol,
+                Outcome = protocol.IsError is true ? McpGatewayInvocationOutcome.ToolError
+                    : McpGatewayInvocationOutcome.Succeeded,
+                ErrorCode = protocol.IsError is true ? McpGatewayInvocationErrors.ToolError : null,
+            };
+        }
+
         return new McpGatewayInvokeResult(
             true,
             entry.Descriptor.ToolId,

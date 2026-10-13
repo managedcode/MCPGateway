@@ -19,7 +19,7 @@ public sealed record McpGatewayInvokeResult(
     public string? DefinitionHash { get; init; }
     public int? DeliveredBytes { get; init; }
     public string? ResultHandle { get; init; }
-    /// <summary>The approved outward MCP result, when the invoked source is MCP.</summary>
+    /// <summary>The approved outward MCP result from an MCP source or a local native protocol function.</summary>
     [JsonIgnore]
     public CallToolResult? McpResult { get; init; }
 }

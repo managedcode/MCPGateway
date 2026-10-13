@@ -12,6 +12,8 @@ The [Uber gateway design](https://www.uber.com/gb/en/blog/designing-mcp-gateway/
 
 ## Decision
 
+An official CallToolResult produced by a local AIFunction follows the same native protocol result path as a remote MCP source. Its structured content or text is the output-schema instance, while the complete result is the approved McpResult representation. Tool-level IsError retains ToolError without changing successful protocol completion. Existing result policy, projection, authorization and byte bounds apply before delivery; no raw-result bypass or consumer normalization is permitted.
+
 Managed catalog mode requires a host-owned trusted-context provider, access policy and atomic definition store. Business/model context never supplies authentication. Immutable definitions preserve canonical IDs, raw upstream names, binding references, exact schemas, protocol metadata, reviewed permissions and hashes. Compare-and-swap publication validates the current technical catalog. Revocation remains effective across rollback and is checked again before dispatch, delivery, task access and stored-result reads.
 
 Discovery filters publication and access before graph generation, ranking, expansion, rewrite and cache use. Generated graphs contain only visible tools. Applications supplying graphs must provide an independently owned projection through `IMcpGatewayAuthorizedGraphFactory`; the owner library's explicit subject/object/predicate projection prevents accidental private neighborhood traversal. SPARQL remains the primary schema-aware graph retrieval path, with token/vector signals supplementary. Lucene full-text search is explicit and uses the same authorized graph ownership.

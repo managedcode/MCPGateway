@@ -530,7 +530,7 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
 - `ToolName`
 - `Output`
 - `Error`
-- `McpResult`: the complete upstream `CallToolResult` for MCP sources, preserving all content blocks, structured content, metadata, and `IsError`. `Output` remains the normalized convenience view. A successfully completed protocol call can contain a tool-level error; protocol bridges should forward `McpResult`.
+- `McpResult`: the approved complete `CallToolResult` for MCP sources and local AIFunctions that return the official protocol result, preserving content blocks, structured content, metadata, and `IsError`. `Output` remains the normalized convenience view. Output schemas validate structured content rather than the protocol envelope. A completed protocol call can contain a tool-level error; protocol bridges forward `McpResult`. Result policies, projection and delivery bounds still apply before publication.
 
 ## Governed Publication And Progressive Discovery
 
