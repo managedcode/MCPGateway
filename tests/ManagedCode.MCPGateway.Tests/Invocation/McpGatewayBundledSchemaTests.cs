@@ -12,7 +12,7 @@ public sealed class McpGatewayBundledSchemaTests
         var function = new Function();
         await using var provider = GatewayTestServiceProviderFactory.Create(options => options.AddTool("local", function));
         var gateway = provider.GetRequiredService<ManagedCode.MCPGateway.Abstractions.IMcpGateway>();
-        var invalid = await gateway.InvokeAsync(new(ToolId: function.Name, Arguments: new Dictionary<string, object?> { ["count"] = "invalid" }));
+        var invalid = await gateway.InvokeAsync(new(ToolId: function.Name, Arguments: new Dictionary<string, JsonElement> { ["count"] = JsonSerializer.SerializeToElement("invalid", McpGatewayJsonSerializer.Options) }));
         await Assert.That(invalid.Outcome).IsEqualTo(McpGatewayInvocationOutcome.InvalidArguments);
         await Assert.That(function.Calls).IsEqualTo(0);
         var proxy = (AIFunction)(await provider.GetRequiredService<McpGatewayDiscoveryToolSet>().CreateSchemaFaithfulToolsAsync([function.Name])).Single();
@@ -37,7 +37,7 @@ public sealed class McpGatewayBundledSchemaTests
         var function = new Function(externalOutput: true);
         await using var provider = GatewayTestServiceProviderFactory.Create(options => options.AddTool("local", function));
         var result = await provider.GetRequiredService<ManagedCode.MCPGateway.Abstractions.IMcpGateway>().InvokeAsync(
-            new(ToolId: function.Name, Arguments: new Dictionary<string, object?> { ["count"] = 42 }));
+            new(ToolId: function.Name, Arguments: new Dictionary<string, JsonElement> { ["count"] = JsonSerializer.SerializeToElement(42, McpGatewayJsonSerializer.Options) }));
         await Assert.That(result.Outcome).IsEqualTo(McpGatewayInvocationOutcome.ResultRejected);
         await Assert.That(result.Output).IsNull();
         await Assert.That(result.McpResult).IsNull();

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -28,9 +29,9 @@ public sealed class McpGatewayInvocationPrivacyTests
             new McpGatewayInvokeRequest(
                 ToolId: ToolName,
                 Query: QueryMarker,
-                Arguments: new Dictionary<string, object?>
+                Arguments: new Dictionary<string, JsonElement>
                 {
-                    [PrivateArgumentName] = ArgumentMarker,
+                    [PrivateArgumentName] = JsonSerializer.SerializeToElement(ArgumentMarker, McpGatewayJsonSerializer.Options),
                 }
             )
         );

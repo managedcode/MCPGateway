@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -29,7 +30,7 @@ public sealed class McpGatewaySourceQualifiedHttpIdentityTests
         var tools = await gateway.Gateway.ListToolsAsync();
         await Assert.That(tools.Select(tool => tool.ToolId)).IsEquivalentTo([FirstTool, SecondTool]);
         var result = await gateway.Gateway.InvokeAsync(new(ToolId: original.ToolId,
-            Arguments: new Dictionary<string, object?> { ["query"] = "persisted selection" }));
+            Arguments: new Dictionary<string, JsonElement> { ["query"] = JsonSerializer.SerializeToElement("persisted selection", McpGatewayJsonSerializer.Options) }));
         await Assert.That(result.IsSuccess).IsTrue();
         await Assert.That(result.SourceId).IsEqualTo(FirstSource);
         var direct = await new McpGatewayDiscoveryToolSet(gateway.Gateway, gateway.Discovery)

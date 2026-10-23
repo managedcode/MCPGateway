@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -52,7 +53,7 @@ public sealed class McpGatewayScopedIdentityIntegrationTests
             var result = await client.CallToolAsync(person + "_search", new Dictionary<string, object?> { ["query"] = "safe" });
             await Assert.That(result.IsError is true).IsFalse();
             var denied = await app.Services.GetRequiredService<IMcpGateway>().InvokeAsync(new(ToolId: "alice_search")
-            { Context = new Dictionary<string, object?> { ["subjectId"] = "alice" } });
+            { Context = new Dictionary<string, JsonElement> { ["subjectId"] = JsonSerializer.SerializeToElement("alice", McpGatewayJsonSerializer.Options) } });
             await Assert.That(denied.Outcome).IsEqualTo(McpGatewayInvocationOutcome.Denied);
         }));
         await app.StopAsync();

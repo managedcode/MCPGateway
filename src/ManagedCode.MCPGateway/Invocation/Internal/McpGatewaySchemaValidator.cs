@@ -16,7 +16,7 @@ internal sealed class McpGatewaySchemaValidator(McpGatewayToolDescriptor descrip
     private readonly Lazy<JsonSchema?> _input = new(() => Compile(descriptor.InputSchema));
     private readonly Lazy<JsonSchema?> _output = new(() => descriptor.OutputSchema is { } schema ? Compile(schema) : null);
 
-    public bool ValidateArguments(IReadOnlyDictionary<string, object?> arguments)
+    public bool ValidateArguments(IReadOnlyDictionary<string, JsonElement> arguments)
     {
         var instance = McpGatewayJsonSerializer.TrySerializeToElement(arguments);
         return instance is { } value && (_input.Value?.Evaluate(value).IsValid ?? true);

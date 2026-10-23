@@ -1,3 +1,4 @@
+using System.Text.Json;
 #pragma warning disable MCPEXP001
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -46,9 +47,9 @@ public sealed class McpGatewayProvidedClientToolSourceRegistrationTests
         );
         var prompt = await promptListRegistration.GetPromptAsync(
             "repository_triage_system_prompt",
-            new Dictionary<string, object?>(StringComparer.Ordinal)
+            new Dictionary<string, JsonElement>(StringComparer.Ordinal)
             {
-                ["repository"] = "ManagedCode/MCPGateway",
+                ["repository"] = JsonSerializer.SerializeToElement("ManagedCode/MCPGateway", McpGatewayJsonSerializer.Options),
             },
             promptContext: null,
             NullLoggerFactory.Instance,

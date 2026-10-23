@@ -50,10 +50,10 @@ public sealed partial class McpGatewayInvocationTests
                 ToolId: "github_repository_search",
                 Query: "managedcode",
                 ContextSummary: "user is on repository settings page",
-                Context: new Dictionary<string, object?>
+                Context: new Dictionary<string, JsonElement>
                 {
-                    ["page"] = "settings",
-                    ["domain"] = "github",
+                    ["page"] = JsonSerializer.SerializeToElement("settings", McpGatewayJsonSerializer.Options),
+                    ["domain"] = JsonSerializer.SerializeToElement("github", McpGatewayJsonSerializer.Options),
                 }
             )
         );
@@ -80,7 +80,7 @@ public sealed partial class McpGatewayInvocationTests
     }
 
     [TUnit.Core.Test]
-    public async Task InvokeAsync_IgnoresUnserializableContextMeta()
+    public async Task InvokeAsync_PreservesExplicitJsonNullContextMeta()
     {
         await using var serverHost = await TestMcpServerHost.StartAsync();
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(options =>
@@ -89,15 +89,13 @@ public sealed partial class McpGatewayInvocationTests
         });
 
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
-        var cyclicContext = new CyclicInvocationContext();
-        cyclicContext.Self = cyclicContext;
 
         await gateway.BuildIndexAsync();
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
                 ToolId: "github_repository_search",
                 Query: "managedcode",
-                Context: new Dictionary<string, object?> { ["broken"] = cyclicContext }
+                Context: new Dictionary<string, JsonElement> { ["optional"] = JsonSerializer.SerializeToElement((object?)null, McpGatewayJsonSerializer.Options) }
             )
         );
 
@@ -111,7 +109,8 @@ public sealed partial class McpGatewayInvocationTests
 
         var gatewayMeta = gatewayNode!.AsObject();
         await Assert.That(gatewayMeta["query"]!.GetValue<string>()).IsEqualTo("managedcode");
-        await Assert.That(gatewayMeta.ContainsKey("context")).IsFalse();
+        await Assert.That(gatewayMeta["context"]!.AsObject().ContainsKey("optional")).IsTrue();
+        await Assert.That(gatewayMeta["context"]!["optional"]).IsNull();
     }
 
     [TUnit.Core.Test]
@@ -159,8 +158,4 @@ public sealed partial class McpGatewayInvocationTests
         await Assert.That((string)invokeResult.Output!).IsEqualTo("plain:managedcode");
     }
 
-    private sealed class CyclicInvocationContext
-    {
-        public CyclicInvocationContext? Self { get; set; }
-    }
 }

@@ -58,7 +58,7 @@ public class McpGatewayGovernedScalingBenchmarks
         var name = Name(caller);
         var discovered = await _discovery.DiscoverAsync(new(name) { MaxBytes = 2048 });
         var schema = await _discovery.GetToolSchemaAsync(name);
-        var invoked = await _gateway.InvokeAsync(new(ToolId: name, Arguments: new Dictionary<string, object?> { [QueryProperty] = "benchmark" }));
+        var invoked = await _gateway.InvokeAsync(new(ToolId: name, Arguments: new Dictionary<string, JsonElement> { [QueryProperty] = JsonSerializer.SerializeToElement("benchmark") }));
         if (schema is null || !invoked.IsSuccess || discovered.SerializedBytes > 2048
             || discovered.Tools.Any(tool => tool.ToolId != name))
         { throw new InvalidOperationException(InvalidCycleMessage); }

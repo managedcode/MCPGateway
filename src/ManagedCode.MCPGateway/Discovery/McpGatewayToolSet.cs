@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 
@@ -202,7 +204,7 @@ public sealed class McpGatewayToolSet
     public Task<McpGatewaySearchResult> SearchAsync(
         string query,
         int? maxResults = null,
-        Dictionary<string, object?>? context = null,
+        Dictionary<string, JsonElement>? context = null,
         string? contextSummary = null,
         CancellationToken cancellationToken = default
     ) =>
@@ -218,9 +220,9 @@ public sealed class McpGatewayToolSet
 
     public Task<McpGatewayInvokeResult> InvokeAsync(
         string toolId,
-        Dictionary<string, object?>? arguments = null,
+        Dictionary<string, JsonElement>? arguments = null,
         string? query = null,
-        Dictionary<string, object?>? context = null,
+        Dictionary<string, JsonElement>? context = null,
         string? contextSummary = null,
         CancellationToken cancellationToken = default
     ) =>
@@ -236,8 +238,8 @@ public sealed class McpGatewayToolSet
         );
 
     private Task<McpGatewayInvokeResult> InvokeWithResponseAsync(string toolId,
-        Dictionary<string, object?>? arguments = null, string? query = null,
-        Dictionary<string, object?>? context = null, string? contextSummary = null,
+        Dictionary<string, JsonElement>? arguments = null, string? query = null,
+        Dictionary<string, JsonElement>? context = null, string? contextSummary = null,
         McpGatewayResponseOptions? responseOptions = null, CancellationToken cancellationToken = default) =>
         _gateway.InvokeAsync(new McpGatewayInvokeRequest(ToolId: toolId, Arguments: arguments, Query: query,
             Context: context, ContextSummary: contextSummary)
@@ -280,7 +282,7 @@ public sealed class McpGatewayToolSet
         string query,
         int? maxCategories = null,
         int? maxToolsPerCategory = null,
-        Dictionary<string, object?>? context = null,
+        Dictionary<string, JsonElement>? context = null,
         string? contextSummary = null,
         bool? preferReadOnly = null,
         bool includeDisabledTools = false,
@@ -302,9 +304,9 @@ public sealed class McpGatewayToolSet
     private AITool CreateDiscoveredTool(McpGatewaySearchMatch match, string functionName)
     {
         Task<McpGatewayInvokeResult> InvokeDiscoveredToolAsync(
-            Dictionary<string, object?>? arguments = null,
+            Dictionary<string, JsonElement>? arguments = null,
             string? query = null,
-            Dictionary<string, object?>? context = null,
+            Dictionary<string, JsonElement>? context = null,
             string? contextSummary = null,
             CancellationToken cancellationToken = default
         ) =>
@@ -321,9 +323,9 @@ public sealed class McpGatewayToolSet
 
         return AIFunctionFactory.Create(
             (Func<
-                Dictionary<string, object?>?,
+                Dictionary<string, JsonElement>?,
                 string?,
-                Dictionary<string, object?>?,
+                Dictionary<string, JsonElement>?,
                 string?,
                 CancellationToken,
                 Task<McpGatewayInvokeResult>

@@ -135,11 +135,11 @@ public sealed class McpGatewayGovernedPublicationTests
         _ = await gateway.SearchAsync("weather forecast");
         context.Current = new("alice", "tenant-a", "public", "v1");
         var searched = await gateway.SearchAsync(new McpGatewaySearchRequest("weather forecast", Context:
-            new Dictionary<string, object?> { ["role"] = "admin", ["tenant"] = "tenant-b" }));
+            new Dictionary<string, JsonElement> { ["role"] = JsonSerializer.SerializeToElement("admin", McpGatewayJsonSerializer.Options), ["tenant"] = JsonSerializer.SerializeToElement("tenant-b", McpGatewayJsonSerializer.Options) }));
         await Assert.That(JsonSerializer.Serialize(searched, McpGatewayJsonSerializer.Options)).DoesNotContain("SEEDED_PRIVATE_METADATA");
         await Assert.That(searched.Matches.All(match => match.ToolId.Contains("public", StringComparison.Ordinal))).IsTrue();
         var denied = await gateway.InvokeAsync(new(ToolId: approved.Single(tool => tool.ToolId.Contains("private", StringComparison.Ordinal)).ToolId,
-            Context: new Dictionary<string, object?> { ["subject"] = "admin" }));
+            Context: new Dictionary<string, JsonElement> { ["subject"] = JsonSerializer.SerializeToElement("admin", McpGatewayJsonSerializer.Options) }));
         await Assert.That(denied.Outcome).IsEqualTo(McpGatewayInvocationOutcome.Denied);
         var graph = await provider.GetRequiredService<IMcpGatewayGraphSearch>().SearchGraphAsync(new("weather forecast"));
         await Assert.That(JsonSerializer.Serialize(graph, McpGatewayJsonSerializer.Options)).DoesNotContain("SEEDED_PRIVATE_METADATA");

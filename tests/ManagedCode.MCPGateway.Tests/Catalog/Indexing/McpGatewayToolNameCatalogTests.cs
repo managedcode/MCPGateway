@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -50,7 +51,7 @@ public sealed class McpGatewayToolNameCatalogTests
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
                 ToolId: descriptor.ToolId,
-                Arguments: new Dictionary<string, object?> { ["pageId"] = "page-7" }
+                Arguments: new Dictionary<string, JsonElement> { ["pageId"] = JsonSerializer.SerializeToElement("page-7", McpGatewayJsonSerializer.Options) }
             )
         );
 
@@ -107,7 +108,7 @@ public sealed class McpGatewayToolNameCatalogTests
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
                 ToolId: descriptor.ToolId.ToUpperInvariant(),
-                Arguments: new Dictionary<string, object?> { ["pageId"] = "page-8" }
+                Arguments: new Dictionary<string, JsonElement> { ["pageId"] = JsonSerializer.SerializeToElement("page-8", McpGatewayJsonSerializer.Options) }
             )
         );
 
@@ -212,7 +213,7 @@ public sealed class McpGatewayToolNameCatalogTests
             new McpGatewayInvokeRequest(
                 ToolName: "shared.tool",
                 SourceId: "ops",
-                Arguments: new Dictionary<string, object?> { ["pageId"] = "page-9" }
+                Arguments: new Dictionary<string, JsonElement> { ["pageId"] = JsonSerializer.SerializeToElement("page-9", McpGatewayJsonSerializer.Options) }
             )
         );
 

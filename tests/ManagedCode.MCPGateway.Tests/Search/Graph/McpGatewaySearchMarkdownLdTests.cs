@@ -26,10 +26,10 @@ public sealed partial class McpGatewaySearchTests
             new McpGatewaySearchRequest(
                 Query: "search",
                 MaxResults: 2,
-                Context: new Dictionary<string, object?>
+                Context: new Dictionary<string, JsonElement>
                 {
-                    ["page"] = "weather forecast",
-                    ["intent"] = "temperature lookup",
+                    ["page"] = JsonSerializer.SerializeToElement("weather forecast", McpGatewayJsonSerializer.Options),
+                    ["intent"] = JsonSerializer.SerializeToElement("temperature lookup", McpGatewayJsonSerializer.Options),
                 }
             )
         );
@@ -307,7 +307,7 @@ public sealed partial class McpGatewaySearchTests
                 Query: null,
                 MaxResults: 1,
                 ContextSummary: "user is browsing operational dashboards",
-                Context: new Dictionary<string, object?>
+                Context: new Dictionary<string, JsonElement>
                 {
                     ["page"] = JsonSerializer.SerializeToElement(
                         new
@@ -316,9 +316,9 @@ public sealed partial class McpGatewaySearchTests
                             filters = new List<string> { "temperature", "weekend" },
                         }
                     ),
-                    ["intent"] = new JsonObject { ["category"] = "weather", ["mode"] = "lookup" },
-                    ["compatibility"] = new Hashtable { ["location"] = "Paris", ["active"] = true },
-                    ["signals"] = new object?[] { "forecast", 5 },
+                    ["intent"] = JsonSerializer.SerializeToElement(new JsonObject { ["category"] = "weather", ["mode"] = "lookup" }, McpGatewayJsonSerializer.Options),
+                    ["compatibility"] = JsonSerializer.SerializeToElement(new Hashtable { ["location"] = "Paris", ["active"] = true }, McpGatewayJsonSerializer.Options),
+                    ["signals"] = JsonSerializer.SerializeToElement(new object?[] { "forecast", 5 }, McpGatewayJsonSerializer.Options),
                 }
             )
         );
@@ -337,21 +337,19 @@ public sealed partial class McpGatewaySearchTests
     }
 
     [TUnit.Core.Test]
-    public async Task SearchAsync_IgnoresUnserializableContextPayloads()
+    public async Task SearchAsync_JsonNullContextDoesNotAddSearchTerms()
     {
         await using var serviceProvider = GatewayTestServiceProviderFactory.Create(
             ConfigureSearchTools
         );
         var gateway = serviceProvider.GetRequiredService<IMcpGateway>();
-        var cyclicContext = new CyclicContextPayload();
-        cyclicContext.Self = cyclicContext;
 
         await gateway.BuildIndexAsync();
         var searchResult = await gateway.SearchAsync(
             new McpGatewaySearchRequest(
                 Query: "weather forecast",
                 MaxResults: 1,
-                Context: new Dictionary<string, object?> { ["broken"] = cyclicContext }
+                Context: new Dictionary<string, JsonElement> { ["optional"] = JsonSerializer.SerializeToElement((object?)null, McpGatewayJsonSerializer.Options) }
             )
         );
 
@@ -542,8 +540,4 @@ public sealed partial class McpGatewaySearchTests
         );
     }
 
-    private sealed class CyclicContextPayload
-    {
-        public CyclicContextPayload? Self { get; set; }
-    }
 }

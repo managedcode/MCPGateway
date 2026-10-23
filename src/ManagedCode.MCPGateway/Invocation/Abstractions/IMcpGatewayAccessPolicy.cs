@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace ManagedCode.MCPGateway;
 
 public enum McpGatewayOperation
@@ -24,7 +26,7 @@ public enum McpGatewayOperation
 
 public sealed record McpGatewayAccessRequest(McpGatewayOperation Operation, string AssetId, string? SourceId = null)
 {
-    public IReadOnlyDictionary<string, object?>? Arguments { get; init; }
+    public IReadOnlyDictionary<string, JsonElement>? Arguments { get; init; }
     public IReadOnlyList<string> RequiredPermissions { get; init; } = [];
     public string? DefinitionHash { get; init; }
 }

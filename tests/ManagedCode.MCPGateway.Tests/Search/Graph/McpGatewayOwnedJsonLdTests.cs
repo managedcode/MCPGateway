@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MarkdownLd.Kb.Pipeline;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,7 +38,7 @@ public sealed partial class McpGatewaySearchTests
         var search = await gateway.SearchAsync(query, maxResults: 1);
         var invocation = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
             ToolId: search.Matches.Single().ToolId,
-            Arguments: new Dictionary<string, object?> { ["query"] = "Paris" }));
+            Arguments: new Dictionary<string, JsonElement> { ["query"] = JsonSerializer.SerializeToElement("Paris", McpGatewayJsonSerializer.Options) }));
         var exported = await provider.GetRequiredService<IMcpGatewayGraphSearch>().ExportMarkdownLdGraphAsync();
 
         await Assert.That(built.IsGraphSearchEnabled).IsTrue();

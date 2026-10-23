@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway;
@@ -10,7 +12,7 @@ public sealed class McpGatewayPromptRenderContext
     internal McpGatewayPromptRenderContext(
         string sourceId,
         string promptName,
-        IReadOnlyDictionary<string, object?> arguments,
+        IReadOnlyDictionary<string, JsonElement> arguments,
         IServiceProvider services,
         Func<McpGatewayPromptRequest, CancellationToken, ValueTask<GetPromptResult?>> renderPromptAsync
     )
@@ -26,7 +28,7 @@ public sealed class McpGatewayPromptRenderContext
 
     public string PromptName { get; }
 
-    public IReadOnlyDictionary<string, object?> Arguments { get; }
+    public IReadOnlyDictionary<string, JsonElement> Arguments { get; }
 
     public IServiceProvider Services { get; }
 
@@ -42,7 +44,7 @@ public sealed class McpGatewayPromptRenderContext
     public ValueTask<GetPromptResult?> GetPromptAsync(
         string sourceId,
         string promptName,
-        IReadOnlyDictionary<string, object?>? arguments = null,
+        IReadOnlyDictionary<string, JsonElement>? arguments = null,
         CancellationToken cancellationToken = default
     ) =>
         GetPromptAsync(

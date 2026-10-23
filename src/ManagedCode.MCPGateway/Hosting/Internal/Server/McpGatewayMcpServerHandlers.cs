@@ -92,7 +92,7 @@ internal sealed class McpGatewayMcpServerHandlers(
             );
         }
 
-        var arguments = McpGatewayMcpServerProtocolMapper.ConvertArguments(request.Params?.Arguments);
+        var arguments = McpGatewayMcpServerProtocolMapper.CopyArguments(request.Params?.Arguments);
         var invokeResult = await binding.Binding.Gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
                 ToolId: resolvedTool.ToolId,
@@ -165,7 +165,7 @@ internal sealed class McpGatewayMcpServerHandlers(
             new McpGatewayPromptRequest(
                 SourceId: resolvedRequest.SourceId,
                 PromptName: resolvedRequest.PromptName,
-                Arguments: McpGatewayMcpServerProtocolMapper.ConvertArguments(
+                Arguments: McpGatewayMcpServerProtocolMapper.CopyArguments(
                     request.Params?.Arguments
                 )
             ),

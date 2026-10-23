@@ -15,7 +15,7 @@ internal sealed partial class McpGatewayRuntime
     private static string? NormalizeSearchComponent(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static string? FlattenContext(IReadOnlyDictionary<string, object?>? context)
+    private static string? FlattenContext(IReadOnlyDictionary<string, JsonElement>? context)
     {
         if (context is not { Count: > 0 })
         {

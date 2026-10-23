@@ -38,7 +38,7 @@ internal sealed class McpGatewaySchemaFaithfulFunction(IMcpGateway gateway, McpG
 
     protected override async ValueTask<object?> InvokeCoreAsync(AIFunctionArguments arguments, CancellationToken cancellationToken)
     {
-        var result = await gateway.InvokeAsync(new McpGatewayInvokeRequest(ToolId: descriptor.ToolId, Arguments: arguments), cancellationToken);
+        var result = await gateway.InvokeAsync(new McpGatewayInvokeRequest(ToolId: descriptor.ToolId, Arguments: arguments.ToDictionary(static pair => pair.Key, static pair => JsonSerializer.SerializeToElement(pair.Value, McpGatewayJsonSerializer.Options), StringComparer.OrdinalIgnoreCase)), cancellationToken);
         return McpGatewayJsonSerializer.TrySerializeToElement(result)
             ?? throw new JsonException("The gateway invocation outcome could not be serialized.");
     }

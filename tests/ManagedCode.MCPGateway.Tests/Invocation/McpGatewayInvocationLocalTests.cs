@@ -113,10 +113,10 @@ public sealed partial class McpGatewayInvocationTests
         var invokeResult = await gateway.InvokeAsync(
             new McpGatewayInvokeRequest(
                 ToolId: "structured_context_echo",
-                Context: new Dictionary<string, object?>
+                Context: new Dictionary<string, JsonElement>
                 {
-                    ["domain"] = "genealogy",
-                    ["page"] = "tree-profile",
+                    ["domain"] = JsonSerializer.SerializeToElement("genealogy", McpGatewayJsonSerializer.Options),
+                    ["page"] = JsonSerializer.SerializeToElement("tree-profile", McpGatewayJsonSerializer.Options),
                 }
             )
         );
@@ -148,10 +148,10 @@ public sealed partial class McpGatewayInvocationTests
                 ToolId: "context_summary_echo",
                 Query: "mapped query",
                 ContextSummary: "mapped summary",
-                Arguments: new Dictionary<string, object?>
+                Arguments: new Dictionary<string, JsonElement>
                 {
-                    ["query"] = "explicit query",
-                    ["contextSummary"] = "explicit summary",
+                    ["query"] = JsonSerializer.SerializeToElement("explicit query", McpGatewayJsonSerializer.Options),
+                    ["contextSummary"] = JsonSerializer.SerializeToElement("explicit summary", McpGatewayJsonSerializer.Options),
                 }
             )
         );

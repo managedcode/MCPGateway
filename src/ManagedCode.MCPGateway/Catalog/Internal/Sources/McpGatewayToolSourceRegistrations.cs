@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 #pragma warning disable MCPEXP001
 
 using Microsoft.Extensions.AI;
@@ -81,7 +83,7 @@ internal abstract class McpGatewayToolSourceRegistration(string sourceId, string
 
     public virtual ValueTask<GetPromptResult?> GetPromptAsync(
         string promptName,
-        IReadOnlyDictionary<string, object?>? arguments,
+        IReadOnlyDictionary<string, JsonElement>? arguments,
         McpGatewayPromptInvocationContext? promptContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
@@ -377,7 +379,7 @@ internal abstract class McpGatewayClientToolSourceRegistration(
 
     public override async ValueTask<GetPromptResult?> GetPromptAsync(
         string promptName,
-        IReadOnlyDictionary<string, object?>? arguments,
+        IReadOnlyDictionary<string, JsonElement>? arguments,
         McpGatewayPromptInvocationContext? promptContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
@@ -391,7 +393,8 @@ internal abstract class McpGatewayClientToolSourceRegistration(
 
         return await client.GetPromptAsync(
             promptName,
-            arguments ?? new Dictionary<string, object?>(StringComparer.Ordinal),
+            arguments?.ToDictionary(static pair => pair.Key, static pair => (object?)pair.Value, StringComparer.Ordinal)
+                ?? new Dictionary<string, object?>(StringComparer.Ordinal),
             new RequestOptions(),
             cancellationToken
         );

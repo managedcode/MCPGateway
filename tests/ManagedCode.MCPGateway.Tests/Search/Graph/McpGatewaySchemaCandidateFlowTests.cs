@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MarkdownLd.Kb.Pipeline;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
@@ -130,7 +131,7 @@ public sealed class McpGatewaySchemaCandidateFlowTests
         var after = await graphs.ExportMarkdownLdGraphAsync();
         await Assert.That(after.NodeCount).IsEqualTo(before.NodeCount);
         await Assert.That(after.EdgeCount).IsEqualTo(before.EdgeCount);
-        var invoked = await gateway.InvokeAsync(new(ToolId: "story_item_search", Arguments: new Dictionary<string, object?> { ["query"] = "incident" }));
+        var invoked = await gateway.InvokeAsync(new(ToolId: "story_item_search", Arguments: new Dictionary<string, JsonElement> { ["query"] = JsonSerializer.SerializeToElement("incident", McpGatewayJsonSerializer.Options) }));
         await Assert.That(invoked.IsSuccess).IsTrue();
         await Assert.That(invoked.Output).IsEqualTo("incident");
     }
@@ -151,7 +152,7 @@ public sealed class McpGatewaySchemaCandidateFlowTests
         await Assert.That(result.Matches[0].ToolMatch?.ToolId).IsEqualTo("story_item_search");
         await Assert.That(result.GeneratedSparql).Contains("VALUES ?subject");
         await Assert.That(result.NextStepMatches.Any(match => match.ToolMatch?.ToolId == "story_item_detail")).IsTrue();
-        var invoked = await gateway.InvokeAsync(new(ToolId: "story_item_search", Arguments: new Dictionary<string, object?> { ["query"] = "incident" }));
+        var invoked = await gateway.InvokeAsync(new(ToolId: "story_item_search", Arguments: new Dictionary<string, JsonElement> { ["query"] = JsonSerializer.SerializeToElement("incident", McpGatewayJsonSerializer.Options) }));
         await Assert.That(invoked.IsSuccess).IsTrue();
         await Assert.That(invoked.McpResult).IsNotNull();
         await Assert.That(invoked.McpResult!.IsError).IsNotEqualTo(true);

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -87,7 +88,7 @@ public sealed class McpGatewayExecutionRevocationTests
         using var guard = new CancellationTokenSource();
         try
         {
-            var call = gateway.InvokeAsync(new(ToolId: "deadline_read", Context: new Dictionary<string, object?> { ["deadline"] = "2099-01-01" }), guard.Token);
+            var call = gateway.InvokeAsync(new(ToolId: "deadline_read", Context: new Dictionary<string, JsonElement> { ["deadline"] = JsonSerializer.SerializeToElement("2099-01-01", McpGatewayJsonSerializer.Options) }), guard.Token);
             await Assert.That((await call.WaitAsync(TimeSpan.FromSeconds(5))).Outcome).IsEqualTo(McpGatewayInvocationOutcome.TimedOut);
         }
         finally { await guard.CancelAsync(); }

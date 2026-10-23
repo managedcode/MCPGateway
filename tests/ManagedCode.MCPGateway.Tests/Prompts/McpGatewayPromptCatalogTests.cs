@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Protocol;
@@ -47,10 +48,10 @@ public sealed class McpGatewayPromptCatalogTests
             new McpGatewayPromptRequest(
                 SourceId: "test-mcp",
                 PromptName: "repository_triage_system_prompt",
-                Arguments: new Dictionary<string, object?>(StringComparer.Ordinal)
+                Arguments: new Dictionary<string, JsonElement>(StringComparer.Ordinal)
                 {
-                    ["repository"] = "ManagedCode.MCPGateway",
-                    ["locale"] = "uk",
+                    ["repository"] = JsonSerializer.SerializeToElement("ManagedCode.MCPGateway", McpGatewayJsonSerializer.Options),
+                    ["locale"] = JsonSerializer.SerializeToElement("uk", McpGatewayJsonSerializer.Options),
                 }
             )
         );
@@ -126,11 +127,11 @@ public sealed class McpGatewayPromptCatalogTests
             new McpGatewayPromptRequest(
                 SourceId: "local",
                 PromptName: "release_review_bundle",
-                Arguments: new Dictionary<string, object?>(StringComparer.Ordinal)
+                Arguments: new Dictionary<string, JsonElement>(StringComparer.Ordinal)
                 {
-                    ["repository"] = "ManagedCode/MCPGateway",
-                    ["environment"] = "prod-eu",
-                    ["locale"] = "uk-UA",
+                    ["repository"] = JsonSerializer.SerializeToElement("ManagedCode/MCPGateway", McpGatewayJsonSerializer.Options),
+                    ["environment"] = JsonSerializer.SerializeToElement("prod-eu", McpGatewayJsonSerializer.Options),
+                    ["locale"] = JsonSerializer.SerializeToElement("uk-UA", McpGatewayJsonSerializer.Options),
                 }
             )
         );
@@ -190,20 +191,20 @@ public sealed class McpGatewayPromptCatalogTests
         CancellationToken cancellationToken
     )
     {
-        var repository = context.Arguments["repository"]?.ToString() ?? string.Empty;
-        var environment = context.Arguments["environment"]?.ToString() ?? string.Empty;
+        var repository = context.Arguments["repository"].GetString() ?? string.Empty;
+        var environment = context.Arguments["environment"].GetString() ?? string.Empty;
         var locale = context.Arguments.TryGetValue("locale", out var rawLocale)
-            ? rawLocale?.ToString() ?? DefaultLocale
+            ? rawLocale.GetString() ?? DefaultLocale
             : DefaultLocale;
 
         var repositoryPrompt =
             await context.GetPromptAsync(
                 "repo",
                 "repository_triage_system_prompt",
-                new Dictionary<string, object?>(StringComparer.Ordinal)
+                new Dictionary<string, JsonElement>(StringComparer.Ordinal)
                 {
-                    ["repository"] = repository,
-                    ["locale"] = locale,
+                    ["repository"] = JsonSerializer.SerializeToElement(repository, McpGatewayJsonSerializer.Options),
+                    ["locale"] = JsonSerializer.SerializeToElement(locale, McpGatewayJsonSerializer.Options),
                 },
                 cancellationToken
             ) ?? throw new InvalidOperationException("Repository prompt was not found.");
@@ -212,9 +213,9 @@ public sealed class McpGatewayPromptCatalogTests
             await context.GetPromptAsync(
                 "ops",
                 "deployment_review_system_prompt",
-                new Dictionary<string, object?>(StringComparer.Ordinal)
+                new Dictionary<string, JsonElement>(StringComparer.Ordinal)
                 {
-                    ["environment"] = environment,
+                    ["environment"] = JsonSerializer.SerializeToElement(environment, McpGatewayJsonSerializer.Options),
                 },
                 cancellationToken
             ) ?? throw new InvalidOperationException("Deployment prompt was not found.");

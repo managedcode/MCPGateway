@@ -1,3 +1,4 @@
+using System.Text.Json;
 #pragma warning disable MCPEXP001
 
 using Microsoft.Extensions.Logging.Abstractions;
@@ -41,9 +42,9 @@ public sealed class McpGatewayLocalToolSourceRegistrationTests
 
         var prompt = await registration.GetPromptAsync(
             "release_review",
-            new Dictionary<string, object?>(StringComparer.Ordinal)
+            new Dictionary<string, JsonElement>(StringComparer.Ordinal)
             {
-                ["repository"] = "ManagedCode/MCPGateway",
+                ["repository"] = JsonSerializer.SerializeToElement("ManagedCode/MCPGateway", McpGatewayJsonSerializer.Options),
             },
             promptContext: null,
             NullLoggerFactory.Instance,
@@ -228,7 +229,7 @@ public sealed class McpGatewayLocalToolSourceRegistrationTests
                         Role = Role.User,
                         Content = new TextContentBlock
                         {
-                            Text = context.Arguments["repository"]?.ToString() ?? string.Empty,
+                            Text = context.Arguments["repository"].GetString() ?? string.Empty,
                         },
                     },
                 ],

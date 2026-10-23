@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
@@ -14,7 +16,7 @@ internal sealed partial class McpGatewayRuntime
     private const string ExecutionFailedMessage = "The gateway could not confirm successful execution.";
 
     private async Task<McpGatewayInvokeResult> ExecuteAdmittedAsync(ToolCatalogEntry entry, McpGatewayInvokeRequest request,
-        Dictionary<string, object?> arguments, McpGatewayExecutionContext context, McpGatewayAccessDecision decision,
+        Dictionary<string, JsonElement> arguments, McpGatewayExecutionContext context, McpGatewayAccessDecision decision,
         McpGatewayCatalogSourceSnapshot catalog, CancellationToken cancellationToken)
     {
         var bounded = _executionOptions.Enabled || _managedCatalog;
@@ -47,7 +49,7 @@ internal sealed partial class McpGatewayRuntime
 
     // This task retains all execution resources after a caller deadline until the actual dispatch completes.
     private async Task<McpGatewayInvokeResult> ExecuteOwnedAsync(ToolCatalogEntry entry, McpGatewayInvokeRequest request,
-        Dictionary<string, object?> arguments, McpGatewayExecutionContext context, McpGatewayCatalogSourceSnapshot catalog,
+        Dictionary<string, JsonElement> arguments, McpGatewayExecutionContext context, McpGatewayCatalogSourceSnapshot catalog,
         bool bounded, ExecutionLifetime lifetime)
     {
         using (lifetime)

@@ -81,8 +81,7 @@ internal sealed partial class McpGatewayRuntime
             var response = request.ResponseOptions ?? new McpGatewayResponseOptions();
             request = request with { ResponseOptions = response with { MaxBytes = Math.Min(response.MaxBytes, _maximumManagedResponseBytes) } };
         }
-        var arguments = BuildInvocationArguments(request, entry.Descriptor);
-        var valid = ValidateInvocation(entry, request, arguments);
+        var valid = ValidateInvocation(entry, request, out var arguments);
         var descriptor = await GetApprovedDescriptorAsync(entry.Descriptor, cancellationToken);
         var decision = await McpGatewayAccessBoundary.AuthorizeAsync(_serviceProvider, executionContext,
             new(McpGatewayOperation.Invoke, descriptor.ToolId, descriptor.SourceId)
@@ -113,10 +112,12 @@ internal sealed partial class McpGatewayRuntime
         }
     }
 
-    private static bool ValidateInvocation(ToolCatalogEntry entry, McpGatewayInvokeRequest request, Dictionary<string, object?> arguments)
+    private static bool ValidateInvocation(ToolCatalogEntry entry, McpGatewayInvokeRequest request, out Dictionary<string, JsonElement> arguments)
     {
+        arguments = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
         try
         {
+            arguments = BuildInvocationArguments(request, entry.Descriptor);
             if (request.ResponseOptions is { } response)
             {
                 ArgumentOutOfRangeException.ThrowIfLessThan(response.MaxBytes, 1);
@@ -139,14 +140,14 @@ internal sealed partial class McpGatewayRuntime
         new(false, descriptor.ToolId, descriptor.SourceId, descriptor.ToolName, null, "Tool arguments or response options are invalid.")
         { Outcome = McpGatewayInvocationOutcome.InvalidArguments, ErrorCode = McpGatewayInvocationErrors.InvalidArguments };
 
-    private static Dictionary<string, object?> BuildInvocationArguments(
+    private static Dictionary<string, JsonElement> BuildInvocationArguments(
         McpGatewayInvokeRequest request,
         McpGatewayToolDescriptor descriptor
     )
     {
         var arguments = request.Arguments is { Count: > 0 }
-            ? new Dictionary<string, object?>(request.Arguments, StringComparer.OrdinalIgnoreCase)
-            : new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            ? request.Arguments.ToDictionary(static pair => pair.Key, static pair => pair.Value.Clone(), StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
 
         if (
             !string.IsNullOrWhiteSpace(request.Query)
@@ -154,7 +155,7 @@ internal sealed partial class McpGatewayRuntime
             && SupportsArgument(descriptor, QueryArgumentName)
         )
         {
-            arguments[QueryArgumentName] = request.Query;
+            arguments[QueryArgumentName] = JsonSerializer.SerializeToElement(request.Query, McpGatewayJsonSerializer.Options);
         }
 
         MapRequestArgument(arguments, descriptor, ContextArgumentName, request.Context);
@@ -170,7 +171,7 @@ internal sealed partial class McpGatewayRuntime
     private async Task<McpGatewayInvokeResult> InvokeResolvedToolAsync(
         ToolCatalogEntry entry,
         McpGatewayInvokeRequest request,
-        Dictionary<string, object?> arguments,
+        Dictionary<string, JsonElement> arguments,
         CancellationToken cancellationToken
     )
     {
@@ -207,7 +208,7 @@ internal sealed partial class McpGatewayRuntime
     private async Task<McpGatewayInvokeResult> InvokeMcpToolAsync(
         ToolCatalogEntry entry,
         McpGatewayInvokeRequest request,
-        Dictionary<string, object?> arguments,
+        Dictionary<string, JsonElement> arguments,
         McpClientTool tool,
         CancellationToken cancellationToken
     )
@@ -217,7 +218,7 @@ internal sealed partial class McpGatewayRuntime
         {
             result = await AttachInvocationMeta(tool, request)
                 .CallAsync(
-                    arguments,
+                    arguments.ToDictionary(static pair => pair.Key, static pair => (object?)pair.Value, StringComparer.OrdinalIgnoreCase),
                     progress: null,
                     options: new RequestOptions(),
                     cancellationToken: cancellationToken
@@ -234,7 +235,7 @@ internal sealed partial class McpGatewayRuntime
                 new CallToolRequestParams
                 {
                     Name = tool.ProtocolTool.Name,
-                    Arguments = SerializeToolArguments(arguments),
+                    Arguments = arguments.Count == 0 ? null : arguments,
                     Meta = BuildInvocationMeta(request),
                 },
                 _mcpTaskMaximumConsecutiveStuckPolls,
@@ -265,31 +266,15 @@ internal sealed partial class McpGatewayRuntime
     private static bool SupportsTasks(McpClient client) =>
         client.ServerCapabilities.Extensions?.ContainsKey(TasksProtocol.ExtensionId) is true;
 
-    private static IDictionary<string, JsonElement>? SerializeToolArguments(
-        IReadOnlyDictionary<string, object?> arguments
-    )
-    {
-        if (arguments.Count == 0)
-        {
-            return null;
-        }
-
-        var serialized = McpGatewayJsonSerializer.TrySerializeToElement(arguments)
-            ?? throw new JsonException("Tool arguments could not be serialized.");
-        return serialized.Deserialize<Dictionary<string, JsonElement>>(
-            McpGatewayJsonSerializer.Options
-        );
-    }
-
     private static async Task<McpGatewayInvokeResult> InvokeFunctionAsync(
         ToolCatalogEntry entry,
-        Dictionary<string, object?> arguments,
+        Dictionary<string, JsonElement> arguments,
         AIFunction function,
         CancellationToken cancellationToken
     )
     {
         var resultValue = await function.InvokeAsync(
-            new AIFunctionArguments(arguments, StringComparer.OrdinalIgnoreCase),
+            new AIFunctionArguments(arguments.ToDictionary(static pair => pair.Key, static pair => (object?)pair.Value, StringComparer.OrdinalIgnoreCase), StringComparer.OrdinalIgnoreCase),
             cancellationToken
         );
 
@@ -321,11 +306,11 @@ internal sealed partial class McpGatewayRuntime
         string? error
     ) => new(false, toolId, sourceId, toolName, Output: null, Error: error);
 
-    private static void MapRequestArgument(
-        IDictionary<string, object?> arguments,
+    private static void MapRequestArgument<T>(
+        IDictionary<string, JsonElement> arguments,
         McpGatewayToolDescriptor descriptor,
         string argumentName,
-        object? value
+        T? value
     )
     {
         if (
@@ -342,7 +327,7 @@ internal sealed partial class McpGatewayRuntime
             return;
         }
 
-        arguments[argumentName] = value;
+        arguments[argumentName] = JsonSerializer.SerializeToElement(value, McpGatewayJsonSerializer.Options);
     }
 
     private static bool SupportsArgument(McpGatewayToolDescriptor descriptor, string argumentName)

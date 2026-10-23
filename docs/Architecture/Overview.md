@@ -288,3 +288,7 @@ JSON-LD graph sources can be filesystem exports or embedded assembly resources (
 Hybrid search retains exact tool identity matches from schema search before considering lexical candidate ranking, so a broader candidate cannot evict a requested tool name.
 
 HTTP sources may explicitly retain source-qualified canonical tool IDs for durable host selections. The catalog naming owner applies this before discovery, export and invocation; adding an identically named method on another server does not change existing IDs.
+
+## Native JSON request maps
+
+Tool invocation and access requests, prompt rendering and search/route context carry caller-authored JSON through `JsonElement` maps. Invocation copies and owns those elements before validation and execution; MCP adapters copy JSON elements at the protocol boundary. Only actual external SDK invocation parameters box JSON elements into the SDK object-valued ABI. Trusted `McpGatewayExecutionContext` remains separate from model-supplied context. See [ADR-0018](../ADR/ADR-0018-native-json-request-maps.md).

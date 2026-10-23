@@ -213,9 +213,9 @@ var prompts = await promptCatalog.ListPromptsAsync();
 var prompt = await promptCatalog.GetPromptAsync(new McpGatewayPromptRequest(
     SourceId: prompts[0].SourceId,
     PromptName: prompts[0].PromptName,
-    Arguments: new Dictionary<string, object?>
+    Arguments: new Dictionary<string, JsonElement>
     {
-        ["repository"] = "ManagedCode.MCPGateway"
+        ["repository"] = JsonSerializer.SerializeToElement("ManagedCode.MCPGateway")
     }));
 ```
 
@@ -237,7 +237,7 @@ services.AddMcpGateway(options =>
             var repositoryPrompt = await context.GetPromptAsync(
                 "repo",
                 "repository_triage_system_prompt",
-                new Dictionary<string, object?>
+                new Dictionary<string, JsonElement>
                 {
                     ["repository"] = context.Arguments["repository"],
                     ["locale"] = context.Arguments["locale"]
@@ -247,7 +247,7 @@ services.AddMcpGateway(options =>
             var deploymentPrompt = await context.GetPromptAsync(
                 "ops",
                 "deployment_review_system_prompt",
-                new Dictionary<string, object?>
+                new Dictionary<string, JsonElement>
                 {
                     ["environment"] = context.Arguments["environment"]
                 },
@@ -488,16 +488,18 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
     Query: "managedcode"));
 ```
 
+Caller-authored tool arguments, prompt arguments and search/route/invocation context use `IReadOnlyDictionary<string, JsonElement>`. Import `System.Text.Json` and use `JsonSerializer.SerializeToElement` for CLR values, or clone elements from a `JsonDocument` before disposing it. Native JSON values preserve number precision, explicit `null`, arrays, objects and property casing. Model-supplied context does not establish trusted execution identity.
+
 For contextual search and invocation, pass `ContextSummary` and `Context`:
 
 ```csharp
 var search = await gateway.SearchAsync(new McpGatewaySearchRequest(
     Query: "search",
     ContextSummary: "User is on the GitHub repository settings page",
-    Context: new Dictionary<string, object?>
+    Context: new Dictionary<string, JsonElement>
     {
-        ["page"] = "settings",
-        ["domain"] = "github"
+        ["page"] = JsonSerializer.SerializeToElement("settings"),
+        ["domain"] = JsonSerializer.SerializeToElement("github")
     },
     MaxResults: 3));
 
@@ -505,10 +507,10 @@ var invoke = await gateway.InvokeAsync(new McpGatewayInvokeRequest(
     ToolId: search.Matches[0].ToolId,
     Query: "managedcode",
     ContextSummary: "User wants repository administration actions",
-    Context: new Dictionary<string, object?>
+    Context: new Dictionary<string, JsonElement>
     {
-        ["page"] = "settings",
-        ["domain"] = "github"
+        ["page"] = JsonSerializer.SerializeToElement("settings"),
+        ["domain"] = JsonSerializer.SerializeToElement("github")
     }));
 ```
 

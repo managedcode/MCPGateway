@@ -86,12 +86,12 @@ internal static class McpGatewayMcpServerProtocolMapper
         return resourceTemplate;
     }
 
-    public static IReadOnlyDictionary<string, object?>? ConvertArguments(
+    public static IReadOnlyDictionary<string, JsonElement>? CopyArguments(
         IDictionary<string, JsonElement>? arguments
     ) =>
         arguments?.ToDictionary(
             static pair => pair.Key,
-            static pair => (object?)pair.Value.Clone(),
+            static pair => pair.Value.Clone(),
             StringComparer.Ordinal
         );
 

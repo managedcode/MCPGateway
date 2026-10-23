@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MarkdownLd.Kb.Pipeline;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
@@ -112,7 +113,7 @@ public sealed class McpGatewayGraphProfileBoundaryTests
         var gateway = provider.GetRequiredService<IMcpGateway>();
         var result = await gateway.SearchAsync(query);
         var invocation = await gateway.InvokeAsync(new(ToolId: "story_item_search",
-            Arguments: new Dictionary<string, object?> { ["query"] = "incident" }));
+            Arguments: new Dictionary<string, JsonElement> { ["query"] = JsonSerializer.SerializeToElement("incident", McpGatewayJsonSerializer.Options) }));
 
         await Assert.That(result.Matches).HasSingleItem();
         await Assert.That(result.Matches[0].ToolId).IsEqualTo("story_item_search");

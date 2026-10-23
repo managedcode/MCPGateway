@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.Metrics;
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -27,7 +28,7 @@ public sealed class McpGatewayAuditIntegrationTests
         { Interlocked.Increment(ref dispatches); return new { value, secret = "SEEDED_PRIVATE_OUTPUT" }; }, new AIFunctionFactoryOptions { Name = "write" })));
         await using var provider = services.BuildServiceProvider();
         var result = await provider.GetRequiredService<IMcpGateway>().InvokeAsync(new(ToolName: "write",
-            Arguments: new Dictionary<string, object?> { ["value"] = "SEEDED_PRIVATE_INPUT" }, Context: new Dictionary<string, object?> { ["credential"] = "SEEDED_CREDENTIAL" }));
+            Arguments: new Dictionary<string, JsonElement> { ["value"] = JsonSerializer.SerializeToElement("SEEDED_PRIVATE_INPUT", McpGatewayJsonSerializer.Options) }, Context: new Dictionary<string, JsonElement> { ["credential"] = JsonSerializer.SerializeToElement("SEEDED_CREDENTIAL", McpGatewayJsonSerializer.Options) }));
         await Assert.That(result.IsSuccess).IsTrue();
         await Assert.That(dispatches).IsEqualTo(1);
         var json = McpGatewayJsonSerializer.TrySerializeToElement(audit.Event)!.Value.GetRawText();

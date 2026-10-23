@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -16,7 +17,7 @@ public sealed class McpGatewayForwardedContextTests
             options.AddMcpClient("upstream", upstream.Client);
         });
         var result = await provider.GetRequiredService<IMcpGateway>().InvokeAsync(new(ToolName: "github_repository_search", Query: "weather",
-            ContextSummary: "SEEDED_SECRET", Context: new Dictionary<string, object?> { ["page"] = "settings", ["tenant"] = "forged", ["secret"] = "SEEDED_SECRET" }));
+            ContextSummary: "SEEDED_SECRET", Context: new Dictionary<string, JsonElement> { ["page"] = JsonSerializer.SerializeToElement("settings", McpGatewayJsonSerializer.Options), ["tenant"] = JsonSerializer.SerializeToElement("forged", McpGatewayJsonSerializer.Options), ["secret"] = JsonSerializer.SerializeToElement("SEEDED_SECRET", McpGatewayJsonSerializer.Options) }));
         await Assert.That(result.IsSuccess).IsTrue();
         var meta = upstream.CapturedMeta.Single()["managedCodeMcpGateway"]!;
         await Assert.That(meta.ToJsonString()).DoesNotContain("SEEDED_SECRET");

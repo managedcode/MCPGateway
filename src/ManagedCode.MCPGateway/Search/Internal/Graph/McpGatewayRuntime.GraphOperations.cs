@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 using ManagedCode.MarkdownLd.Kb.Pipeline;
 using Microsoft.Extensions.Logging;
 
@@ -59,10 +61,10 @@ internal sealed partial class McpGatewayRuntime
                 var egress = await McpGatewayAccessBoundary.AuthorizeAsync(_serviceProvider, context,
                     new(McpGatewayOperation.FederateGraph, CatalogAssetName)
                     {
-                        Arguments = new Dictionary<string, object?>
+                        Arguments = new Dictionary<string, JsonElement>
                         {
-                            [QueryArgumentName] = request.Query,
-                            [FederationEndpointsArgumentName] = serviceEndpoints,
+                            [QueryArgumentName] = JsonSerializer.SerializeToElement(request.Query, McpGatewayJsonSerializer.Options),
+                            [FederationEndpointsArgumentName] = JsonSerializer.SerializeToElement(serviceEndpoints, McpGatewayJsonSerializer.Options),
                         },
                     }, cancellationToken);
                 if (!egress.IsAllowed)

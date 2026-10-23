@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 #pragma warning disable MCPEXP001
 
 using System.Collections.Concurrent;
@@ -66,7 +68,7 @@ internal sealed class McpGatewayLocalToolSourceRegistration(string sourceId, str
 
     public override async ValueTask<GetPromptResult?> GetPromptAsync(
         string promptName,
-        IReadOnlyDictionary<string, object?>? arguments,
+        IReadOnlyDictionary<string, JsonElement>? arguments,
         McpGatewayPromptInvocationContext? promptContext,
         ILoggerFactory loggerFactory,
         CancellationToken cancellationToken
@@ -85,7 +87,7 @@ internal sealed class McpGatewayLocalToolSourceRegistration(string sourceId, str
         var renderContext = new McpGatewayPromptRenderContext(
             SourceId,
             prompt.Name,
-            arguments ?? new Dictionary<string, object?>(StringComparer.Ordinal),
+            arguments ?? new Dictionary<string, JsonElement>(StringComparer.Ordinal),
             promptContext?.Services ?? EmptyServiceProvider.Instance,
             (request, token) =>
                 promptContext?.RenderPromptAsync(request, token)

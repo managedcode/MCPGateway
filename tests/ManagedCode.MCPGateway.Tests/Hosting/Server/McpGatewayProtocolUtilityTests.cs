@@ -307,7 +307,7 @@ public sealed class McpGatewayProtocolUtilityTests
     public async Task ProtocolMapper_MapsArgumentsAndResourceContents()
     {
         using var document = JsonDocument.Parse("""{"value":"alpha"}""");
-        var arguments = McpGatewayMcpServerProtocolMapper.ConvertArguments(
+        var arguments = McpGatewayMcpServerProtocolMapper.CopyArguments(
             new Dictionary<string, JsonElement>(StringComparer.Ordinal)
             {
                 ["payload"] = document.RootElement.Clone(),

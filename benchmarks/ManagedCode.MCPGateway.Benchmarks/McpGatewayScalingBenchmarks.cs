@@ -46,7 +46,7 @@ public class McpGatewayScalingBenchmarks
         var discovery = await _discovery.DiscoverAsync(new("directory_lookup_00000") { MaxBytes = 2048, MaxResults = 5 });
         var schema = await _discovery.GetToolSchemaAsync("directory_lookup_00000");
         var invoked = await _gateway.InvokeAsync(new(ToolId: schema!.Tool.ToolId,
-            Arguments: new Dictionary<string, object?> { ["query"] = "benchmark" }));
+            Arguments: new Dictionary<string, JsonElement> { ["query"] = JsonSerializer.SerializeToElement("benchmark") }));
         if (!invoked.IsSuccess || discovery.SerializedBytes > 2048)
         { throw new InvalidOperationException(InvalidCycleMessage); }
         return discovery.SerializedBytes;

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using ManagedCode.MCPGateway.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -36,7 +37,7 @@ public sealed class McpGatewayExactGraphSearchTests
         await Assert.That(result.GeneratedSparql).Contains("SELECT");
         await Assert.That(result.Matches[0].Evidence.Count).IsGreaterThan(0);
         var invoked = await toolSet.InvokeAsync(result.Matches[0].ToolMatch!.ToolId,
-            new Dictionary<string, object?> { ["path"] = "created.txt" });
+            new Dictionary<string, JsonElement> { ["path"] = JsonSerializer.SerializeToElement("created.txt", McpGatewayJsonSerializer.Options) });
         await Assert.That(invoked.IsSuccess).IsTrue();
         await Assert.That(invoked.Output).IsEqualTo("created.txt");
     }
