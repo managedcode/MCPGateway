@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-`ManagedCode.MCPGateway` builds directly on the official MCP C# SDK `2.2.0`. Its package surface needs one unambiguous protocol-negotiation contract across gateway-created upstream clients, caller-provided clients, and downstream server export.
+`ManagedCode.MCPGateway` builds directly on the official MCP C# SDK `2.3.0`. Its package surface needs one unambiguous protocol-negotiation contract across gateway-created upstream clients, caller-provided clients, and downstream server export.
 
 The selected protocol revision provides:
 
@@ -43,7 +43,7 @@ The selected protocol revision provides:
 
 ### Tasks
 
-- Register `ModelContextProtocol.Extensions.Tasks` `2.2.0` through `WithTasks(...)`.
+- Register `ModelContextProtocol.Extensions.Tasks` `2.3.0` through `WithTasks(...)`.
 - Support `tasks/get`, `tasks/update`, and `tasks/cancel` through the SDK extension contracts.
 - Execute downstream task requests through the SDK alternate-result filter and `IMcpTaskStore`.
 - Provide a bounded default store with configurable TTL, poll interval, total task limit, and unchanged-poll limit.
@@ -100,7 +100,7 @@ The selected protocol revision provides:
 
 ## References
 
-- [MCP C# SDK v2.2.0](https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v2.2.0)
+- [MCP C# SDK v2.3.0](https://github.com/modelcontextprotocol/csharp-sdk/releases/tag/v2.3.0)
 - [SDK Tasks documentation](https://csharp.sdk.modelcontextprotocol.io/v2/concepts/tasks/tasks.html)
 - [SDK MCP Apps documentation](https://csharp.sdk.modelcontextprotocol.io/v2/concepts/apps/apps.html)
 - [ManagedCode.MarkdownLd.Kb v0.2.8](https://github.com/managedcode/markdown-ld-kb/releases/tag/v0.2.8)

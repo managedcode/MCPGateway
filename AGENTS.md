@@ -114,6 +114,11 @@ If no new rule is detected -> do not update the file.
 - Carry dependency repairs through focused regression tests, required owner checks, the canonical patch-version mechanism, a scoped commit and push, successful GitHub release, and verification of the published NuGet version before updating the consumer and running consumer regressions. These scoped dependency delivery actions have standing user authorization; preserve unrelated work and never force-push or bypass protections.
 - Report the exact blocker when dependency source, credentials, permissions, or publication infrastructure are unavailable; unpublished local packages and temporary project references do not constitute delivery.
 
+### Package Versioning
+
+- `ManagedCode.MCPGateway` major.minor follows the major.minor of the official `ModelContextProtocol` SDK it targets, and the patch number counts the gateway's own releases on that SDK line (for example SDK `2.3.x` -> gateway `2.3.0`, then `2.3.1`, `2.3.2`), because consumers must be able to read the SDK baseline directly from the gateway version.
+- When the targeted `ModelContextProtocol` major.minor changes, set the gateway `<Version>` in `Directory.Build.props` to that major.minor with patch `0`; every other gateway release increments only the patch through that same `<Version>` element, which is the canonical version mechanism.
+
 ### Git Workflow
 
 - Never run `git stash` or enable automatic stashing; keep working-tree changes visible.

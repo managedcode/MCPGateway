@@ -14,7 +14,7 @@ It is built on:
 - `Microsoft.Extensions.AI`
 - the official `ModelContextProtocol` .NET SDK
 
-`ManagedCode.MCPGateway` treats the official [`modelcontextprotocol/csharp-sdk`](https://github.com/modelcontextprotocol/csharp-sdk) as its MCP protocol baseline. The package uses SDK `2.2.0` and leaves protocol negotiation to that SDK. Gateway-created and caller-provided clients remain usable at any protocol version the SDK successfully negotiates, and exported servers accept the protocol versions supported by the SDK unless the application explicitly configures one. The gateway does not apply a second version gate. The shipped gateway surface includes aggregated MCP tools, prompts, and resources; per-request subscriptions; SDK Tasks and Apps extensions; cache-aware results; and task-backed tool execution.
+`ManagedCode.MCPGateway` treats the official [`modelcontextprotocol/csharp-sdk`](https://github.com/modelcontextprotocol/csharp-sdk) as its MCP protocol baseline. The package uses SDK `2.3.0` and leaves protocol negotiation to that SDK. Package versions follow that SDK line: the `ManagedCode.MCPGateway` major.minor matches the targeted `ModelContextProtocol` major.minor, and the patch number counts gateway releases on that line. Gateway-created and caller-provided clients remain usable at any protocol version the SDK successfully negotiates, and exported servers accept the protocol versions supported by the SDK unless the application explicitly configures one. The gateway does not apply a second version gate. The shipped gateway surface includes aggregated MCP tools, prompts, and resources; per-request subscriptions; SDK Tasks and Apps extensions; cache-aware results; and task-backed tool execution.
 
 ## Install
 
