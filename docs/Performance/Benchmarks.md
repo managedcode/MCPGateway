@@ -4,7 +4,8 @@
 
 The benchmark project is not packable and is not a runtime dependency of the NuGet package. It references the package project and measures representative local gateway paths in `Release`:
 
-- graph index build for a 120-tool catalog
+- cold graph index builds for a 120-tool catalog and a 70-tool catalog with JSON input/output schemas and search hints; every operation uses a new catalog revision so no graph can be reused
+- reused graph index build for that 70-tool catalog while another host holds the identical graph, and ten parallel hosts building one identical cold catalog
 - repeated schema-aware graph searches, exact tool identity and no-match/fuzzy fallback over a prebuilt catalog
 - direct built-in graph tool search and strict no-match over the same prebuilt catalog
 - reusable `McpGatewayToolSet` meta-tool projection
@@ -33,6 +34,38 @@ dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/Man
 Run benchmark commands one at a time. BenchmarkDotNet generates temporary build projects under the benchmark output path, and concurrent runs of the same project can contend for generated files.
 
 Each benchmark class uses BenchmarkDotNet `MemoryDiagnoser`, so the output includes allocation columns such as allocated bytes per operation and Gen0/Gen1/Gen2 collection counts when applicable.
+
+## Index-Build Stage Attribution
+
+`--profile-index <iterations>` attributes complete gateway builds and the Markdown-LD stages of a generated tool graph for the 70-tool schema catalog through public APIs, with two warmups per stage and `GC.GetTotalAllocatedBytes(precise: true)` per operation:
+
+```bash
+dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --profile-index 5
+```
+
+October 24, 2026, Apple M2 Pro, runtime `.NET 10.0.12`, five measured operations per stage. The baseline column runs the same workload against published `ManagedCode.MCPGateway 2.3.0` with `MarkdownLd.Kb 0.2.17`; the current column is this source with `MarkdownLd.Kb 0.2.18`. Decimal MB.
+
+| Stage | 2.3.0 | Current |
+| --- | ---: | ---: |
+| Complete cold gateway build | 794 ms, 606 MB | 827 ms, 596 MB |
+| Repeated build of an identical catalog | 847 ms, 605 MB | 7.2 ms, 9.2 MB |
+| First and second host for one catalog | 1,713 ms, 1,211 MB | 834 ms, 606 MB |
+| Ten parallel hosts, one cold catalog | 5,984 ms, 6,164 MB | 940 ms, 687 MB |
+| Generate tool Markdown documents | 2.1 ms, 3.9 MB | 2.0 ms, 3.9 MB |
+| Markdown-LD build, rule extraction only | 23.6 ms, 30.5 MB | 24.6 ms, 30.5 MB |
+| Markdown-LD build with Tiktoken extraction | 716 ms, 520 MB | 685 ms, 521 MB |
+| Lazy Lucene full-text index (first full-text use) | 351 ms, 322 MB | 340 to 645 ms, 321 to 324 MB |
+
+Tiktoken extraction and token-graph construction own about 85% of a cold build (67,631 triples against 3,466 from rule extraction). Before reuse, the remaining gateway work per instance was about 75 ms and 80 MB, dominated by validating the gateway schema profile against every triple (about 65 ms, 20 MB) and eagerly hashing every descriptor's schema and definition (9.7 MB). Each artifact now validates the gateway-owned profile once, and hashes are computed when a search result first reports them. The full-text index is not part of `BuildIndexAsync`. [ADR-0019](../ADR/ADR-0019-content-addressed-tool-graph-index-reuse.md) describes the reuse lifecycle. Single-host timings carry background-load dispersion; allocation is the stable comparison.
+
+BenchmarkDotNet `--filter "*Index*"` on the same host (.NET SDK `10.0.401`, DefaultJob, `MemoryDiagnoser`, binary MiB), source with `MarkdownLd.Kb 0.2.18`; four cases completed in 5m58s. Receipts: `artifacts/benchmarks/index-reuse/results/`.
+
+| Scenario | Mean | StdDev | Allocated |
+| --- | ---: | ---: | ---: |
+| `BuildGraphIndex` (120 tools, cold) | 583.459 ms | 40.551 ms | 447.32 MiB |
+| `BuildSchemaCatalogGraphIndex` (70 schema tools, cold) | 806.360 ms | 42.167 ms | 568.34 MiB |
+| `BuildSchemaCatalogGraphIndexReused` | 7.373 ms | 0.161 ms | 8.78 MiB |
+| `BuildSchemaCatalogGraphIndexParallelHosts` (ten hosts, one cold catalog) | 862.445 ms | 36.258 ms | 653.06 MiB |
 
 ## Latest Full Local Snapshot
 
@@ -90,6 +123,6 @@ Do not apply broad micro-optimizations such as converting normal reference types
 
 Public `ManagedCode.MarkdownLd.Kb 0.2.16` removes boxed dictionary enumeration from token-vector dot products (56 B to 0 B per measured operation) and caches immutable semantic snapshots until mutation. On the owner's full DefaultJob fixtures, warmed focused exact search changed from 4.78 MiB to 38.05 KiB at 120 nodes and from 44.48 MiB to 269.63 KiB at 1,000 nodes. Cold setup and retained snapshot memory remain separate costs. Concurrent-host timing dispersion prevents extrapolating those values into gateway latency guarantees.
 
-A fresh gateway full suite must include all 19 cases and retain non-empty successful reports for performance qualification, independently of publication. Scaling checks enforce a 2,048-byte discovery response and authorized canonical ID; permission-partition benchmarks fail if another caller's ID appears. Proposed allocation/latency targets require a measured comparable baseline; historical snapshots are not acceptance evidence for new datasets.
+A fresh gateway full suite must include all 22 cases and retain non-empty successful reports for performance qualification, independently of publication. Scaling checks enforce a 2,048-byte discovery response and authorized canonical ID; permission-partition benchmarks fail if another caller's ID appears. Proposed allocation/latency targets require a measured comparable baseline; historical snapshots are not acceptance evidence for new datasets.
 
-The public-0.2.17 local run completed one 1,000-tool case (four concurrent authorized cycles): mean 153.703 ms, standard deviation 82.495 ms, 94,027,906 B/op. Cold setup took 44.768 s, allocated 7,165,324,552 bytes and retained 781,691,088 managed bytes after collection. Memory compression/swap pressure made the shared host unsuitable for comparative latency; the run was explicitly stopped during the 5,000-tool setup. `artifacts/governed-final-local-partial-benchmarks.log` is a partial receipt, not full qualification. Canonical CI provides the required complete 19-case evidence on a separate runner.
+The public-0.2.17 local run completed one 1,000-tool case (four concurrent authorized cycles): mean 153.703 ms, standard deviation 82.495 ms, 94,027,906 B/op. Cold setup took 44.768 s, allocated 7,165,324,552 bytes and retained 781,691,088 managed bytes after collection. Memory compression/swap pressure made the shared host unsuitable for comparative latency; the run was explicitly stopped during the 5,000-tool setup. `artifacts/governed-final-local-partial-benchmarks.log` is a partial receipt, not full qualification. Canonical CI provides the required complete full-suite evidence on a separate runner.

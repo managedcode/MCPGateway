@@ -24,10 +24,10 @@ internal sealed partial class McpGatewayRuntime
         var snapshot = CreateSnapshot(source, entries, vectors.IsVectorSearchEnabled, graph) with { LoadedTools = catalog.LoadedTools };
         if (entries.Count > 0 && ShouldBuildGraphSearchIndex() && !IsPublicationGraphValid(snapshot))
         {
-            await snapshot.Ownership.RetireAsync();
+            await snapshot.Ownership.RetireAsync(keepForReuse: false);
             throw new InvalidOperationException("The candidate graph index is invalid; the published runtime was preserved.");
         }
-        return new(() => TryUpdateState(snapshot, source.Version), snapshot.Ownership.RetireAsync);
+        return new(() => TryUpdateState(snapshot, source.Version), () => snapshot.Ownership.RetireAsync(keepForReuse: false));
     }
 
     private Task<ToolGraphSearchIndex?> BuildStagedGraphAsync(IReadOnlyList<ToolCatalogEntry> entries,

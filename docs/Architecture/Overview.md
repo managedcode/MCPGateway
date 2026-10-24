@@ -32,6 +32,8 @@ Out of scope:
 
 `McpGateway` stays a thin facade over `McpGatewayRuntime`, which reads immutable catalog snapshots, coordinates default schema-aware Markdown-LD SPARQL graph search with gateway-built ranked candidate selection for large catalogs and ranked candidate/fuzzy graph fallback for focused noisy queries, vector-first `Auto` search with bounded Markdown-LD supplementation, or explicit embedding-first search, optionally rewrites queries through a keyed `IChatClient`, emits built-in .NET telemetry for build/search operations including vector token usage, calibrates user-facing search confidence before returning matches, and invokes local or MCP tools. Optional startup warmup is available through a service-provider extension or hosted background service without changing the lazy default.
 
+Generated tool graphs are content-addressed. Gateway instances in one process that build an identical catalog share one immutable `ToolGraphArtifact` through the process-wide `McpGatewaySharedIndexPool<TIndex>`: concurrent builds coalesce, each runtime binds the shared graph to its own catalog entries and tool invokers, superseded graphs retire when their last lease is released, and at most two released graphs stay idle for reuse. File, custom-document, JSON-LD and authorized-projection graphs stay owned by their instance. [ADR-0019](../ADR/ADR-0019-content-addressed-tool-graph-index-reuse.md) records the fingerprint inputs, lifecycle and measurements.
+
 File-backed graph initialization accepts exported `.jsonld` graphs through the Markdown-LD KnowledgeGraph loader, preserving RDF nodes and edges and binding canonical tool document URIs to the live callable catalog. Missing tool nodes fail initialization rather than silently regenerating the graph.
 
 Embedded JSON-LD resources may also provide an explicit descriptor-to-node URI binding through `UseJsonLdGraphResource`. This preserves a host-owned graph's canonical URIs while the gateway retains tool identity, search, and invocation ownership. Relative, duplicate, and absent tool node bindings fail graph initialization; changing graph sources clears the binding.
@@ -194,6 +196,8 @@ flowchart LR
     SearchCache --> NoOpCache["McpGatewayNoOpSearchCache"]
     SearchCache --> InMemorySearchCache["McpGatewayInMemorySearchCache"]
     InMemorySearchCache --> MemoryCache["IMemoryCache"]
+    RuntimeSearch --> GraphPool["McpGatewaySharedIndexPool (process-wide, leased)"]
+    GraphPool --> GraphArtifact["ToolGraphArtifact (immutable graph data)"]
     RuntimeSearch --> MarkdownLd["ManagedCode.MarkdownLd.Kb"]
     MarkdownLd --> SchemaSparql["Schema search and generated SPARQL"]
     MarkdownLd --> RankedSearch["Ranked candidate / fuzzy search"]
@@ -205,7 +209,7 @@ flowchart LR
 ## Module Index
 
 - Gateway slice: [`src/ManagedCode.MCPGateway/Gateway/`](../../src/ManagedCode.MCPGateway/Gateway/) owns the public facade, factory, instance contracts, options, DI registration, runtime core, telemetry, and shared serialization helpers.
-- Benchmarks project: [`benchmarks/ManagedCode.MCPGateway.Benchmarks/`](../../benchmarks/ManagedCode.MCPGateway.Benchmarks/) owns BenchmarkDotNet scenarios for graph search, graph index build, and reusable meta-tool allocation measurements.
+- Benchmarks project: [`benchmarks/ManagedCode.MCPGateway.Benchmarks/`](../../benchmarks/ManagedCode.MCPGateway.Benchmarks/) owns BenchmarkDotNet scenarios for graph search, cold, reused and parallel-host graph index builds, and reusable meta-tool allocation measurements, plus the `--profile` and `--profile-index` diagnostic workloads.
 - Discovery slice: [`src/ManagedCode.MCPGateway/Discovery/`](../../src/ManagedCode.MCPGateway/Discovery/) owns reusable meta-tools, category-first routing, discovered-tool projection, auto-discovery chat integration, and discovery-specific registration/configuration.
 - Catalog slice: [`src/ManagedCode.MCPGateway/Catalog/`](../../src/ManagedCode.MCPGateway/Catalog/) owns catalog contracts, models, mutable registration state, source adapters, descriptor creation, and index-building logic.
 - Search slice: [`src/ManagedCode.MCPGateway/Search/`](../../src/ManagedCode.MCPGateway/Search/) owns search contracts, models, graph-search API contracts, runtime cache/store abstractions, process-local cache/store implementations, query normalization, graph schema/profile description, schema-aware SPARQL graph retrieval, ranked candidate/fuzzy graph support, explicit graph federation, graph export, vector ranking, and search confidence logic.
@@ -234,6 +238,7 @@ flowchart LR
 - The recommended staged host flow is: advertise the gateway search, route, and invoke meta-tools first, then project only the latest search matches as direct proxy tools, then replace that discovered set on the next search result.
 - Embedding support must stay optional and isolated behind `IMcpGatewayToolEmbeddingStore` and embedding-generator abstractions.
 - Process-local runtime search caching must stay behind `IMcpGatewaySearchCache`, with a no-op default and an explicit opt-in implementation over host-owned `IMemoryCache` for hosts that want local reuse.
+- Generated tool graph reuse is the one process-wide store: `McpGatewaySharedIndexPool<TIndex>` holds only immutable graph-derived data keyed by a content fingerprint, reference counts it, bounds idle retention, retires and disposes deterministically, and never holds tool invokers, clients, services or caller data.
 - The built-in process-local embedding store may depend on host-owned `IMemoryCache`, but it must not create hidden private caches; cross-instance persistence and cache replication must stay behind host-provided `IMcpGatewayToolEmbeddingStore` implementations.
 - Markdown-LD graph search is the default internal retrieval strategy. It may depend on `ManagedCode.MarkdownLd.Kb`, uses schema-aware SPARQL as the primary graph path in hybrid/schema-aware mode, uses gateway-built ranked candidate selection to bound large-catalog schema search, uses ranked candidate/fuzzy graph search only as focused hybrid support or fallback, still returns the same public `McpGatewaySearchMatch` contracts, calibrates user-facing confidence at the gateway layer, and must not create a separate invocation surface.
 - Graph-specific schema/profile inspection, evidence, generated SPARQL, explicit federated search, explicit index-build tooling, and runtime graph export belong to `IMcpGatewayGraphSearch` and `McpGatewayToolSet` graph tools, not to the MCP-facing `IMcpGateway` facade.
@@ -260,6 +265,7 @@ flowchart LR
 - [`docs/ADR/ADR-0012-schema-aware-sparql-graph-search.md`](../ADR/ADR-0012-schema-aware-sparql-graph-search.md): documents schema-aware SPARQL as the primary Markdown-LD graph retrieval path, schema/profile and index-build tooling, explicit federated graph search, graph export, and the `IMcpGatewayGraphSearch` boundary.
 - [`docs/ADR/ADR-0014-mcp-sdk-2-protocol-and-extension-adoption.md`](../ADR/ADR-0014-mcp-sdk-2-protocol-and-extension-adoption.md): documents SDK-owned protocol negotiation, Streamable HTTP, per-request subscriptions, Tasks, MCP Apps, arbitrary output schemas, and Markdown-LD `0.2.8` adoption.
 - [`docs/ADR/ADR-0016-safe-runtime-diagnostics.md`](../ADR/ADR-0016-safe-runtime-diagnostics.md): documents closed, fixed diagnostics for recoverable failures and the prohibition on exposing exception or request/provider text.
+- [`docs/ADR/ADR-0019-content-addressed-tool-graph-index-reuse.md`](../ADR/ADR-0019-content-addressed-tool-graph-index-reuse.md): documents process-wide reuse of identical generated tool graphs, its fingerprint, lease/eviction lifecycle and ownership exception.
 
 ## Related Docs
 

@@ -1,6 +1,6 @@
 # Governed execution delivery
 
-Status: runtime implemented; final gateway verification and release in progress. Public graph owner: MarkdownLd.Kb 0.2.17. SPIN has a concrete upstream blocker.
+Status: runtime implemented; final gateway verification and release in progress. Public graph owner: MarkdownLd.Kb 0.2.18. SPIN has a concrete upstream blocker.
 
 All A-F acceptance criteria in [the implementation plan](../Plans/MCPGatewayImplementationPlan.md) remain authorized. Publishing the CLI and graph fixes did not cancel them.
 

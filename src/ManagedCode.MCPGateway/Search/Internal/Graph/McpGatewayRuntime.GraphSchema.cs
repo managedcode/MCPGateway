@@ -44,7 +44,19 @@ internal sealed partial class McpGatewayRuntime
             MaxNextStepResults = nextStepLimit,
             FederatedServiceEndpoints = serviceEndpoints ?? configured.FederatedServiceEndpoints
         }
-        : new()
+        : CreateDefaultToolGraphSchemaSearchProfile(primaryLimit, relatedLimit, nextStepLimit, serviceEndpoints);
+
+    /// <summary>
+    /// The gateway-owned profile. Its vocabulary (prefixes, types and predicates) is fixed; only result limits and
+    /// federation endpoints vary per caller.
+    /// </summary>
+    private static KnowledgeGraphSchemaSearchProfile CreateDefaultToolGraphSchemaSearchProfile(
+        int primaryLimit,
+        int relatedLimit,
+        int nextStepLimit,
+        IReadOnlyList<Uri>? serviceEndpoints = null
+    ) =>
+        new()
         {
             Prefixes = CreateToolGraphSchemaPrefixes(),
             TextPredicates =

@@ -1,4 +1,3 @@
-using ManagedCode.MarkdownLd.Kb.Pipeline;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ManagedCode.MCPGateway;
@@ -18,7 +17,7 @@ internal sealed partial class McpGatewayRuntime
             snapshot = await GetSnapshotAsync(cancellationToken);
             lease = snapshot.Ownership.TryAcquire();
         }
-        KnowledgeGraph? ownedGraph = null;
+        ToolGraphSearchIndex? ownedIndex = null;
         try
         {
             var policy = McpGatewayTrustedContext.OperationServices(_serviceProvider).GetService<IMcpGatewayAccessPolicy>();
@@ -82,27 +81,31 @@ internal sealed partial class McpGatewayRuntime
             if (graphIndex is not null && _markdownLdGraphSource != McpGatewayMarkdownLdGraphSource.GeneratedToolGraph)
             {
                 var factory = McpGatewayTrustedContext.OperationServices(_serviceProvider).GetRequiredService<IMcpGatewayAuthorizedGraphFactory>();
-                ownedGraph = await factory.CreateAsync(context, graphIndex.Graph, visible.Select(entry => entry.Descriptor).ToArray(), cancellationToken);
-                if (ReferenceEquals(ownedGraph, graphIndex.Graph))
+                var projectedGraph = await factory.CreateAsync(context, graphIndex.Graph, visible.Select(entry => entry.Descriptor).ToArray(), cancellationToken);
+                if (ReferenceEquals(projectedGraph, graphIndex.Graph))
                 {
                     throw new InvalidOperationException("Authorized graph factories must return an independently owned projected graph.");
                 }
-                graphIndex = CreateToolGraphSearchIndex(ownedGraph,
+                ownedIndex = CreateToolGraphSearchIndex(projectedGraph,
                     snapshot.GraphIndex!.EntriesByNodeId.Where(pair => allowed.Contains(pair.Value.Descriptor.ToolId)).ToDictionary(pair => pair.Key, pair => pair.Value));
+                graphIndex = ownedIndex;
             }
             else if (graphIndex is not null && visible.Length != snapshot.Entries.Count)
             {
-                graphIndex = visible.Length == 0 ? null : await BuildToolGraphSearchIndexAsync(visible, new List<McpGatewayDiagnostic>(), cancellationToken);
-                ownedGraph = graphIndex?.Graph;
+                ownedIndex = visible.Length == 0 ? null : await BuildToolGraphSearchIndexAsync(visible, new List<McpGatewayDiagnostic>(), cancellationToken);
+                graphIndex = ownedIndex;
             }
-            var owner = ownedGraph is null ? null : new SnapshotOwnership(graphIndex);
+            var owner = ownedIndex is null ? null : new SnapshotOwnership(ownedIndex);
             if (owner is not null)
             { _ownedSnapshots.TryAdd(owner, 0); }
             return new(snapshot with { Entries = visible, GraphIndex = graphIndex, VisibilityFingerprint = fingerprint }, owner, lease, this);
         }
         catch
         {
-            ownedGraph?.Dispose();
+            if (ownedIndex is not null)
+            {
+                await ownedIndex.ReleaseAsync(keepForReuse: true);
+            }
             lease.Dispose();
             throw;
         }
@@ -114,7 +117,7 @@ internal sealed partial class McpGatewayRuntime
         public void Dispose()
         {
             try
-            { if (ownedGraph is not null) { _ = runtime!.RetireSnapshotAsync(ownedGraph); } }
+            { if (ownedGraph is not null) { _ = runtime!.RetireSnapshotAsync(ownedGraph, keepForReuse: true); } }
             finally { lease?.Dispose(); }
         }
     }

@@ -128,7 +128,8 @@ internal sealed partial class McpGatewayRuntime
             snapshot.Entries.Count,
             vectorization.VectorizedToolCount,
             graphIndex?.NodeCount ?? 0,
-            graphIndex?.EdgeCount ?? 0
+            graphIndex?.EdgeCount ?? 0,
+            graphIndex?.IsReused ?? false
         );
 
         var buildResult = CreateBuildResult(snapshot, diagnostics, vectorization.VectorizedToolCount);
@@ -477,6 +478,7 @@ internal sealed partial class McpGatewayRuntime
         new(snapshot.Entries.Count, vectorizedToolCount, snapshot.HasVectors, diagnostics)
         {
             IsGraphSearchEnabled = snapshot.GraphIndex?.CanSearch ?? false,
+            IsGraphIndexReused = snapshot.GraphIndex?.IsReused ?? false,
             GraphNodeCount = snapshot.GraphIndex?.NodeCount ?? 0,
             GraphEdgeCount = snapshot.GraphIndex?.EdgeCount ?? 0,
         };
@@ -499,14 +501,14 @@ internal sealed partial class McpGatewayRuntime
                 SynchronizeSourceNotifications(snapshot);
                 if (!ReferenceEquals(state.Snapshot.Ownership, snapshot.Ownership))
                 {
-                    _ = RetireSnapshotAsync(state.Snapshot.Ownership);
+                    _ = RetireSnapshotAsync(state.Snapshot.Ownership, keepForReuse: false);
                 }
                 return;
             }
 
             state = Volatile.Read(ref _state);
         }
-        _ = RetireSnapshotAsync(snapshot.Ownership);
+        _ = RetireSnapshotAsync(snapshot.Ownership, keepForReuse: false);
     }
 
     private static async Task AwaitCanceledBuildAsync(BuildOperation buildOperation)

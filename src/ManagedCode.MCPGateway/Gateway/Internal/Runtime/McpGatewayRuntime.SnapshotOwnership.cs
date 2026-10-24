@@ -23,25 +23,27 @@ internal sealed partial class McpGatewayRuntime
                 return null;
             }
         }
-        public Task RetireAsync()
+        /// <summary>
+        /// Releases the graph view after its readers drain. <paramref name="keepForReuse"/> lets the last release of
+        /// a pooled graph stay idle for an identical catalog; a superseded graph is retired instead.
+        /// </summary>
+        public Task RetireAsync(bool keepForReuse)
         {
             if (_readers.TryStartDispose(out var drain))
             {
-                _ = DisposeAfterDrainAsync(drain);
+                _ = ReleaseAfterDrainAsync(drain, keepForReuse);
             }
             return _retired.Task;
         }
-        private async Task DisposeAfterDrainAsync(ValueTask drain)
+        private async Task ReleaseAfterDrainAsync(ValueTask drain, bool keepForReuse)
         {
             try
             {
                 await drain;
-                try
+                if (index is not null)
                 {
-                    if (index?.FullText.IsValueCreated is true)
-                    { (await index.FullText.Value).Dispose(); }
+                    await index.ReleaseAsync(keepForReuse);
                 }
-                finally { index?.Graph.Dispose(); }
                 _retired.SetResult();
             }
             catch (Exception exception)
@@ -62,11 +64,11 @@ internal sealed partial class McpGatewayRuntime
         }
     }
 
-    private async Task RetireSnapshotAsync(SnapshotOwnership owner)
+    private async Task RetireSnapshotAsync(SnapshotOwnership owner, bool keepForReuse)
     {
         try
         {
-            await owner.RetireAsync();
+            await owner.RetireAsync(keepForReuse);
         }
         catch (Exception exception) when (!McpGatewayRuntimeFailureClassifier.HasFatalFailure(exception))
         {

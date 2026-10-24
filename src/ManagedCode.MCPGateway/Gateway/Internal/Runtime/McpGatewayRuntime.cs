@@ -109,7 +109,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private const string EmbeddingGenerationFailedLogMessage =
         "Gateway embedding generation failed. Falling back to Markdown-LD graph search.";
     private const string GatewayIndexRebuiltLogMessage =
-        "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount} GraphNodes={GraphNodeCount} GraphEdges={GraphEdgeCount}.";
+        "Gateway index rebuilt. Tools={ToolCount} VectorizedTools={VectorizedToolCount} GraphNodes={GraphNodeCount} GraphEdges={GraphEdgeCount} GraphIndexReused={GraphIndexReused}.";
     private const string GatewayVectorSearchFailedLogMessage =
         "Gateway vector search failed. Falling back to Markdown-LD graph ranking.";
     private const string GatewayInvocationFailedLogMessage = "Gateway tool invocation failed.";
@@ -443,6 +443,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private readonly int _mcpTaskMaximumConsecutiveStuckPolls;
     private readonly Uri _graphLocalFederationEndpoint;
     private readonly IMcpGatewaySearchCache _searchRuntimeCache;
+    private readonly McpGatewaySharedIndexPool<ToolGraphArtifact> _toolGraphPool;
     private RuntimeState _state = RuntimeState.Empty;
     private BuildOperation? _buildOperation;
     private string? _embeddingGeneratorFingerprint;
@@ -537,6 +538,8 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
             UriKind.Absolute
         );
         _searchRuntimeCache = serviceProvider.GetRequiredService<IMcpGatewaySearchCache>();
+        _toolGraphPool = serviceProvider.GetService<McpGatewaySharedIndexPool<ToolGraphArtifact>>()
+            ?? McpGatewaySharedIndexPool<ToolGraphArtifact>.Shared;
     }
 
     private static int ValidateMinimum(int value, string optionName, int minimumValue)
@@ -585,7 +588,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
             }
         }
         await DisposeSourceNotificationsAsync();
-        await Task.WhenAll(_ownedSnapshots.Keys.Select(RetireSnapshotAsync));
+        await Task.WhenAll(_ownedSnapshots.Keys.Select(owner => RetireSnapshotAsync(owner, keepForReuse: true)));
     }
 
     private static IMcpGatewayCatalogSource ResolveCatalogSource(IServiceProvider serviceProvider)

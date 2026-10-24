@@ -40,9 +40,19 @@ internal sealed partial class McpGatewayRuntime
         double Magnitude = ToolEmbeddingDefaultMagnitude
     )
     {
+        // Hashes canonicalize full JSON definitions; they are computed when a search result first reports them.
+        private readonly Lazy<string> _schemaHash = CreateSchemaHash(Descriptor);
+        private readonly Lazy<string> _technicalDefinitionHash = CreateTechnicalDefinitionHash(Descriptor);
+
         public McpGatewaySchemaValidator Validator { get; } = new(Descriptor);
-        public string SchemaHash { get; } = McpGatewayDefinitionHash.Compute(new { Descriptor.InputSchema, Descriptor.OutputSchema });
-        public string TechnicalDefinitionHash { get; } = McpGatewayDefinitionHash.Create(Descriptor, Descriptor.BindingFingerprint ?? string.Empty).DefinitionHash;
+        public string SchemaHash => _schemaHash.Value;
+        public string TechnicalDefinitionHash => _technicalDefinitionHash.Value;
+
+        private static Lazy<string> CreateSchemaHash(McpGatewayToolDescriptor descriptor) =>
+            new(() => McpGatewayDefinitionHash.Compute(new { descriptor.InputSchema, descriptor.OutputSchema }));
+
+        private static Lazy<string> CreateTechnicalDefinitionHash(McpGatewayToolDescriptor descriptor) =>
+            new(() => McpGatewayDefinitionHash.Create(descriptor, descriptor.BindingFingerprint ?? string.Empty).DefinitionHash);
     }
 
     private readonly record struct ToolSearchTermIndex(
@@ -97,26 +107,46 @@ internal sealed partial class McpGatewayRuntime
         public static ToolCatalogSnapshot Empty { get; } = new([], false, null, -1);
     }
 
+    /// <summary>
+    /// One runtime's view of a tool graph artifact: the shared immutable graph data bound to this runtime's own
+    /// catalog entries. Pooled views release their lease; other views own and dispose their artifact.
+    /// </summary>
     private sealed record ToolGraphSearchIndex(
-        KnowledgeGraph Graph,
-        KnowledgeGraphSnapshot Snapshot,
+        ToolGraphArtifact Artifact,
         IReadOnlyDictionary<string, ToolCatalogEntry> EntriesByNodeId,
-        IReadOnlySet<string> SearchableNodeIds,
-        IReadOnlyDictionary<string, KnowledgeGraphNode> NodesById,
-        GraphCandidateSearchIndex CandidateSearch,
-        GraphNavigationIndex Navigation,
-        int NodeCount,
-        int EdgeCount,
-        IReadOnlyList<McpGatewayDiagnostic> SchemaDiagnostics
+        IReadOnlyList<McpGatewayDiagnostic> SchemaDiagnostics,
+        McpGatewaySharedIndexPool<ToolGraphArtifact>.Lease? Lease
     )
     {
-        public Lazy<Task<KnowledgeGraphFullTextIndex>> FullText { get; } = new(() => Graph.BuildFullTextIndexAsync());
+        public KnowledgeGraph Graph => Artifact.Graph;
+
+        public KnowledgeGraphSnapshot Snapshot => Artifact.Snapshot;
+
+        public IReadOnlySet<string> SearchableNodeIds => Artifact.SearchableNodeIds;
+
+        public IReadOnlyDictionary<string, KnowledgeGraphNode> NodesById => Artifact.NodesById;
+
+        public GraphCandidateSearchIndex CandidateSearch => Artifact.CandidateSearch;
+
+        public GraphNavigationIndex Navigation => Artifact.Navigation;
+
+        public int NodeCount => Artifact.NodeCount;
+
+        public int EdgeCount => Artifact.EdgeCount;
+
+        public Lazy<Task<KnowledgeGraphFullTextIndex>> FullText => Artifact.FullText;
+
+        public bool IsReused => Lease?.IsReused ?? false;
+
         public bool CanSearch => Graph.TripleCount > 0 && EntriesByNodeId.Count > 0;
 
         public bool CanSearchByTokenDistance => Graph.CanSearchByTokenDistance;
+
+        public ValueTask ReleaseAsync(bool keepForReuse) =>
+            Lease is { } lease ? lease.ReleaseAsync(keepForReuse) : Artifact.DisposeAsync();
     }
 
-    private sealed record GraphCandidateSearchIndex(
+    internal sealed record GraphCandidateSearchIndex(
         IReadOnlyList<GraphCandidateSearchEntry> Entries,
         IReadOnlyDictionary<string, double> InverseDocumentFrequency
     )
@@ -127,14 +157,14 @@ internal sealed partial class McpGatewayRuntime
         );
     }
 
-    private readonly record struct GraphCandidateSearchEntry(
+    internal readonly record struct GraphCandidateSearchEntry(
         string NodeId,
         string Label,
         string? Description,
         IReadOnlySet<string> Terms
     );
 
-    private sealed record GraphNavigationIndex(
+    internal sealed record GraphNavigationIndex(
         IReadOnlyDictionary<string, IReadOnlyList<KnowledgeGraphEdge>> EdgesBySubject,
         IReadOnlyDictionary<string, IReadOnlyList<GraphNavigationLink>> RelatedBySource,
         IReadOnlyDictionary<string, IReadOnlyList<GraphNavigationLink>> NextStepsBySource,
@@ -151,7 +181,7 @@ internal sealed partial class McpGatewayRuntime
         );
     }
 
-    private readonly record struct GraphNavigationLink(
+    internal readonly record struct GraphNavigationLink(
         string NodeId,
         string SourceNodeId,
         string ViaPredicateLabel,

@@ -15,6 +15,12 @@ internal static class Program
             return;
         }
 
+        if (args is ["--profile-index", var iterationText] && int.TryParse(iterationText, out var iterations))
+        {
+            await McpGatewayIndexProfilingWorkload.RunAsync(iterations);
+            return;
+        }
+
         if (args is ["--profile", var artifactDirectory])
         {
             await McpGatewayProfilingWorkload.RunAsync(artifactDirectory);

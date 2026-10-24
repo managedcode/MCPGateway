@@ -14,7 +14,9 @@ Parent: `../../AGENTS.md`
 
 - `Program.cs`
 - `BenchmarkCatalog.cs`
-- `McpGatewayIndexBuildBenchmarks.cs`
+- `BenchmarkSchemaCatalog.cs` (70 schema-heavy tools with search hints; revisions create distinct catalogs for cold builds)
+- `McpGatewayIndexBuildBenchmarks.cs` (cold, reused and ten-parallel-host index builds)
+- `McpGatewayIndexProfilingWorkload.cs` (`--profile-index <iterations>`, index-build stage attribution through public APIs)
 - `McpGatewaySearchBenchmarks.cs`
 - `McpGatewayToolSetBenchmarks.cs`
 - `McpGatewayProfilingWorkload.cs` (`--profile`, real benchmark catalog with bounded stdin phases)
@@ -48,3 +50,4 @@ Parent: `../../AGENTS.md`
 - Keep benchmark methods focused on one measurable operation.
 - Use BenchmarkDotNet `MemoryDiagnoser` so allocations are visible with mean timing.
 - Do not optimize production code only for a synthetic benchmark shape; the scenario must represent a real gateway path.
+- Cold index-build benchmarks must use a new catalog revision per operation, because identical catalogs reuse the process-wide graph index and would otherwise measure reuse instead of a build.

@@ -1133,6 +1133,17 @@ services.AddMcpGateway(options =>
 services.AddMcpGatewayIndexWarmup();
 ```
 
+### Shared Graph Index
+
+Gateway instances in one process that build the generated tool graph (`McpGatewayMarkdownLdGraphSource.GeneratedToolGraph`, the default) for an identical catalog share one immutable graph index instead of building it again. This covers several hosts in one process, factory-created instances, and refreshes that produce an unchanged catalog. Concurrent identical builds run once. Each instance still searches with its own descriptors and invokes its own `AITool` objects or MCP clients.
+
+The shared index is identified by the generated tool documents, descriptions, schemas, search hints, catalog order, descriptor length and the gateway and Markdown-LD versions, so any catalog change builds a new graph. A graph that is replaced by a catalog change is released when no other instance uses it; after their instances are disposed, at most two graphs stay cached for reuse. File, custom-document and JSON-LD graph sources are not shared.
+
+```csharp
+var build = await gateway.BuildIndexAsync();
+Console.WriteLine(build.IsGraphIndexReused);
+```
+
 ## Runtime Telemetry
 
 The gateway emits built-in .NET tracing and metrics:
@@ -1166,6 +1177,7 @@ Search telemetry includes configured strategy, ranking mode, graph/vector usage,
 - `VectorizedToolCount`
 - `IsVectorSearchEnabled`
 - `IsGraphSearchEnabled`
+- `IsGraphIndexReused`
 - `GraphNodeCount`
 - `GraphEdgeCount`
 - `Diagnostics`
@@ -1190,7 +1202,18 @@ Run focused BenchmarkDotNet commands one at a time so generated benchmark build 
 
 CI and release enforce at least 85% line coverage of the library; deterministic CI builds use explicit Coverlet source-root mapping so an empty report fails the gate. CI runs the full BenchmarkDotNet suite with `--filter "*"` after the build/test/coverage gate and uploads the complete benchmark reports as `benchmark-results`. Release builds, tests and packs independently of those benchmarks, so performance measurements do not block NuGet publication.
 
-The current full suite includes 19 standard-job cases, including 1k/5k/10k catalogs, four concurrent authorization partitions and repeated refresh. A partial local run with published `MarkdownLd.Kb 0.2.17` completed the 1,000-tool authorized-cycle case: mean 153.703 ms, standard deviation 82.495 ms and 89.67 MiB allocated per four concurrent discovery/schema/invocation cycles. Cold setup took 44.768 s and retained 745.48 MiB of managed memory. The shared host was under memory/swap pressure; the run was stopped during 5,000-tool setup and is not full qualification or a latency guarantee. Full 19-case performance qualification is tracked through CI independently of publication.
+The current full suite includes 22 standard-job cases, including cold, reused and parallel-host index builds, 1k/5k/10k catalogs, four concurrent authorization partitions and repeated refresh. A partial local run with published `MarkdownLd.Kb 0.2.17` completed the 1,000-tool authorized-cycle case: mean 153.703 ms, standard deviation 82.495 ms and 89.67 MiB allocated per four concurrent discovery/schema/invocation cycles. Cold setup took 44.768 s and retained 745.48 MiB of managed memory. The shared host was under memory/swap pressure; the run was stopped during 5,000-tool setup and is not full qualification or a latency guarantee. Full-suite performance qualification is tracked through CI independently of publication.
+
+Identical catalogs reuse one generated graph across gateway instances in a process. Index benchmarks on October 24, 2026, Apple M2 Pro, runtime `.NET 10.0.12`, `MarkdownLd.Kb 0.2.18`:
+
+| Scenario | Mean | Allocated |
+| --- | ---: | ---: |
+| `BuildGraphIndex` (120 tools, cold) | 583.459 ms | 447.32 MiB |
+| `BuildSchemaCatalogGraphIndex` (70 tools with schemas and hints, cold) | 806.360 ms | 568.34 MiB |
+| `BuildSchemaCatalogGraphIndexReused` (identical catalog held by another host) | 7.373 ms | 8.78 MiB |
+| `BuildSchemaCatalogGraphIndexParallelHosts` (ten hosts, one cold catalog) | 862.445 ms | 653.06 MiB |
+
+Before reuse, ten parallel hosts over that catalog took about 6.0 s and allocated about 6.2 GB. The cold build itself is unchanged; Markdown-LD Tiktoken extraction owns about 85% of it.
 
 Historical full local snapshot on October 12, 2026, Apple M2 Pro, .NET SDK `10.0.401`, runtime `.NET 10.0.12`, published `MarkdownLd.Kb 0.2.15`: the previous 12 standard-job cases completed in 17m59s with allocation statistics. Async setup, cleanup and measured paths remain async end-to-end.
 

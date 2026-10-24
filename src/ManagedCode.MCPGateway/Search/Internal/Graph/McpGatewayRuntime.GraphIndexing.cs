@@ -63,20 +63,18 @@ internal sealed partial class McpGatewayRuntime
             return CreateToolGraphSearchIndex(graph, bindings);
         }
 
-        var documents = _markdownLdGraphSource switch
+        if (_markdownLdGraphSource
+            is not (McpGatewayMarkdownLdGraphSource.FileSystem or McpGatewayMarkdownLdGraphSource.CustomDocuments))
         {
-            McpGatewayMarkdownLdGraphSource.FileSystem =>
-                await LoadFileSystemMarkdownLdGraphDocumentsAsync(diagnostics, cancellationToken)
-                    .ConfigureAwait(false),
-            McpGatewayMarkdownLdGraphSource.CustomDocuments =>
-                await LoadCustomMarkdownLdGraphDocumentsAsync(
-                        entries,
-                        diagnostics,
-                        cancellationToken
-                    )
-                    .ConfigureAwait(false),
-            _ => CreateGeneratedMarkdownSourceDocuments(entries),
-        };
+            return await AcquireGeneratedToolGraphSearchIndexAsync(entries, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        var documents = _markdownLdGraphSource == McpGatewayMarkdownLdGraphSource.FileSystem
+            ? await LoadFileSystemMarkdownLdGraphDocumentsAsync(diagnostics, cancellationToken)
+                .ConfigureAwait(false)
+            : await LoadCustomMarkdownLdGraphDocumentsAsync(entries, diagnostics, cancellationToken)
+                .ConfigureAwait(false);
 
         if (documents.Count == 0)
         {
@@ -85,12 +83,52 @@ internal sealed partial class McpGatewayRuntime
 
         var pipeline = CreateToolGraphPipeline();
         var result = await pipeline.BuildAsync(documents, cancellationToken).ConfigureAwait(false);
-        return CreateToolGraphSearchIndex(result.Graph, CreateEntriesByGraphNodeId(entries, result.Documents));
+        return CreateToolGraphSearchIndex(result.Graph, BindGraphDocuments(result, entries));
     }
 
+    /// <summary>Creates a view that owns its graph; the graph is disposed when the view is released.</summary>
     private ToolGraphSearchIndex CreateToolGraphSearchIndex(
         KnowledgeGraph graph,
         IReadOnlyDictionary<string, ToolCatalogEntry> entriesByNodeId
+    )
+    {
+        var artifact = CreateToolGraphArtifact(graph, entriesByNodeId, []);
+        try
+        {
+            return CreateToolGraphSearchIndex(artifact, entriesByNodeId, lease: null);
+        }
+        catch
+        {
+            graph.Dispose();
+            throw;
+        }
+    }
+
+    private ToolGraphSearchIndex CreateToolGraphSearchIndex(
+        ToolGraphArtifact artifact,
+        IReadOnlyDictionary<string, ToolCatalogEntry> entriesByNodeId,
+        McpGatewaySharedIndexPool<ToolGraphArtifact>.Lease? lease
+    ) =>
+        new(
+            artifact,
+            entriesByNodeId,
+            _graphSchemaSearchProfile is null
+                ? artifact.DefaultProfileSchemaDiagnostics.Value
+                : CreateSchemaProfileDiagnostics(
+                    artifact.Graph,
+                    CreateToolGraphSchemaSearchProfile(
+                        _defaultSearchLimit,
+                        GraphFocusedRelatedResultsLimit,
+                        GraphFocusedNextStepResultsLimit
+                    )
+                ),
+            lease
+        );
+
+    private static ToolGraphArtifact CreateToolGraphArtifact(
+        KnowledgeGraph graph,
+        IReadOnlyDictionary<string, ToolCatalogEntry> entriesByNodeId,
+        IReadOnlyList<KeyValuePair<string, int>> entrySlots
     )
     {
         try
@@ -104,25 +142,14 @@ internal sealed partial class McpGatewayRuntime
 
             var nodesById = CreateRankedGraphNodesById(snapshot.Nodes);
             var navigation = CreateGraphNavigationIndex(snapshot, searchableNodeIds);
-            var schemaDiagnostics = CreateSchemaProfileDiagnostics(
-                graph,
-                CreateToolGraphSchemaSearchProfile(
-                    _defaultSearchLimit,
-                    GraphFocusedRelatedResultsLimit,
-                    GraphFocusedNextStepResultsLimit
-                )
-            );
-            return new ToolGraphSearchIndex(
+            return new ToolGraphArtifact(
                 graph,
                 snapshot,
-                entriesByNodeId,
+                entrySlots,
                 searchableNodeIds,
                 nodesById,
                 CreateGraphCandidateSearchIndex(entriesByNodeId, nodesById, navigation),
-                navigation,
-                snapshot.Nodes.Count,
-                snapshot.Edges.Count,
-                schemaDiagnostics
+                navigation
             );
         }
         catch

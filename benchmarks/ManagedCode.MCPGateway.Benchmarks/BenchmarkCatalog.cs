@@ -14,14 +14,15 @@ internal static class BenchmarkCatalog
     public const string PortfolioQuery = "brokerage holdings snapshot for acme";
     public const string ArchiveQuery = "genealogy record archive lookup";
 
-    public static ServiceProvider CreateGraphServiceProvider()
+    /// <summary>Creates a host for the catalog; a non-zero revision changes every description, so its graph differs.</summary>
+    public static ServiceProvider CreateGraphServiceProvider(int revision = 0)
     {
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddMcpGateway(options =>
         {
             options.SearchStrategy = McpGatewaySearchStrategy.Graph;
-            ConfigureCatalog(options);
+            ConfigureCatalog(options, revision);
         });
 
         return services.BuildServiceProvider();
@@ -36,7 +37,7 @@ internal static class BenchmarkCatalog
         return new BenchmarkGatewayHost(serviceProvider, gateway, toolSet);
     }
 
-    public static void ConfigureCatalog(McpGatewayOptions options)
+    public static void ConfigureCatalog(McpGatewayOptions options, int revision = 0)
     {
         for (var index = 1; index <= ToolCount; index++)
         {
@@ -57,7 +58,10 @@ internal static class BenchmarkCatalog
                     "Summarize brokerage holdings, market value, exposure, investment risk, and account snapshots.";
             }
 
-            options.AddTool("local", CreateTool(name, description));
+            options.AddTool(
+                "local",
+                CreateTool(name, revision == 0 ? description : $"{description} Catalog revision {revision}.")
+            );
         }
     }
 
