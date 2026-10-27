@@ -2,7 +2,7 @@ namespace ManagedCode.MCPGateway;
 
 public sealed class McpGatewayMcpTaskStoreOptions
 {
-    public static TimeSpan DefaultTaskTimeToLive { get; } = TimeSpan.FromMinutes(30);
+    public static TimeSpan DefaultCompletedTaskRetention { get; } = TimeSpan.FromMinutes(30);
 
     public static TimeSpan DefaultPollInterval { get; } = TimeSpan.FromSeconds(1);
 
@@ -10,7 +10,7 @@ public sealed class McpGatewayMcpTaskStoreOptions
 
     public const int DefaultMaximumConsecutiveStuckPolls = 60;
 
-    public TimeSpan TaskTimeToLive { get; set; } = DefaultTaskTimeToLive;
+    public TimeSpan CompletedTaskRetention { get; set; } = DefaultCompletedTaskRetention;
 
     public TimeSpan PollInterval { get; set; } = DefaultPollInterval;
 

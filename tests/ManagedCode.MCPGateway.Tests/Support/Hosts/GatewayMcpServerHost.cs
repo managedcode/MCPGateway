@@ -51,6 +51,7 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
             configureGateway,
             TestMcpProtocolVersions.Current,
             configureServices,
+            null,
             cancellationToken
         );
 
@@ -64,13 +65,20 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
             configureGateway,
             protocolVersion,
             configureServices,
+            null,
             cancellationToken
         );
+
+    public static Task<GatewayMcpServerHost> StartWithTaskStoreAsync(
+        Action<McpGatewayOptions> configureGateway, IMcpGatewayTaskStore taskStore,
+        Action<IServiceCollection>? configureServices = null, CancellationToken cancellationToken = default) =>
+        StartAsync(configureGateway, TestMcpProtocolVersions.Current, configureServices, taskStore, cancellationToken);
 
     private static async Task<GatewayMcpServerHost> StartAsync(
         Action<McpGatewayOptions> configureGateway,
         string protocolVersion,
         Action<IServiceCollection>? configureServices,
+        IMcpGatewayTaskStore? taskStore,
         CancellationToken cancellationToken
     )
     {
@@ -80,7 +88,15 @@ internal sealed class GatewayMcpServerHost : IAsyncDisposable
         services.AddLogging(static logging => logging.SetMinimumLevel(LogLevel.Debug));
         services.AddMcpGateway(configureGateway);
         configureServices?.Invoke(services);
-        services.AddMcpServer().WithMcpGatewayCatalog();
+        var serverBuilder = services.AddMcpServer();
+        if (taskStore is null)
+        {
+            serverBuilder.WithMcpGatewayCatalog();
+        }
+        else
+        {
+            serverBuilder.WithMcpGatewayCatalog(taskStore);
+        }
 
         var serviceProvider = services.BuildServiceProvider();
         var loggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();

@@ -1,5 +1,6 @@
 #pragma warning disable MCPEXP001
 
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
@@ -22,7 +23,7 @@ internal sealed class McpGatewayMcpServerOptionsSetup(
 
         if (taskStore is McpGatewayMcpServerTaskStore gatewayTaskStore)
         {
-            gatewayTaskStore.Configure(gatewayOptions.Value.McpTaskStore);
+            gatewayTaskStore.Configure(gatewayOptions.Value.McpTaskStore, services.GetService<TimeProvider>() ?? TimeProvider.System);
             gatewayTaskStore.ConfigureAccess(services, gatewayOptions.Value.Governance.ManagedCatalog);
         }
         options.Capabilities ??= new ServerCapabilities();

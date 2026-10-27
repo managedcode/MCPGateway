@@ -361,33 +361,29 @@ Exported MCP tool names are canonical lowercase MCP-safe gateway ids. A unique u
 
 The Tasks extension uses `tasks/get`, `tasks/update`, and `tasks/cancel`. A client opts into task execution through its extension capability. The gateway first invokes an upstream tool normally and, when the upstream server requires Tasks, retries through the SDK polling flow. Local and upstream tools can also run as gateway-owned downstream tasks.
 
-The default exported task store wraps the official SDK `InMemoryMcpTaskStore` with bounded defaults: task TTL 30 minutes, polling interval 1 second, maximum 10,000 retained tasks, and at most 60 consecutive unchanged upstream polls. Hosts can override those values through `McpGatewayOptions.McpTaskStore`:
+The bounded default task store keeps active and input-required tasks available until they finish. Its configurable retention applies to terminal results, starting at completion; it does not impose a 30-minute execution limit. The default retains completed, failed and cancelled results for 30 minutes, suggests polling every second and accepts at most 10,000 retained tasks. It uses the existing MemoryCache dependency and the host TimeProvider. Hosts can configure these defaults:
 
 ```csharp
 services.AddMcpGateway(options =>
 {
-    options.McpTaskStore.TaskTimeToLive = TimeSpan.FromHours(1);
+    options.McpTaskStore.CompletedTaskRetention = TimeSpan.FromHours(1);
     options.McpTaskStore.PollInterval = TimeSpan.FromMilliseconds(500);
     options.McpTaskStore.MaximumTasks = 50_000;
     options.McpTaskStore.MaximumConsecutiveStuckPolls = 120;
 });
 ```
 
-For a caller-owned task store, pass any `IMcpTaskStore` implementation directly to the export registration. The following uses the SDK store explicitly; durable or distributed hosts can supply their own implementation through the same overload:
+Durable or distributed hosts provide an `IMcpGatewayTaskStore`. Its creation method receives a trusted `McpGatewayTaskOwner`; persist that authorization/source binding atomically with the SDK `McpTaskInfo` before returning its handle. Owner metadata must have the same retention and cross-node visibility as the task. The gateway reads it from this store on every task access and continues to enforce current caller, policy and published-source permissions. It does not keep a second authorization registry or impose a process-local expiry/capacity limit on a host store.
 
 ```csharp
-using ModelContextProtocol.Extensions.Tasks;
+using ManagedCode.MCPGateway;
+using Microsoft.Extensions.DependencyInjection;
 
-var taskStore = new InMemoryMcpTaskStore
-{
-    DefaultTimeToLive = TimeSpan.FromHours(1),
-    DefaultPollIntervalMs = 500
-};
-
-services.AddMcpServer()
-    .WithStdioServerTransport()
-    .WithMcpGatewayCatalog(taskStore);
+static IMcpServerBuilder ExportGateway(IMcpServerBuilder server, IMcpGatewayTaskStore taskStore) =>
+    server.WithMcpGatewayCatalog(taskStore);
 ```
+
+The parameterless registration intentionally uses process-local development storage. Use a durable host store for cross-process retrieval. Storing task state does not replay arbitrary tool effects or move a live .NET call stack: the host remains responsible for its durable executor and cancellation/input delivery. SDK task negotiation, background dispatch and protocol response models remain owned by ModelContextProtocol.Extensions.Tasks 2.3.0. See [ADR-0020](docs/ADR/ADR-0020-durable-mcp-task-access.md).
 
 `WithMcpGatewayCatalog()` enforces `HttpServerTransportOptions.Stateless = true` for Streamable HTTP. HTTP supports discovery, list, read, call, completion, and task requests; `subscriptions/listen` is acknowledged without notification grants because HTTP does not retain listener state. Use stdio for current-protocol prompt and resource notifications.
 

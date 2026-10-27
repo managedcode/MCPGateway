@@ -46,8 +46,8 @@ The selected protocol revision provides:
 - Register `ModelContextProtocol.Extensions.Tasks` `2.3.0` through `WithTasks(...)`.
 - Support `tasks/get`, `tasks/update`, and `tasks/cancel` through the SDK extension contracts.
 - Execute downstream task requests through the SDK alternate-result filter and `IMcpTaskStore`.
-- Provide a bounded default store with configurable TTL, poll interval, total task limit, and unchanged-poll limit.
-- Accept a caller-owned `IMcpTaskStore` when durable or distributed task state is required.
+- Provide a bounded default store with configurable terminal-result retention, poll interval, total task limit, and unchanged-poll limit; active task access does not expire. See ADR-0020.
+- Accept a caller-owned `IMcpGatewayTaskStore` that atomically persists SDK task state and gateway authorization metadata when durable/distributed task state is required; the SDK receives the guarded `IMcpTaskStore` adapter.
 - Retry an upstream tool through the SDK polling helper only when the peer explicitly requires and advertises Tasks.
 
 ### MCP Apps
@@ -81,7 +81,7 @@ The selected protocol revision provides:
 - The gateway MUST NOT implement alternative JSON-RPC protocol or transport paths.
 - Every listener MUST have bounded pending delivery state and deterministic cleanup.
 - Forwarded resource and App UI URIs MUST remain source-qualified gateway URIs.
-- A caller-provided `IMcpTaskStore` MUST be the instance used by the Tasks extension.
+- A caller-provided `IMcpGatewayTaskStore` MUST back the SDK-facing task adapter, including durable authorization metadata; there is no separate process-local ownership registry.
 - Streamable HTTP MUST remain stateless.
 - Boolean and other non-object output schemas MUST survive catalog and downstream export mapping.
 

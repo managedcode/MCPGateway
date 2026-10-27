@@ -1,18 +1,18 @@
 #pragma warning disable MCPEXP003
 
 using System.Text.Json;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Extensions.Apps;
 using ModelContextProtocol.Extensions.Tasks;
 using ModelContextProtocol.Protocol;
-using ModelContextProtocol.Server;
 
 namespace ManagedCode.MCPGateway.Tests;
 
 public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
 {
+    private const string LocalTaskSource = "local";
+    private const string CallerStoreOutput = "Caller-owned persisted result.";
+    private const string CallerStoreDescription = "Returns a caller-owned task result.";
     private const string LocalTaskToolName = "local_task_tool";
     private const string LocalCancellableTaskToolName = "local_cancellable_task_tool";
     private const string LocalFailingTaskToolName = "local_failing_task_tool";
@@ -55,20 +55,19 @@ public sealed class McpGatewayMcpServerTaskFeatureIntegrationTests
     [Test]
     public async Task WithMcpGatewayCatalog_UsesCallerProvidedTaskStore()
     {
-        var taskStore = new InMemoryMcpTaskStore();
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddMcpGateway();
-        services.AddMcpServer().WithMcpGatewayCatalog(taskStore);
-        await using var serviceProvider = services.BuildServiceProvider();
-
-        var resolvedStore = serviceProvider.GetRequiredService<IMcpTaskStore>();
-        var serverOptions = serviceProvider.GetRequiredService<IOptions<McpServerOptions>>().Value;
-
-        await Assert.That(ReferenceEquals(resolvedStore, taskStore)).IsTrue();
-        await Assert
-            .That(serverOptions.Capabilities?.Extensions)
-            .ContainsKey(TasksProtocol.ExtensionId);
+        using var scope = new GatewayTaskDurabilityTestScope();
+        using var taskStore = new FileBackedGatewayTaskStore(scope.DirectoryPath, TimeSpan.Zero);
+        await using var host = await GatewayMcpServerHost.StartWithTaskStoreAsync(options => options.AddTool(
+            LocalTaskSource, TestFunctionFactory.CreateFunction(() => CallerStoreOutput, LocalTaskToolName, CallerStoreDescription)),
+            taskStore, cancellationToken: scope.Token);
+        var started = await host.Client.CallToolAsTaskAsync(new CallToolRequestParams { Name = LocalTaskToolName }, scope.Token);
+        await Assert.That(started.IsTask).IsTrue();
+        var id = started.TaskCreated!.TaskId;
+        var completed = await GatewayTaskDurabilityTestScope.WaitForTerminalAsync(host.Client, id, scope.Token);
+        await Assert.That(completed).IsTypeOf<CompletedTaskResult>();
+        await Assert.That(GetSingleText(GatewayTaskDurabilityTestScope.ToolResult((CompletedTaskResult)completed))).IsEqualTo(CallerStoreOutput);
+        await Assert.That((await taskStore.GetTaskAsync(id, scope.Token))!.Status).IsEqualTo(McpTaskStatus.Completed);
+        await Assert.That(await taskStore.GetTaskOwnerAsync(id, scope.Token)).IsNotNull();
     }
 
     [Test]

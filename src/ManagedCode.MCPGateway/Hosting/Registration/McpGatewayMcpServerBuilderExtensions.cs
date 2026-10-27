@@ -22,16 +22,22 @@ public static class McpGatewayMcpServerBuilderExtensions
     }
 
     public static IMcpServerBuilder WithMcpGatewayCatalog(this IMcpServerBuilder builder) =>
-        WithMcpGatewayCatalog(builder, new McpGatewayMcpServerTaskStore());
+        ConfigureCatalog(builder, null);
 
     public static IMcpServerBuilder WithMcpGatewayCatalog(
         this IMcpServerBuilder builder,
-        IMcpTaskStore taskStore
+        IMcpGatewayTaskStore taskStore
     )
     {
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(taskStore);
 
+        return ConfigureCatalog(builder, taskStore);
+    }
+
+    private static IMcpServerBuilder ConfigureCatalog(IMcpServerBuilder builder, IMcpGatewayTaskStore? taskStore)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
         builder.Services.TryAddSingleton<IMcpGatewayServerBindingResolver, McpGatewayDefaultServerBindingResolver>();
         builder.Services.TryAddSingleton<McpGatewayMcpServerBindingManager>();
         builder.Services.TryAddSingleton<McpGatewayResourceSubscriptionRegistry>();
@@ -43,11 +49,13 @@ public static class McpGatewayMcpServerBuilderExtensions
         builder.Services.TryAddSingleton<McpGatewayPromptNotificationStore>();
         builder.Services.TryAddSingleton<McpGatewayPromptListNotificationManager>();
         builder.Services.TryAddSingleton<McpGatewayMcpServerSubscriptionCoordinator>();
-        var guardedStore = taskStore as McpGatewayMcpServerTaskStore ?? new McpGatewayMcpServerTaskStore(taskStore);
+        var guardedStore = new McpGatewayMcpServerTaskStore(taskStore);
         builder.Services.TryAddSingleton(guardedStore);
         builder.WithTasks(guardedStore);
-        // The host keeps its original store; SDK caller paths use the guarded adapter.
-        builder.Services.AddSingleton(taskStore);
+        if (taskStore is not null)
+        {
+            builder.Services.AddSingleton(taskStore);
+        }
         builder.WithMcpApps();
         builder.Services.TryAddSingleton<McpGatewayMcpServerHandlers>();
         builder.Services.TryAddSingleton<McpGatewayExecutionScope>();

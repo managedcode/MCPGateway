@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using ModelContextProtocol.Extensions.Tasks;
@@ -6,110 +5,73 @@ using ModelContextProtocol.Protocol;
 
 namespace ManagedCode.MCPGateway;
 
-internal sealed class McpGatewayMcpServerTaskStore(IMcpTaskStore? externalStore = null) : IMcpTaskStore
+internal sealed class McpGatewayMcpServerTaskStore(IMcpGatewayTaskStore? externalStore = null) : IMcpTaskStore, IDisposable
 {
     private const string TaskUnavailableMessage = "The requested task is unavailable.";
-    private TaskStoreState? _state;
+    private const string NotConfiguredMessage = "The MCP gateway task store has not been configured.";
+    private IMcpGatewayTaskStore? _store;
     private IServiceProvider? _services;
     private bool _managedCatalog;
+
     public void ConfigureAccess(IServiceProvider services, bool managedCatalog = false)
     {
         _services = services;
         _managedCatalog = managedCatalog;
     }
 
-    internal int Count => Volatile.Read(ref _state)?.Count ?? 0;
+    public void Configure(McpGatewayMcpTaskStoreOptions options, TimeProvider? timeProvider = null)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.CompletedTaskRetention, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(options.PollInterval, TimeSpan.Zero);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumTasks);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumConsecutiveStuckPolls);
+        if (Volatile.Read(ref _store) is not null)
+        {
+            return;
+        }
+        var store = externalStore ?? new McpGatewayInMemoryTaskStore(options, timeProvider ?? TimeProvider.System);
+        if (Interlocked.CompareExchange(ref _store, store, null) is not null && externalStore is null)
+        {
+            ((IDisposable)store).Dispose();
+        }
+    }
 
     public event Action<InputResponseReceivedEventArgs>? InputResponseReceived
     {
-        add => GetState().Store.InputResponseReceived += value;
-        remove => GetState().Store.InputResponseReceived -= value;
+        add => GetStore().InputResponseReceived += value;
+        remove => GetStore().InputResponseReceived -= value;
     }
 
-    public void Configure(McpGatewayMcpTaskStoreOptions options)
+    public async Task<McpTaskInfo> CreateTaskAsync(CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(options);
-
-        ValidatePositive(options.TaskTimeToLive, nameof(options.TaskTimeToLive));
-        ValidatePositive(options.PollInterval, nameof(options.PollInterval));
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(options.MaximumTasks);
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(
-            options.MaximumConsecutiveStuckPolls
-        );
-
-        var pollIntervalMilliseconds = checked((long)Math.Ceiling(options.PollInterval.TotalMilliseconds));
-        var state = new TaskStoreState(
-            externalStore ?? new InMemoryMcpTaskStore
-            {
-                DefaultTimeToLive = options.TaskTimeToLive,
-                DefaultPollIntervalMs = pollIntervalMilliseconds,
-            },
-            options.MaximumTasks,
-            options.TaskTimeToLive
-        );
-
-        _ = Interlocked.CompareExchange(ref _state, state, null);
+        var context = _services is null ? McpGatewayExecutionContext.TrustedLocal
+            : await McpGatewayTrustedContext.ResolveAsync(_services, cancellationToken);
+        if (!context.IsAuthenticated)
+        {
+            throw new UnauthorizedAccessException(TaskUnavailableMessage);
+        }
+        var frame = _services?.GetService<McpGatewayExecutionScope>()?.Current;
+        return await GetStore().CreateTaskAsync(new McpGatewayTaskOwner(context.SubjectId, context.TenantId,
+            context.AuthorizationPartition, context.PolicyRevision, frame?.AssetId, frame?.DefinitionHash), cancellationToken);
     }
 
-    public async Task<McpTaskInfo> CreateTaskAsync(
-        CancellationToken cancellationToken = default
-    )
-    {
-        var state = GetState();
-        await state.SweepExpiredAsync(cancellationToken);
-        state.ReserveSlot();
+    public async Task<McpTaskInfo?> GetTaskAsync(string taskId, CancellationToken cancellationToken = default) =>
+        await CanAccessAsync(taskId, cancellationToken) ? await GetStore().GetTaskAsync(taskId, cancellationToken) : null;
 
-        try
-        {
-            var task = await state.Store.CreateTaskAsync(cancellationToken);
-            var owner = _services is null ? McpGatewayExecutionContext.TrustedLocal : await McpGatewayTrustedContext.ResolveAsync(_services, cancellationToken);
-            var frame = _services?.GetService<McpGatewayExecutionScope>()?.Current;
-            state.Track(task.TaskId, task.CreatedAt + state.TimeToLive, owner, frame?.AssetId, frame?.DefinitionHash);
-            return task;
-        }
-        catch
-        {
-            state.ReleaseSlot();
-            throw;
-        }
-    }
+    public Task SetCompletedAsync(string taskId, JsonElement result, CancellationToken cancellationToken = default) =>
+        GetStore().SetCompletedAsync(taskId, result, cancellationToken);
 
-    public async Task<McpTaskInfo?> GetTaskAsync(
-        string taskId,
-        CancellationToken cancellationToken = default
-    )
-    {
-        var state = GetState();
-        if (!await CanAccessAsync(taskId, cancellationToken))
-        {
-            return null;
-        }
-        var task = await state.Store.GetTaskAsync(taskId, cancellationToken);
-        if (task is null)
-        {
-            state.Untrack(taskId);
-        }
-
-        return task;
-    }
-
-    public Task SetCompletedAsync(
-        string taskId,
-        JsonElement result,
-        CancellationToken cancellationToken = default
-    ) => GetState().Store.SetCompletedAsync(taskId, result, cancellationToken);
-
-    public Task SetFailedAsync(
-        string taskId,
-        JsonElement error,
-        CancellationToken cancellationToken = default
-    ) => GetState().Store.SetFailedAsync(taskId, error, cancellationToken);
+    public Task SetFailedAsync(string taskId, JsonElement error, CancellationToken cancellationToken = default) =>
+        GetStore().SetFailedAsync(taskId, error, cancellationToken);
 
     public async Task<bool> SetCancelledAsync(string taskId, CancellationToken cancellationToken = default)
     {
         if (!await CanAccessAsync(taskId, cancellationToken))
-        { throw new UnauthorizedAccessException(TaskUnavailableMessage); }
-        return await GetState().Store.SetCancelledAsync(taskId, cancellationToken);
+        {
+            throw new UnauthorizedAccessException(TaskUnavailableMessage);
+        }
+        return await GetStore().SetCancelledAsync(taskId, cancellationToken);
     }
 
     public async Task ResolveInputRequestsAsync(string taskId, IDictionary<string, InputResponse> inputResponses,
@@ -119,27 +81,38 @@ internal sealed class McpGatewayMcpServerTaskStore(IMcpTaskStore? externalStore 
         {
             throw new UnauthorizedAccessException(TaskUnavailableMessage);
         }
-        await GetState().Store.ResolveInputRequestsAsync(taskId, inputResponses, cancellationToken);
+        await GetStore().ResolveInputRequestsAsync(taskId, inputResponses, cancellationToken);
     }
 
-    public Task SetInputRequestsAsync(
-        string taskId,
-        IDictionary<string, InputRequest> inputRequests,
-        CancellationToken cancellationToken = default
-    ) => GetState().Store.SetInputRequestsAsync(taskId, inputRequests, cancellationToken);
+    public Task SetInputRequestsAsync(string taskId, IDictionary<string, InputRequest> inputRequests,
+        CancellationToken cancellationToken = default) =>
+        GetStore().SetInputRequestsAsync(taskId, inputRequests, cancellationToken);
+
+    public void Dispose()
+    {
+        if (externalStore is null && Interlocked.Exchange(ref _store, null) is IDisposable ownedStore)
+        {
+            ownedStore.Dispose();
+        }
+    }
 
     private async ValueTask<bool> CanAccessAsync(string taskId, CancellationToken cancellationToken)
     {
+        var context = _services is null ? McpGatewayExecutionContext.TrustedLocal
+            : await McpGatewayTrustedContext.ResolveAsync(_services, cancellationToken);
+        if (!context.IsAuthenticated)
+        {
+            return false;
+        }
+        var owner = await GetStore().GetTaskOwnerAsync(taskId, cancellationToken);
+        if (owner is null || context.SubjectId != owner.SubjectId || context.TenantId != owner.TenantId
+            || context.AuthorizationPartition != owner.AuthorizationPartition || context.PolicyRevision != owner.PolicyRevision)
+        {
+            return false;
+        }
         if (_services is null)
         {
             return true;
-        }
-        var context = await McpGatewayTrustedContext.ResolveAsync(_services, cancellationToken);
-        if (!GetState().TryGetOwner(taskId, out var owner) || !context.IsAuthenticated
-            || context.SubjectId != owner.Context.SubjectId || context.TenantId != owner.Context.TenantId
-            || context.AuthorizationPartition != owner.Context.AuthorizationPartition || context.PolicyRevision != owner.Context.PolicyRevision)
-        {
-            return false;
         }
         if (!(await McpGatewayAccessBoundary.AuthorizeAsync(_services, context,
             new(McpGatewayOperation.AccessTask, owner.AssetId ?? taskId) { DefinitionHash = owner.DefinitionHash }, cancellationToken)).IsAllowed)
@@ -150,98 +123,13 @@ internal sealed class McpGatewayMcpServerTaskStore(IMcpTaskStore? externalStore 
         {
             return true;
         }
-        var catalog = await McpGatewayTrustedContext.OperationServices(_services).GetRequiredService<IMcpGatewayCatalogDefinitionStore>().ReadAsync(cancellationToken);
+        var catalog = await McpGatewayTrustedContext.OperationServices(_services)
+            .GetRequiredService<IMcpGatewayCatalogDefinitionStore>().ReadAsync(cancellationToken);
         return owner.AssetId is not null && !catalog.RevokedToolIds.Contains(owner.AssetId)
             && catalog.Definitions.Any(definition => definition.ToolId.Equals(owner.AssetId, StringComparison.OrdinalIgnoreCase)
                 && definition.DefinitionHash == owner.DefinitionHash && definition.Lifecycle == McpGatewayToolLifecycle.Published);
     }
 
-    private TaskStoreState GetState() =>
-        Volatile.Read(ref _state)
-        ?? throw new InvalidOperationException(
-            $"{nameof(McpGatewayMcpServerTaskStore)} has not been configured."
-        );
-
-    private static void ValidatePositive(TimeSpan value, string parameterName)
-    {
-        if (value <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(parameterName, value, "The value must be positive.");
-        }
-    }
-
-    private sealed record TaskOwner(DateTimeOffset ExpiresAt, McpGatewayExecutionContext Context, string? AssetId, string? DefinitionHash);
-
-    private sealed class TaskStoreState(
-        IMcpTaskStore store,
-        int maximumTasks,
-        TimeSpan timeToLive
-    )
-    {
-        private readonly ConcurrentDictionary<string, TaskOwner> _expirations = new(
-            StringComparer.Ordinal
-        );
-        private int _count;
-
-        public IMcpTaskStore Store { get; } = store;
-
-        public TimeSpan TimeToLive { get; } = timeToLive;
-
-        public int Count => Volatile.Read(ref _count);
-
-        public void ReserveSlot()
-        {
-            var count = Volatile.Read(ref _count);
-            while (count < maximumTasks)
-            {
-                var reserved = Interlocked.CompareExchange(ref _count, count + 1, count);
-                if (reserved == count)
-                {
-                    return;
-                }
-
-                count = reserved;
-            }
-
-            throw new InvalidOperationException(
-                $"The MCP task store limit of {maximumTasks} tasks has been reached."
-            );
-        }
-
-        public bool TryGetOwner(string taskId, out TaskOwner owner) => _expirations.TryGetValue(taskId, out owner!);
-
-        public void Track(string taskId, DateTimeOffset expiresAt, McpGatewayExecutionContext context, string? assetId, string? definitionHash)
-        {
-            if (!_expirations.TryAdd(taskId, new(expiresAt, context, assetId, definitionHash)))
-            {
-                throw new InvalidOperationException($"Task '{taskId}' is already tracked.");
-            }
-        }
-
-        public void Untrack(string taskId)
-        {
-            if (_expirations.TryRemove(taskId, out _))
-            {
-                ReleaseSlot();
-            }
-        }
-
-        public void ReleaseSlot() => Interlocked.Decrement(ref _count);
-
-        public async Task SweepExpiredAsync(CancellationToken cancellationToken)
-        {
-            var now = DateTimeOffset.UtcNow;
-            foreach (var expiration in _expirations)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                if (expiration.Value.ExpiresAt > now)
-                {
-                    continue;
-                }
-
-                _ = await Store.GetTaskAsync(expiration.Key, cancellationToken);
-                Untrack(expiration.Key);
-            }
-        }
-    }
+    private IMcpGatewayTaskStore GetStore() => Volatile.Read(ref _store)
+        ?? throw new InvalidOperationException(NotConfiguredMessage);
 }
