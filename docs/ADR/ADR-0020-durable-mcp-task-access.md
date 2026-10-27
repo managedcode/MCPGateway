@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Owner implementation, 451 tests, formatting, analyzers, Roslynator, vulnerability audit and the 92.46% line-coverage gate passed. Publication and consumer runtime validation remain pending.
+Accepted. Owner implementation, 451 tests, formatting, analyzers, Roslynator, vulnerability audit and the 92.46% line-coverage gate passed. Version 2.3.2 is published; GitHub Release CI and actual NuGet source metadata are verified. Consumer runtime validation remains pending.
 
 ## Context
 
@@ -27,3 +27,7 @@ Prostir must implement the binding in its existing Orleans task grain, recover W
 ## Delivery
 
 Batch all confirmed task durability defects in one canonical patch release on SDK line 2.3. Verify owner checks, GitHub publication and actual NuGet availability, then update Prostir once and remove its temporary limitation note after the recovery acceptance passes.
+
+Release evidence: [GitHub release](https://github.com/managedcode/MCPGateway/releases/tag/v2.3.2), [Release CI](https://github.com/managedcode/MCPGateway/actions/runs/40526229624), [NuGet 2.3.2](https://www.nuget.org/packages/ManagedCode.MCPGateway/2.3.2). The feed nuspec reports source commit 975e29e1b1add214352c83badbce1151ea9e0808 and official SDK Tasks 2.3.0. The release archive SHA-256 is 96d94e0da66b5817233915c67b8f077d5ebe2b2989b27de9278c9075e96b353a.
+
+Consumer integration has restored 2.3.2. Its full build and runtime acceptance are tracked in the consuming repository and remain pending.
