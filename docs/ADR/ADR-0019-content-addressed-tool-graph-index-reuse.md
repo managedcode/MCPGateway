@@ -39,6 +39,12 @@ The per-instance remainder shrank because schema-profile validation of the gatew
 
 ## Verification
 
+- An index build captures its result metadata before publishing its snapshot.
+  Reconfiguration may publish a newer catalog while an older MCP listing is
+  still in flight; rejecting that older snapshot retires its graph immediately.
+  The completed build must report its own metadata without reading the retired
+  graph or replacing the newer catalog. A gated real-SDK listing regression
+  exercises this ordering without retries or serialization.
 - TUnit gateway tests with isolated pools: identical catalogs build once, and the shared index exports exactly the JSON-LD and Turtle graph of an independent fresh build with the same primary search results; invocation reaches each instance's own tool; changed description, schema or hints build separate graphs; six concurrent hosts build once over one exported graph; disposing one sharing gateway keeps the other working and the graph reusable; the idle bound retires the least recently released graph; reconfiguration retires the superseded graph.
 - Complete search result sets are not the equality oracle. Under concurrent load, repeated identical searches on one graph object occasionally return different secondary matches and focused-graph edge counts (observed both with and without sharing, while the exported graphs stay identical). That pre-existing query-path nondeterminism is outside this decision and needs its own investigation in the Markdown-LD/dotNetRDF query path.
 - TUnit pool tests over real Markdown-LD graphs: waiting acquisitions coalesce into one build, a failed build is forgotten, a canceled last waiter joins the build and keeps its result, eviction disposes the graph, and a non-reuse release retires only after the last lease.

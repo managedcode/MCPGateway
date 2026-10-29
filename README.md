@@ -1103,6 +1103,9 @@ var discoveredTools = toolSet.CreateDiscoveredTools(search.Matches, maxTools: 3)
 
 The gateway works with lazy indexing by default. If you want startup validation or a pre-built graph/vector index, warm it explicitly.
 
+Index initialization may run concurrently with catalog reconfiguration. The newer
+catalog remains authoritative, and the completed build reports its own metadata.
+
 Manual warmup:
 
 ```csharp

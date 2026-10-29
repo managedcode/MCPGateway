@@ -121,6 +121,8 @@ internal sealed partial class McpGatewayRuntime
         ) with
         { LoadedTools = catalog.LoadedTools };
 
+        // Publishing can immediately retire this graph when a newer catalog has already won.
+        var buildResult = CreateBuildResult(snapshot, diagnostics, vectorization.VectorizedToolCount);
         TryUpdateState(snapshot, registrySnapshot.Version);
 
         _logger.LogInformation(
@@ -132,7 +134,6 @@ internal sealed partial class McpGatewayRuntime
             graphIndex?.IsReused ?? false
         );
 
-        var buildResult = CreateBuildResult(snapshot, diagnostics, vectorization.VectorizedToolCount);
         McpGatewayTelemetry.RecordIndexBuild(
             activity,
             _searchStrategy,

@@ -36,6 +36,10 @@ Generated tool graphs are content-addressed. Gateway instances in one process th
 
 File-backed graph initialization accepts exported `.jsonld` graphs through the Markdown-LD KnowledgeGraph loader, preserving RDF nodes and edges and binding canonical tool document URIs to the live callable catalog. Missing tool nodes fail initialization rather than silently regenerating the graph.
 
+Index builds capture result metadata before snapshot publication. A newer catalog
+may overtake an in-flight build; retirement of its stale graph must not invalidate
+the completed build's metadata or overwrite the newer snapshot.
+
 Embedded JSON-LD resources may also provide an explicit descriptor-to-node URI binding through `UseJsonLdGraphResource`. This preserves a host-owned graph's canonical URIs while the gateway retains tool identity, search, and invocation ownership. Relative, duplicate, and absent tool node bindings fail graph initialization; changing graph sources clears the binding.
 
 `McpInMemorySession` is a Hosting utility for an SDK MCP server and client in one process. It owns the paired transports, server run task, cancellation, and disposal. The host still supplies its own `McpServerOptions`, service provider, authorization filters, and tool handlers. Product-specific graph vocabularies, tool selection, and authorization remain in the host.
