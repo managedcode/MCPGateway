@@ -1201,7 +1201,18 @@ Run focused BenchmarkDotNet commands one at a time so generated benchmark build 
 
 CI and release enforce at least 85% line coverage of the library; deterministic CI builds use explicit Coverlet source-root mapping so an empty report fails the gate. CI runs the full BenchmarkDotNet suite with `--filter "*"` after the build/test/coverage gate and uploads the complete benchmark reports as `benchmark-results`. Release builds, tests and packs independently of those benchmarks, so performance measurements do not block NuGet publication.
 
-The current full suite includes 22 standard-job cases, including cold, reused and parallel-host index builds, 1k/5k/10k catalogs, four concurrent authorization partitions and repeated refresh. A partial local run with published `MarkdownLd.Kb 0.2.17` completed the 1,000-tool authorized-cycle case: mean 153.703 ms, standard deviation 82.495 ms and 89.67 MiB allocated per four concurrent discovery/schema/invocation cycles. Cold setup took 44.768 s and retained 745.48 MiB of managed memory. The shared host was under memory/swap pressure; the run was stopped during 5,000-tool setup and is not full qualification or a latency guarantee. Full-suite performance qualification is tracked through CI independently of publication.
+The current full suite includes 23 standard-job cases, including cold, reused and parallel-host index builds, 1k/5k/10k catalogs, four concurrent authorization partitions and repeated refresh. A partial local run with published `MarkdownLd.Kb 0.2.17` completed the 1,000-tool authorized-cycle case: mean 153.703 ms, standard deviation 82.495 ms and 89.67 MiB allocated per four concurrent discovery/schema/invocation cycles. Cold setup took 44.768 s and retained 745.48 MiB of managed memory. The shared host was under memory/swap pressure; the run was stopped during 5,000-tool setup and is not full qualification or a latency guarantee. Full-suite performance qualification is tracked through CI independently of publication.
+
+The November 3, 2026 patch review used published Markdown-LD 0.3.0, .NET SDK 10.0.403/runtime 10.0.14 on Apple M2 Pro. Matched selected BenchmarkDotNet runs measured repeated default metadata access:
+
+| API | Before allocated | After allocated |
+| --- | ---: | ---: |
+| `IMcpGateway.CreateMetaTools()` | 1.66 KiB | 0 B |
+| `McpGatewayToolSet.CreateTools()` | 1.60 KiB | 0 B |
+| `McpGatewayToolSet.CreateGraphTools()` | 2.84 KiB | 0 B |
+| `CreateDiscoveredTools(...)` | 3.10 KiB | 3.10 KiB |
+
+The first creation still allocates; custom aliases and discovered proxies remain fresh. These are metadata retrieval measurements, not invocation or SPARQL latency claims. Each owner retains a fixed default set, and retained functions see catalog reconfiguration. See the [fifteen-iteration review](docs/Performance/RuntimePerformance-2026-11-03.md) for workload assertions, cold-build memory, diagnostics limitations and full verification.
 
 Identical catalogs reuse one generated graph across gateway instances in a process. Index benchmarks on October 24, 2026, Apple M2 Pro, runtime `.NET 10.0.12`, `MarkdownLd.Kb 0.2.18`:
 

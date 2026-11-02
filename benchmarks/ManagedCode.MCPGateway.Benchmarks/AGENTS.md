@@ -45,7 +45,7 @@ Parent: `../../AGENTS.md`
 ## Local Constraints
 
 - Run benchmarks in `Release`.
-- CI and release benchmark coverage run the complete BenchmarkDotNet suite with `--filter "*"`; do not replace it with smoke-only, dry-run, or short-run benchmark coverage.
+- CI benchmark coverage runs the complete BenchmarkDotNet suite with `--filter "*"`; do not replace it with smoke-only, dry-run, or short-run benchmark coverage. Release follows the root policy and does not run or wait for benchmarks.
 - Keep benchmark fixtures deterministic and network-free.
 - Keep benchmark methods focused on one measurable operation.
 - Use BenchmarkDotNet `MemoryDiagnoser` so allocations are visible with mean timing.

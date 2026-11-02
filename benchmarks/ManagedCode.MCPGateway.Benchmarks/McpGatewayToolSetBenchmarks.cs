@@ -20,6 +20,9 @@ public class McpGatewayToolSetBenchmarks
     public async Task GlobalCleanup() => await _host.DisposeAsync();
 
     [Benchmark]
+    public int CreateGatewayMetaTools() => _host.Gateway.CreateMetaTools().Count;
+
+    [Benchmark]
     public int CreateGatewayTools() => _host.ToolSet.CreateTools().Count;
 
     [Benchmark]

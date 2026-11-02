@@ -449,6 +449,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
     private string? _embeddingGeneratorFingerprint;
     private string? _searchQueryChatClientFingerprint;
 
+    private readonly Lazy<McpGatewayToolSet> _metaToolSet;
     internal McpGatewayRuntime(
         IServiceProvider serviceProvider,
         IOptions<McpGatewayOptions> options,
@@ -456,6 +457,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         ILoggerFactory loggerFactory
     )
     {
+        _metaToolSet = new(() => new McpGatewayToolSet(this));
         ArgumentNullException.ThrowIfNull(serviceProvider);
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(logger);
@@ -560,7 +562,7 @@ internal sealed partial class McpGatewayRuntime : IMcpGateway, IMcpGatewayGraphS
         string searchToolName = McpGatewayToolSet.DefaultSearchToolName,
         string routeToolName = McpGatewayToolSet.DefaultRouteToolName,
         string invokeToolName = McpGatewayToolSet.DefaultInvokeToolName
-    ) => new McpGatewayToolSet(this).CreateTools(searchToolName, routeToolName, invokeToolName);
+    ) => _metaToolSet.Value.CreateTools(searchToolName, routeToolName, invokeToolName);
 
     public async ValueTask DisposeAsync()
     {

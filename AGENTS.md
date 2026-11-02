@@ -142,6 +142,7 @@ If no new rule is detected -> do not update the file.
 - Cross-cutting quality: `mcaf-nfr`, `mcaf-observability`, `mcaf-security-baseline`
 - Domain-specific optional skills: `mcaf-ml-ai-delivery`, `mcaf-ui-ux`
 - Repo-local extras: `cloc`, `dotnet-strict`, `pre-pr`, `profile`, `quickdup`, `roslynator`
+- Owner-requested performance skills: `blazing-fast-dotnet` and `dotnet-diagnostics-profiling`; use measured CPU/allocation/GC evidence and separate clean benchmarks.
 
 ### Maintainability Limits
 

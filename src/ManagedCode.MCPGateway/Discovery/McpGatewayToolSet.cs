@@ -38,6 +38,7 @@ public sealed class McpGatewayToolSet
     private const string DiscoveredToolKindValue = "gateway_discovered_tool";
     private readonly IMcpGateway _gateway;
     private readonly McpGatewayGraphToolFactory _graphTools;
+    private readonly McpGatewayCoreToolFactory _coreTools;
 
     public McpGatewayToolSet(IMcpGateway gateway)
     {
@@ -45,6 +46,7 @@ public sealed class McpGatewayToolSet
 
         _gateway = gateway;
         _graphTools = new McpGatewayGraphToolFactory(gateway, gateway as IMcpGatewayGraphSearch);
+        _coreTools = new McpGatewayCoreToolFactory(this);
     }
 
     public McpGatewayToolSet(IMcpGateway gateway, IMcpGatewayGraphSearch graphSearch)
@@ -54,48 +56,14 @@ public sealed class McpGatewayToolSet
 
         _gateway = gateway;
         _graphTools = new McpGatewayGraphToolFactory(gateway, graphSearch);
+        _coreTools = new McpGatewayCoreToolFactory(this);
     }
 
     public IReadOnlyList<AITool> CreateTools(
         string searchToolName = DefaultSearchToolName,
         string routeToolName = DefaultRouteToolName,
         string invokeToolName = DefaultInvokeToolName
-    )
-    {
-        var reservedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var searchName = CreateToolName(searchToolName, DefaultSearchToolName, reservedNames);
-        var routeName = CreateToolName(routeToolName, DefaultRouteToolName, reservedNames);
-        var invokeName = CreateToolName(invokeToolName, DefaultInvokeToolName, reservedNames);
-
-        var searchTool = AIFunctionFactory.Create(
-            SearchAsync,
-            new AIFunctionFactoryOptions
-            {
-                Name = searchName,
-                Description = SearchToolDescription,
-            }
-        );
-
-        var routeTool = AIFunctionFactory.Create(
-            RouteAsync,
-            new AIFunctionFactoryOptions
-            {
-                Name = routeName,
-                Description = RouteToolDescription,
-            }
-        );
-
-        var invokeTool = AIFunctionFactory.Create(
-            InvokeWithResponseAsync,
-            new AIFunctionFactoryOptions
-            {
-                Name = invokeName,
-                Description = InvokeToolDescription,
-            }
-        );
-
-        return [searchTool, routeTool, invokeTool];
-    }
+    ) => _coreTools.CreateTools(searchToolName, routeToolName, invokeToolName);
 
     public IReadOnlyList<AITool> CreateGraphTools(
         string graphSearchToolName = DefaultGraphSearchToolName,
@@ -237,7 +205,7 @@ public sealed class McpGatewayToolSet
             cancellationToken
         );
 
-    private Task<McpGatewayInvokeResult> InvokeWithResponseAsync(string toolId,
+    internal Task<McpGatewayInvokeResult> InvokeWithResponseAsync(string toolId,
         Dictionary<string, JsonElement>? arguments = null, string? query = null,
         Dictionary<string, JsonElement>? context = null, string? contextSummary = null,
         McpGatewayResponseOptions? responseOptions = null, CancellationToken cancellationToken = default) =>

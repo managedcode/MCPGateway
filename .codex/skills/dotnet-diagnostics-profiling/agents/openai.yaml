@@ -1,0 +1,6 @@
+interface:
+  display_name: ".NET Diagnostics Profiling"
+  short_description: "Profile live .NET processes and verify focused repairs"
+  default_prompt: "Use $dotnet-diagnostics-profiling to investigate this .NET runtime symptom and verify a source-backed repair."
+policy:
+  allow_implicit_invocation: true

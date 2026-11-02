@@ -8,6 +8,7 @@ internal sealed class McpGatewayGraphToolFactory
     private const string GraphSearchUnavailableMessage =
         "Graph tools require IMcpGatewayGraphSearch. Register AddMcpGateway(...) or construct McpGatewayToolSet with a graph search service.";
 
+    private readonly Lazy<IReadOnlyList<AITool>> _defaultTools;
     private readonly IMcpGateway _gateway;
     private readonly IMcpGatewayGraphSearch? _graphSearch;
 
@@ -17,9 +18,23 @@ internal sealed class McpGatewayGraphToolFactory
 
         _gateway = gateway;
         _graphSearch = graphSearch;
+        _defaultTools = new(() => CreateCoreGraphTools(McpGatewayToolSet.DefaultGraphSearchToolName,
+            McpGatewayToolSet.DefaultGraphFederatedSearchToolName, McpGatewayToolSet.DefaultGraphExportToolName,
+            McpGatewayToolSet.DefaultGraphSchemaToolName, McpGatewayToolSet.DefaultToolIndexBuildToolName));
     }
 
-    public IReadOnlyList<AITool> CreateGraphTools(
+    public IReadOnlyList<AITool> CreateGraphTools(string search, string federated, string export, string schema, string build)
+    {
+        if (search == McpGatewayToolSet.DefaultGraphSearchToolName && federated == McpGatewayToolSet.DefaultGraphFederatedSearchToolName
+            && export == McpGatewayToolSet.DefaultGraphExportToolName && schema == McpGatewayToolSet.DefaultGraphSchemaToolName
+            && build == McpGatewayToolSet.DefaultToolIndexBuildToolName)
+        {
+            return _defaultTools.Value;
+        }
+        return CreateCoreGraphTools(search, federated, export, schema, build);
+    }
+
+    private IReadOnlyList<AITool> CreateCoreGraphTools(
         string graphSearchToolName,
         string graphFederatedSearchToolName,
         string graphExportToolName,

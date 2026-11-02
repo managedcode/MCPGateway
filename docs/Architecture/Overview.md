@@ -64,6 +64,17 @@ For MCP interoperability in the other direction, the package exposes `WithMcpGat
 
 The repository now uses feature-first package slices for `Gateway`, `Discovery`, `Catalog`, `Search`, `Invocation`, `Prompts`, `Resources`, and `Hosting`. The durable policy decision behind that structure is captured in [`docs/ADR/ADR-0007-vertical-slice-package-organization.md`](../ADR/ADR-0007-vertical-slice-package-organization.md).
 
+Default core and graph meta-tool metadata is lazily reused by each owning toolset. The runtime keeps its own lazy toolset for `IMcpGateway.CreateMetaTools`. Custom aliases and discovered proxies remain fresh. The cached functions call the current runtime and retain no result snapshots or cross-gateway invokers. [ADR-0021](../ADR/ADR-0021-bounded-default-meta-tool-reuse.md) records the bounded ownership and reconfiguration regressions.
+
+```mermaid
+classDiagram
+    McpGatewayRuntime --> McpGatewayToolSet : owns lazily
+    McpGatewayToolSet --> McpGatewayCoreToolFactory : owns
+    McpGatewayToolSet --> McpGatewayGraphToolFactory : owns
+    McpGatewayCoreToolFactory --> AIFunction : three defaults
+    McpGatewayGraphToolFactory --> AIFunction : five defaults
+```
+
 The benchmark project under `benchmarks/ManagedCode.MCPGateway.Benchmarks/` is intentionally outside the package source tree. It references the package project, runs BenchmarkDotNet in `Release`, and measures search, direct graph tool search, index-build, meta-tool allocations, 1k/5k/10k discovery/schema/invocation cycles, concurrent authorization partitions and repeated refresh without adding a runtime dependency to the NuGet package.
 
 CI and release collect coverage from the built TUnit executable, map deterministic SourceLink `/_/` paths to the checkout through Coverlet's source-mapping file, and enforce at least 85% library line coverage. Empty coverage fails the gate. Release retains the coverage artifact, then packs and publishes without running or waiting for benchmarks. The complete benchmark suite runs in the independent CI workflow.
