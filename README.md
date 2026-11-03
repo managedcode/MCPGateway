@@ -1205,6 +1205,8 @@ The current full suite includes 23 standard-job cases, including cold, reused an
 
 The indexed source projection in Markdown-LD 0.3.2 reduces the warm discovery, schema and invocation cycle. In fresh Release processes using the same 2,000-tool catalog, elapsed time moved from 13.52 seconds to 202 ms and allocated bytes from 8.23 GB to 18.8 MB. Both runs returned a 1,794-byte discovery response. [Measurement details](docs/Performance/Benchmarks.md#indexed-provenance)
 
+The full Linux CI run with Markdown-LD 0.3.3 verified all 23 benchmarks. The ordinary 10,000-tool warm cycle averaged 77.32 ms and allocated 42.56 MiB. The four concurrent authorized cycles at the same size averaged 107.9 ms and allocated 88.35 MiB. [Full Linux run](https://github.com/managedcode/MCPGateway/actions/runs/41628441407)
+
 The November 3, 2026 patch review used published Markdown-LD 0.3.0, .NET SDK 10.0.403/runtime 10.0.14 on Apple M2 Pro. Matched selected BenchmarkDotNet runs measured repeated default metadata access:
 
 | API | Before allocated | After allocated |

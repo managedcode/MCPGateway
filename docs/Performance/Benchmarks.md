@@ -33,6 +33,15 @@ Markdown-LD 0.3.2 bounds local SPARQL evidence before retrieving complete source
 
 Markdown-LD 0.3.3 orders local evidence by relevance before the row limit. This fixes the unstable forecast match seen in the [Linux release test](https://github.com/managedcode/MCPGateway/actions/runs/41620565010/job/125864895770). The final local Linux x64 candidate passed all 456 gateway tests and returned the forecast first in 16 repeated calls. The bound priority retained the warmed allocation improvement with 15.92 MB median allocation across eight cycles on the 1,000-tool fixture. [Owner review](https://github.com/managedcode/markdown-ld-kb/blob/c8e10d4dfad4e40ced8f35c0eb68b57200613e81/docs/Reviews/CatalogScaling-2026-11-03.md)
 
+The full Linux run with published 0.3.3 completed all 23 cases across ten jobs. Build and Test passed 456 tests with 92.48% line coverage. [Full Linux run](https://github.com/managedcode/MCPGateway/actions/runs/41628441407)
+
+| 10,000-tool scenario | Cold setup | Managed memory after setup GC | Warm mean | Warm allocation |
+| --- | ---: | ---: | ---: | ---: |
+| Ordinary discovery, schema and invocation | 5m 55s | 7.19 GB | 77.32 ms | 42.56 MiB |
+| Four concurrent authorized cycles | 12m 22s | 7.16 GB | 107.9 ms | 88.35 MiB |
+
+The ordinary 0.3.1 baseline measured 37.57 seconds and 38.17 GiB per warm cycle. The compared runs used different hosted CPUs. The allocation change measures cumulative work per operation, and the retained catalog remains a separate capacity cost. [Baseline report](https://github.com/managedcode/MCPGateway/actions/runs/41602495770/job/125806965395) · [Ordinary 0.3.3 report](https://github.com/managedcode/MCPGateway/actions/runs/41628441407/job/125894655391) · [Authorized 0.3.3 report](https://github.com/managedcode/MCPGateway/actions/runs/41628441407/job/125894655382)
+
 ## Commands
 
 Run all benchmarks:
