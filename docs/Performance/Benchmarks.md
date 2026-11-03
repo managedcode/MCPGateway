@@ -31,6 +31,8 @@ The warm discovery cycle still combines evidence and related-source bindings in 
 
 Markdown-LD 0.3.2 bounds local SPARQL evidence before retrieving complete source context from indexed RDF triples. In matched 2,000-tool Release probes, the warm discovery, schema and invocation cycle allocated 8,227,983,656 bytes with public 0.3.1 and 18,763,024 bytes with the repair. The corresponding elapsed times were 13.517 and 0.202 seconds. Both discovery payloads were 1,794 bytes. These figures describe the warmed operation on the local host. The [owner review](https://github.com/managedcode/markdown-ld-kb/blob/10127815f989bb1e40551af0fba8c47bf0f2a6bb/docs/Reviews/CatalogScaling-2026-11-03.md) documents the source fanout regression and the 1,000-tool measurements.
 
+Markdown-LD 0.3.3 orders local evidence by relevance before the row limit. This fixes the unstable forecast match seen in the [Linux release test](https://github.com/managedcode/MCPGateway/actions/runs/41620565010/job/125864895770). The final local Linux x64 candidate passed all 456 gateway tests and returned the forecast first in 16 repeated calls. The bound priority retained the warmed allocation improvement with 15.92 MB median allocation across eight cycles on the 1,000-tool fixture. [Owner review](https://github.com/managedcode/markdown-ld-kb/blob/c8e10d4dfad4e40ced8f35c0eb68b57200613e81/docs/Reviews/CatalogScaling-2026-11-03.md)
+
 ## Commands
 
 Run all benchmarks:
