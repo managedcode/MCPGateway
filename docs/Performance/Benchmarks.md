@@ -21,6 +21,12 @@ The [serial Linux run](https://github.com/managedcode/MCPGateway/actions/runs/41
 
 The Linux matrix isolates catalog sizes and lets search, refresh, indexing and metadata cases finish independently. The current inventory has ten shards covering all 23 cases. The scheduler changes wall time through concurrency. Individual case timing still measures the full default BenchmarkDotNet job and uses the same fixtures and MemoryDiagnoser.
 
+## Catalog initialization repair
+
+Published [ManagedCode.MarkdownLd.Kb 0.3.1](https://www.nuget.org/packages/ManagedCode.MarkdownLd.Kb/0.3.1) reuses identical fitted segment vectors and avoids redundant exact-neighbor comparisons. On matched local 2,000-tool gateway probes, cold index build elapsed time moved from 48.34 to 25.23 seconds, cumulative allocations from 14.26 to 13.77 GB, and managed memory retained after collection from 1.535 to 1.518 GB. Ordered graph relations and triple counts matched in the isolated graph build. The [owner review](https://github.com/managedcode/markdown-ld-kb/blob/87c2af0f3a28ec87c20ea70814897d1aacd1d7a0/docs/Reviews/CatalogScaling-2026-11-03.md) records the measurements and limitations.
+
+The warm discovery cycle still combines evidence and related-source bindings in SPARQL. With 0.3.0 on [the parallel Linux baseline](https://github.com/managedcode/MCPGateway/actions/runs/41597449239/job/125791176128), the ordinary 5,000-tool discovery, schema and invocation cycle averaged 16.40 seconds and allocated 19.08 GiB per operation. The cold index repair preserves the query path. Compare 10,000-tool setup and warmed operation results separately using their full Linux reports.
+
 ## Commands
 
 Run all benchmarks:
@@ -129,6 +135,6 @@ Do not apply broad micro-optimizations such as converting normal reference types
 
 Public `ManagedCode.MarkdownLd.Kb 0.2.16` removes boxed dictionary enumeration from token-vector dot products (56 B to 0 B per measured operation) and caches immutable semantic snapshots until mutation. On the owner's full DefaultJob fixtures, warmed focused exact search changed from 4.78 MiB to 38.05 KiB at 120 nodes and from 44.48 MiB to 269.63 KiB at 1,000 nodes. Cold setup and retained snapshot memory remain separate costs. Concurrent-host timing dispersion prevents extrapolating those values into gateway latency guarantees.
 
-A fresh gateway full suite must include all 22 cases and retain non-empty successful reports for performance qualification, independently of publication. Scaling checks enforce a 2,048-byte discovery response and authorized canonical ID; permission-partition benchmarks fail if another caller's ID appears. Proposed allocation/latency targets require a measured comparable baseline; historical snapshots are not acceptance evidence for new datasets.
+A fresh gateway full suite must include every case discovered from the benchmark assembly and retain non-empty successful reports for performance qualification, independently of publication. Scaling checks enforce a 2,048-byte discovery response and authorized canonical ID; permission-partition benchmarks fail if another caller's ID appears. Proposed allocation/latency targets require a measured comparable baseline; historical snapshots are not acceptance evidence for new datasets.
 
 The public-0.2.17 local run completed one 1,000-tool case (four concurrent authorized cycles): mean 153.703 ms, standard deviation 82.495 ms, 94,027,906 B/op. Cold setup took 44.768 s, allocated 7,165,324,552 bytes and retained 781,691,088 managed bytes after collection. Memory compression/swap pressure made the shared host unsuitable for comparative latency; the run was explicitly stopped during the 5,000-tool setup. `artifacts/governed-final-local-partial-benchmarks.log` is a partial receipt, not full qualification. Canonical CI provides the required complete full-suite evidence on a separate runner.
