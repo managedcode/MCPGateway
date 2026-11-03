@@ -1203,6 +1203,8 @@ CI and release enforce at least 85% line coverage of the library; deterministic 
 
 The current full suite includes 23 standard-job cases, including cold, reused and parallel-host index builds, 1k/5k/10k catalogs, four concurrent authorization partitions and repeated refresh. In the [November 3 Linux run](https://github.com/managedcode/MCPGateway/actions/runs/41549054292), the governed 1,000-, 5,000-, and 10,000-tool cases measured 48.87 ms / 71.29 MiB, 72.60 ms / 88.72 MiB, and 74.52 ms / 92.28 MiB per four concurrent authorized cycles. The serial run reached its time limit during the separate 10,000-tool discovery case. The [benchmark review](docs/Performance/Benchmarks.md) records the completed and interrupted results.
 
+The indexed source projection in Markdown-LD 0.3.2 reduces the warm discovery, schema and invocation cycle. In fresh Release processes using the same 2,000-tool catalog, elapsed time moved from 13.52 seconds to 202 ms and allocated bytes from 8.23 GB to 18.8 MB. Both runs returned a 1,794-byte discovery response. [Measurement details](docs/Performance/Benchmarks.md#indexed-provenance)
+
 The November 3, 2026 patch review used published Markdown-LD 0.3.0, .NET SDK 10.0.403/runtime 10.0.14 on Apple M2 Pro. Matched selected BenchmarkDotNet runs measured repeated default metadata access:
 
 | API | Before allocated | After allocated |

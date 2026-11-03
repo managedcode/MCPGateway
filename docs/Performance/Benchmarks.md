@@ -27,6 +27,10 @@ Published [ManagedCode.MarkdownLd.Kb 0.3.1](https://www.nuget.org/packages/Manag
 
 The warm discovery cycle still combines evidence and related-source bindings in SPARQL. With 0.3.0 on [the parallel Linux baseline](https://github.com/managedcode/MCPGateway/actions/runs/41597449239/job/125791176128), the ordinary 5,000-tool discovery, schema and invocation cycle averaged 16.40 seconds and allocated 19.08 GiB per operation. The cold index repair preserves the query path. Compare 10,000-tool setup and warmed operation results separately using their full Linux reports.
 
+## Indexed provenance
+
+Markdown-LD 0.3.2 bounds local SPARQL evidence before retrieving complete source context from indexed RDF triples. In matched 2,000-tool Release probes, the warm discovery, schema and invocation cycle allocated 8,227,983,656 bytes with public 0.3.1 and 18,763,024 bytes with the repair. The corresponding elapsed times were 13.517 and 0.202 seconds. Both discovery payloads were 1,794 bytes. These figures describe the warmed operation on the local host. The [owner review](https://github.com/managedcode/markdown-ld-kb/blob/10127815f989bb1e40551af0fba8c47bf0f2a6bb/docs/Reviews/CatalogScaling-2026-11-03.md) documents the source fanout regression and the 1,000-tool measurements.
+
 ## Commands
 
 Run all benchmarks:
