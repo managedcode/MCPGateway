@@ -20,6 +20,8 @@ jobs:
   build-test:
     name: Build and Test
     runs-on: ubuntu-latest
+    outputs:
+      benchmark-matrix: ${{ steps.benchmark-matrix.outputs.matrix }}
 
     steps:
       - name: Checkout
@@ -60,6 +62,13 @@ jobs:
       - name: Render coverage report
         run: dotnet tool run reportgenerator -reports:"artifacts/coverage/coverage.cobertura.xml" -targetdir:"artifacts/coverage-report" -reporttypes:"HtmlSummary;MarkdownSummaryGithub"
 
+      - name: Discover benchmark shards
+        id: benchmark-matrix
+        shell: bash
+        run: |
+          matrix=$(dotnet benchmarks/ManagedCode.MCPGateway.Benchmarks/bin/Release/net10.0/ManagedCode.MCPGateway.Benchmarks.dll --ci-matrix)
+          printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,10 +88,13 @@ jobs:
           retention-days: 5
 
   benchmarks:
-    name: Full Benchmarks
+    name: Benchmarks (${{ matrix.label }})
     runs-on: ubuntu-latest
     needs: build-test
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.build-test.outputs.benchmark-matrix) }}
 
     steps:
       - name: Checkout
@@ -96,13 +108,15 @@ jobs:
       - name: Restore
         run: dotnet restore ManagedCode.MCPGateway.slnx
 
-      - name: Run full BenchmarkDotNet suite
-        run: dotnet run -c Release --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --filter "*" --artifacts ./artifacts/benchmarks
+      - name: Run and verify benchmark shard
+        env:
+          BENCHMARK_SHARD: ${{ matrix.shard }}
+        run: dotnet run -c Release --no-restore --project benchmarks/ManagedCode.MCPGateway.Benchmarks/ManagedCode.MCPGateway.Benchmarks.csproj -- --ci-shard "$BENCHMARK_SHARD" ./artifacts/benchmarks
 
       - name: Upload benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
+          name: benchmark-results-${{ matrix.shard }}
           path: ./artifacts/benchmarks/**
           retention-days: 14

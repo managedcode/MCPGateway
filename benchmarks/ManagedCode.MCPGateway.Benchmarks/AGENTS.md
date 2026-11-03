@@ -13,6 +13,7 @@ Parent: `../../AGENTS.md`
 ## Entry Points
 
 - `Program.cs`
+- `BenchmarkCi.cs` (discovers CI shards and validates timing and allocation results)
 - `BenchmarkCatalog.cs`
 - `BenchmarkSchemaCatalog.cs` (70 schema-heavy tools with search hints; revisions create distinct catalogs for cold builds)
 - `McpGatewayIndexBuildBenchmarks.cs` (cold, reused and ten-parallel-host index builds)
@@ -45,7 +46,7 @@ Parent: `../../AGENTS.md`
 ## Local Constraints
 
 - Run benchmarks in `Release`.
-- CI benchmark coverage runs the complete BenchmarkDotNet suite with `--filter "*"`; do not replace it with smoke-only, dry-run, or short-run benchmark coverage. Release follows the root policy and does not run or wait for benchmarks.
+- CI discovers and runs the complete BenchmarkDotNet suite as independent shards with the default job. Each shard uses the case filter discovered from the assembly. Release follows the independent publication policy in the root instructions.
 - Keep benchmark fixtures deterministic and network-free.
 - Keep benchmark methods focused on one measurable operation.
 - Use BenchmarkDotNet `MemoryDiagnoser` so allocations are visible with mean timing.

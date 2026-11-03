@@ -28,6 +28,18 @@ internal static class Program
         }
 
         var config = ManualConfig.Create(DefaultConfig.Instance).AddColumn(StatisticColumn.P95).AddExporter(JsonExporter.Full);
+        if (args is ["--ci-matrix"])
+        {
+            BenchmarkCi.WriteMatrix(config);
+            return;
+        }
+
+        if (args is ["--ci-shard", var shardText, var artifacts] && int.TryParse(shardText, out var shard))
+        {
+            Environment.ExitCode = BenchmarkCi.RunShard(shard, artifacts, config);
+            return;
+        }
+
         var summaries = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, config);
         if (summaries.Any(summary => summary.HasCriticalValidationErrors || summary.Reports.Any(report => !report.Success)))
         {
