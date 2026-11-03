@@ -1,6 +1,6 @@
 # MCPGateway 2.3.4 performance and memory review
 
-Date: 2026-11-03. Status: local qualification complete; exact-head publication and full CI benchmark receipts are recorded separately after push.
+Date: 2026-11-03. Status: released and verified on the public feed. All fifteen local iterations and Linux functional qualification passed. The independent full CI benchmark run is still in progress.
 
 ## Scope and methodology
 
@@ -67,11 +67,11 @@ Final seven-phase search run completed with explicit per-operation result valida
 
 Requested server: `dotnet-diagnostics-mcp` 0.28.0. The repository-local official SDK helper retains original request/response JSON in `diagnostics-1/` and captures under `captures/`. Its build is isolated from solution central package metadata; no global MCP configuration changes are needed.
 
-Target PID53606 was the actual gateway benchmark host, entrypoint `ManagedCode.MCPGateway.Benchmarks`, runtime10.0.14, gateway2.3.3 plus the reviewed source changes and graph0.3.0. The collector incorrectly classified this CoreCLR host as NativeAOT and refused EventPipe CPU sampling (`UnsupportedRuntime`); macOS live ClrMD attach is also unsupported. Both refusals are retained. No unavailable CPU/heap collector is treated as zero work.
+Target PID 53606 was the actual gateway benchmark host, entrypoint `ManagedCode.MCPGateway.Benchmarks`, runtime 10.0.14, gateway 2.3.3 plus the reviewed source changes and graph 0.3.0. The collector incorrectly classified this CoreCLR host as NativeAOT and refused EventPipe CPU sampling (`UnsupportedRuntime`); macOS live ClrMD attach is also unsupported. Both refusals are retained. No unavailable CPU/heap collector is treated as zero work.
 
 The 8-second allocation capture observed 6,924 allocation events (738,683,008 sampled bytes). Byte-weighted top type was `System.Char[]`; ranked allocation call stacks include HashSet initialization, VDS trie key mapping, SPARQL tokenization, graph-pattern variables and algebra sets/joins. Stack occurrence frequency and sampled allocated bytes are different measures; no external engine defect is inferred from a hot frame.
 
-GC measurementv2 reported 93 completed collections and 94 fully suspended intervals, zero reported dropped intervals/collections, `no-detected-loss`, normal stop and available lifetime compatibility. `GCSuspendEEStop` to `GCRestartEEStart` suspension totaled100.1636ms, maximum7.2541ms, within an8.7343s observed window. Legacy collection elapsed188.6733ms is not pause time. Summary output omits94 interval rows; the handle retains them. Missing allocation loss metadata is unknown, not asserted zero. These are instrumented workload observations, not before/after pause improvements.
+GC measurement v2 reported 93 completed collections and 94 fully suspended intervals, zero reported dropped intervals/collections, `no-detected-loss`, normal stop and available lifetime compatibility. `GCSuspendEEStop` to `GCRestartEEStart` suspension totaled 100.1636 ms, maximum 7.2541 ms, within an 8.7343 s observed window. Legacy collection elapsed 188.6733 ms is not pause time. Summary output omits 94 interval rows; the handle retains them. Missing allocation loss metadata is unknown, not asserted zero. These are instrumented workload observations, not before/after pause improvements.
 
 ## Dependency changes
 
@@ -82,16 +82,24 @@ GC measurementv2 reported 93 completed collections and 94 fully suspended interv
 | ManagedCode.MarkdownLd.Kb | 0.2.18 | 0.3.0 |
 | TUnit | 1.76.28 | 1.78.0 |
 
-No new central transitive pin is introduced. Markdown-LD release0.3.0 is verified at commit `5f6e5564d373d641f65cc50989b8e3a6f71d8bc8`, [successful release41541723386](https://github.com/managedcode/markdown-ld-kb/actions/runs/41541723386), [GitHub tag](https://github.com/managedcode/markdown-ld-kb/releases/tag/v0.3.0), and the actual public nupkg payload. The consumer has no temporary project reference or unpublished package.
+No new central transitive pin is introduced. Markdown-LD release 0.3.0 is verified at commit `5f6e5564d373d641f65cc50989b8e3a6f71d8bc8`, [successful release 41541723386](https://github.com/managedcode/markdown-ld-kb/actions/runs/41541723386), [GitHub tag](https://github.com/managedcode/markdown-ld-kb/releases/tag/v0.3.0), and the actual public nupkg payload. The consumer has no temporary project reference or unpublished package.
 
 ## Final verification
 
 - Full Release TUnit:456 passed, zero failed/skipped. Coverlet also completed the full suite.
-- Coverlet:11,174/12,080 covered lines (92.50%); branches80.18%. Core factory38/38 and graph factory126/126 lines (100%); toolset133/144 (92.36%); runtime file141/153 (92.16%).
+- Coverlet:11,174/12,080 covered lines (92.50%); branches 80.18%. Core factory 38/38 and graph factory 126/126 lines (100%); toolset 133/144 (92.36%); runtime file 141/153 (92.16%).
 - Scoped format, full format verify, strict analyzer build and canonical final build:passed, zero warnings/errors. Roslynator:zero diagnostics.
-- ReportGenerator and cloc:passed. New factory58 C# code lines; new integration test74. Runtime file remains649 physical lines, within the650 file limit. Existing test-size exceptions are unchanged.
+- ReportGenerator and cloc:passed. New factory 58 C# code lines; new integration test 74. Runtime file remains 649 physical lines, within the 650 file limit. Existing test-size exceptions are unchanged.
 - Final outdated direct dependency scan:none. Final direct/transitive vulnerability scan:no advisories. No new central transitive pin.
 - Installed diagnostics helper:isolated build/tools-list/EOF shutdown passed without compiler warnings. CLI help passed.
-- Local package payloads/IDs/versions and published graph dependency validated:library2.3.4 and CLI0.1.1. No public API signature or persisted format changes.
+- Local package payloads/IDs/versions and published graph dependency validated:library 2.3.4 and CLI 0.1.1. No public API signature or persisted format changes.
 
-Normal main push, exact-head Release, CLI publication and intended-feed verification remain the final delivery checks. Full23-case standard BenchmarkDotNet coverage runs independently in CI.
+Delivery is verified at source commit `4f3ebc95b3cb4a4009e9629bbc4b102257d45f99`:
+
+- [Release 41549054263](https://github.com/managedcode/MCPGateway/actions/runs/41549054263):success; [GitHub v2.3.4](https://github.com/managedcode/MCPGateway/releases/tag/v2.3.4) targets the exact source commit.
+- [CLI publication 41549101070](https://github.com/managedcode/MCPGateway/actions/runs/41549101070):success for `cli-v0.1.1`; actual public installation, version and help passed.
+- [CodeQL 41549054261](https://github.com/managedcode/MCPGateway/actions/runs/41549054261):success.
+- [CI 41549054292](https://github.com/managedcode/MCPGateway/actions/runs/41549054292):Build and Test succeeded,456/456 executed/passed, zero skipped; Linux line coverage11,168/12,080 (92.45%). The Full Benchmarks job125634627244 remains in progress with all23 standard cases configured. This is **not yet complete performance qualification**.
+- Actual NuGet v3 flat-container downloads returned200 for library2.3.4 and CLI0.1.1. Both nuspec repository commits match the source commit. The gateway DLL bytes match the GitHub release artifact, and its nuspec references published Markdown-LD0.3.0. Receipts and hashes are in `artifacts/performance-review-20261103/published/nuget-verification.json` and `delivery-receipt.json`.
+
+Publication is independent of benchmarks by root policy. A bounded read-only heartbeat observes the exact CI run and will report completion, failure or invalid benchmark evidence; it cannot change files, commit, push or release. It ends after reporting or at2026-11-03 03:30UTC. The existing unrelated `.config/dotnet-tools.json` edit remains visible and outside this release scope.
