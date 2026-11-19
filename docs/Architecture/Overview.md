@@ -87,6 +87,12 @@ The CLI adapter in `src/ManagedCode.MCPGateway.Cli/` is packaged separately as t
 
 Invocation treats an official CallToolResult returned by a local AIFunction as the same protocol result shape as an MCP source. The existing extraction path supplies structured content or text to output-schema validation, and the original protocol result occupies McpResult until the unchanged result policy or projection replaces it. Tool-level errors retain their native error classification without becoming invocation failures. The owning delivery stage measures the complete outward representation and retains its existing authorization, schema and byte limits. KeyLoad consumes this shipped native result contract; consumer-side serialization or schema bypass is not a repair.
 
+Size enforcement on approved results preserves a succeeded execution outcome
+even if the budget prevents payload delivery. The invocation envelope returns
+a delivery diagnostic without the oversized payload. A direct MCP export
+returns a success notice. Authorization and schema rejections retain their
+failure outcomes.
+
 ## Governance Map
 
 The solution uses root and project-local `AGENTS.md` files so agents can scope work without scanning the whole repository first.

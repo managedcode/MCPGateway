@@ -134,6 +134,15 @@ internal static class McpGatewayMcpServerProtocolMapper
             return CreateErrorToolResult(invokeResult.Error ?? ToolInvocationFailedMessage);
         }
 
+        if (invokeResult.Outcome == McpGatewayInvocationOutcome.Succeeded && invokeResult.Error is { } deliveryNotice)
+        {
+            return new CallToolResult
+            {
+                IsError = false,
+                Content = [new TextContentBlock { Text = deliveryNotice }]
+            };
+        }
+
         if (invokeResult.McpResult is { } approvedProtocolResult)
         {
             approvedProtocolResult.IsError ??= invokeResult.Outcome == McpGatewayInvocationOutcome.ToolError;

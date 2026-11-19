@@ -44,17 +44,42 @@ public sealed class McpGatewayResponseDeliveryTests
         await Assert.That(downstream.IsError).IsTrue();
     }
 
-    [TUnit.Core.Test]
-    public async Task Oversized_JSON_fails_safely_without_string_truncation()
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
+    public async Task Native_invoke_reports_success_and_controls_delivery_of_a_large_publication(bool project)
     {
-        await using var provider = GatewayTestServiceProviderFactory.Create(options =>
-            options.AddTool(AIFunctionFactory.Create(static () => new { secret = new string('x', 1000) }, new AIFunctionFactoryOptions { Name = "large_result" })));
-        var result = await provider.GetRequiredService<IMcpGateway>().InvokeAsync(new(ToolId: "large_result")
-        { ResponseOptions = new() { MaxBytes = 100 } });
-        await Assert.That(result.IsSuccess).IsFalse();
-        await Assert.That(result.ErrorCode).IsEqualTo("result_too_large");
-        await Assert.That(result.Output).IsNull();
-        await Assert.That(result.McpResult).IsNull();
+        var publications = 0;
+        await using var host = await GatewayMcpServerHost.StartAsync(options =>
+            options.AddTool(AIFunctionFactory.Create(
+                () => new { version = Interlocked.Increment(ref publications), payload = new string('x', 1000) },
+                new AIFunctionFactoryOptions { Name = "publish_record" })),
+            services => services.Configure<McpGatewayMcpServerExportOptions>(
+                options => options.Mode = McpGatewayMcpServerExportMode.DiscoveryOnly));
+        var invoke = (await host.Client.ListToolsAsync()).Single(tool => tool.Name == McpGatewayToolSet.DefaultInvokeToolName);
+        using var args = JsonDocument.Parse(project
+            ? """{"toolId":"publish_record","responseOptions":{"maxBytes":256,"selectPaths":["/version"]}}"""
+            : """{"toolId":"publish_record","responseOptions":{"maxBytes":256}}""");
+        await Assert.That(invoke.JsonSchema.GetProperty("properties").TryGetProperty("responseOptions", out _)).IsTrue();
+        var result = await host.Client.CallToolAsync(invoke.Name, args.RootElement.EnumerateObject()
+            .ToDictionary(property => property.Name, property => (object?)property.Value));
+        await Assert.That(result.IsError == true).IsFalse();
+        using var json = JsonDocument.Parse(((TextContentBlock)result.Content[0]).Text);
+        var envelope = json.RootElement;
+        await Assert.That(envelope.GetProperty("isSuccess").GetBoolean()).IsTrue();
+        await Assert.That(envelope.GetProperty("outcome").GetString()).IsEqualTo(nameof(McpGatewayInvocationOutcome.Succeeded));
+        await Assert.That(envelope.GetRawText()).DoesNotContain("payload");
+        await Assert.That(publications).IsEqualTo(1);
+        if (project)
+        {
+            await Assert.That(envelope.GetProperty("output").GetProperty("version").GetInt32()).IsEqualTo(1);
+        }
+        else
+        {
+            await Assert.That(envelope.GetProperty("errorCode").GetString()).IsEqualTo("result_too_large");
+            await Assert.That(envelope.TryGetProperty("output", out _)).IsFalse();
+            await Assert.That(envelope.GetProperty("deliveredBytes").GetInt32()).IsEqualTo(0);
+        }
     }
 
     [TUnit.Core.Test]

@@ -1031,6 +1031,14 @@ The gateway can expose itself as three reusable tools:
 - `gateway_tools_route`
 - `gateway_tool_invoke`
 
+Pass `responseOptions` alongside `toolId` and `arguments`. Use JSON Pointers
+relative to the output, for example `"responseOptions": {"selectPaths": ["/id"]}`.
+
+If the approved output still exceeds the byte budget and has no stored handle,
+a successful invocation returns `isSuccess: true`, `outcome: "Succeeded"`,
+`errorCode: "result_too_large"`, and no output. Read the current state through
+an appropriate read tool to recover details without replaying a mutation.
+
 `McpGatewayToolSet` also exposes graph-specific tools for callers that need schema/profile inspection, explicit index rebuilds, schema/SPARQL evidence, federated SPARQL search, or graph export:
 
 - `gateway_graph_schema_describe`

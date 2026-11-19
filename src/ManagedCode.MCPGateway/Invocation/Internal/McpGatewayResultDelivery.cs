@@ -13,6 +13,8 @@ internal static class McpGatewayResultDelivery
     private const string ResultRejectedMessage = "The result could not be delivered under the configured output policy.";
     private const string OversizedCode = "result_too_large";
     private const string OversizedMessage = "The approved result exceeds the delivery byte budget.";
+    private const string OversizedSuccessMessage = "The operation succeeded and its approved output exceeded the delivery byte budget. " +
+        "Use a read-only lookup to retrieve the result.";
 
     public static async Task<McpGatewayInvokeResult> DeliverAsync(IServiceProvider services, McpGatewayToolDescriptor tool,
         McpGatewayInvokeRequest request, McpGatewayInvokeResult result, McpGatewayExecutionContext context, McpGatewaySchemaValidator validator,
@@ -76,34 +78,52 @@ internal static class McpGatewayResultDelivery
             result = result with { McpResult = CreateProtocol(output, result.Outcome == McpGatewayInvocationOutcome.ToolError) };
         }
         var bytes = Measure(result);
-        if (response is not null)
+        if (response is null)
         {
-            ArgumentOutOfRangeException.ThrowIfLessThan(response.MaxBytes, 1);
-            if (bytes > response.MaxBytes)
+            return result with { DeliveredBytes = bytes };
+        }
+        ArgumentOutOfRangeException.ThrowIfLessThan(response.MaxBytes, 1);
+        return bytes <= response.MaxBytes
+            ? result with { DeliveredBytes = bytes }
+            : await DeliverOversizedAsync(services, tool, result, context, response,
+                managedCatalog, maximumDeliveryBytes, cancellationToken);
+    }
+
+    private static async Task<McpGatewayInvokeResult> DeliverOversizedAsync(IServiceProvider services,
+        McpGatewayToolDescriptor tool, McpGatewayInvokeResult result, McpGatewayExecutionContext context,
+        McpGatewayResponseOptions response, bool managedCatalog, int maximumDeliveryBytes, CancellationToken cancellationToken)
+    {
+        if (response.StoreOversizedResult && services.GetService<IMcpGatewayResultStore>() is { } store)
+        {
+            var approved = McpGatewayJsonSerializer.TrySerializeToElement(result.McpResult is null ? result.Output : result.McpResult);
+            var stored = approved is not { } value ? null : managedCatalog
+                ? await store.StoreAsync(context, value, tool, maximumDeliveryBytes, cancellationToken)
+                : await store.StoreAsync(context, value, tool, cancellationToken);
+            if (stored is not null)
             {
-                if (response.StoreOversizedResult && services.GetService<IMcpGatewayResultStore>() is { } store)
+                if (managedCatalog && (!stored.RequiresPublication || stored.ToolId != tool.ToolId
+                    || stored.DefinitionHash != tool.DefinitionHash || stored.SourceId != tool.SourceId
+                    || stored.MaximumDeliveryBytes != maximumDeliveryBytes))
                 {
-                    var approved = McpGatewayJsonSerializer.TrySerializeToElement(result.McpResult is null ? result.Output : result.McpResult);
-                    var stored = approved is not { } value ? null : managedCatalog
-                        ? await store.StoreAsync(context, value, tool, maximumDeliveryBytes, cancellationToken)
-                        : await store.StoreAsync(context, value, tool, cancellationToken);
-                    if (stored is not null)
-                    {
-                        if (managedCatalog && (!stored.RequiresPublication || stored.ToolId != tool.ToolId
-                            || stored.DefinitionHash != tool.DefinitionHash || stored.SourceId != tool.SourceId
-                            || stored.MaximumDeliveryBytes != maximumDeliveryBytes))
-                        {
-                            await store.RemoveAsync(context, stored.Handle, cancellationToken);
-                            return Reject(result, ResultRejectedCode, ResultRejectedMessage);
-                        }
-                        McpGatewayInvocationTelemetry.StoredResult();
-                        return result with { Output = null, McpResult = null, ResultHandle = stored.Handle, DeliveredBytes = 0 };
-                    }
+                    await store.RemoveAsync(context, stored.Handle, cancellationToken);
+                    return Reject(result, ResultRejectedCode, ResultRejectedMessage);
                 }
-                return Reject(result, OversizedCode, OversizedMessage);
+                McpGatewayInvocationTelemetry.StoredResult();
+                return result with { Output = null, McpResult = null, ResultHandle = stored.Handle, DeliveredBytes = 0 };
             }
         }
-        return result with { DeliveredBytes = bytes };
+        if (result.Outcome != McpGatewayInvocationOutcome.Succeeded)
+        {
+            return Reject(result, OversizedCode, OversizedMessage);
+        }
+        return result with
+        {
+            Output = null,
+            McpResult = null,
+            DeliveredBytes = 0,
+            ErrorCode = OversizedCode,
+            Error = OversizedSuccessMessage
+        };
     }
 
     private static int Measure(McpGatewayInvokeResult result)

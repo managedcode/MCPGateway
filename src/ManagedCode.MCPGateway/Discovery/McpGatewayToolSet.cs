@@ -23,7 +23,9 @@ public sealed class McpGatewayToolSet
     public const string RouteToolDescription =
         "Route a task into the best tool categories first, then return the strongest tools per category.";
     public const string InvokeToolDescription =
-        "Invoke a gateway tool by tool id. Search first when the correct tool is unknown.";
+        "Invoke a gateway tool by tool id. Search first when the correct tool is unknown. " +
+        "Send responseOptions alongside toolId and arguments. Use responseOptions.selectPaths with JSON Pointers (for example /id) to select output fields. " +
+        "If isSuccess is true and errorCode is result_too_large, execution succeeded and the output was omitted.";
     public const string GraphSearchToolDescription =
         "Run schema-aware Markdown-LD graph search and return graph matches, evidence, generated SPARQL, and mapped gateway tools.";
     public const string GraphFederatedSearchToolDescription =

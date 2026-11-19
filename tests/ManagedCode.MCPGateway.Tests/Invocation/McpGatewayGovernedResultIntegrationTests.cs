@@ -48,6 +48,32 @@ public sealed class McpGatewayGovernedResultIntegrationTests
     }
 
     [TUnit.Core.Test]
+    public async Task Direct_export_confirms_execution_when_the_managed_budget_omits_output()
+    {
+        var publications = 0;
+        await using var host = await GatewayMcpServerHost.StartAsync(options =>
+        {
+            options.Governance.ManagedCatalog = true;
+            options.Governance.MaximumResponseBytes = 1024;
+            options.AddTool("records", AIFunctionFactory.Create(
+                () => new { version = Interlocked.Increment(ref publications), payload = new string('x', 2000) },
+                new AIFunctionFactoryOptions { Name = "publish_record" }));
+        }, services =>
+        {
+            services.AddSingleton<IMcpGatewayExecutionContextProvider, Actor>();
+            services.AddSingleton<IMcpGatewayAccessPolicy, Policy>();
+            services.AddMcpGatewayInMemoryCatalogStore();
+        });
+        var publication = host.Services.GetRequiredService<IMcpGatewayCatalogPublication>();
+        var candidate = (await publication.InspectCandidateAsync()).Single();
+        await Assert.That((await publication.PublishAsync([candidate with { Lifecycle = McpGatewayToolLifecycle.Approved }], 0, "review-1")).IsPublished).IsTrue();
+        var result = await host.Client.CallToolAsync(candidate.ToolId, new Dictionary<string, object?>());
+        await Assert.That(result.IsError == true).IsFalse();
+        await Assert.That(((TextContentBlock)result.Content.Single()).Text).Contains("The operation succeeded");
+        await Assert.That(publications).IsEqualTo(1);
+    }
+
+    [TUnit.Core.Test]
     public async Task Output_schema_violation_is_rejected_after_one_execution_with_no_raw_output()
     {
         var function = new InvalidOutputFunction();
